@@ -13,13 +13,23 @@ export async function aiChatHandler(ctx: BotContext): Promise<void> {
   const text = ctx.message?.text;
   if (!text) return;
 
+  // Ensure user exists in DB (userMiddleware should have already created them)
+  const userId = ctx.session.userId;
+  if (!userId) {
+    await ctx.reply(
+      "❌ *Error*\n\nCould not identify your account. Please use /start first.",
+      { parse_mode: "Markdown" }
+    );
+    return;
+  }
+
   // Create conversation if not exists
   if (!ctx.session.conversationId) {
     const conversation = await prisma.conversation.create({
       data: {
         title: text.slice(0, 100),
         feature: "chat",
-        userId: Number(ctx.from?.id),
+        userId,
       },
     });
     ctx.session.conversationId = conversation.id;
@@ -44,13 +54,13 @@ export async function aiChatHandler(ctx: BotContext): Promise<void> {
       data: [
         {
           conversationId: ctx.session.conversationId!,
-          userId: Number(ctx.from?.id),
+          userId,
           role: "user",
           content: text,
         },
         {
           conversationId: ctx.session.conversationId!,
-          userId: Number(ctx.from?.id),
+          userId,
           role: "assistant",
           content: response.content,
           tokensUsed: response.usage?.totalTokens ?? 0,
@@ -61,7 +71,7 @@ export async function aiChatHandler(ctx: BotContext): Promise<void> {
     // Track usage
     await prisma.usage.create({
       data: {
-        userId: Number(ctx.from?.id),
+        userId,
         feature: "chat",
         tokensIn: response.usage?.promptTokens ?? 0,
         tokensOut: response.usage?.completionTokens ?? 0,
@@ -70,7 +80,7 @@ export async function aiChatHandler(ctx: BotContext): Promise<void> {
 
     // Update user request count
     await prisma.user.update({
-      where: { telegramId: BigInt(ctx.from!.id) },
+      where: { id: userId },
       data: {
         requestsToday: { increment: 1 },
         totalRequests: { increment: 1 },
@@ -120,9 +130,18 @@ export async function newChatHandler(ctx: BotContext): Promise<void> {
  * Show chat history
  */
 export async function chatHistoryHandler(ctx: BotContext): Promise<void> {
+  const userId = ctx.session.userId;
+  if (!userId) {
+    await ctx.reply(
+      "❌ *Error*\n\nCould not identify your account.",
+      { parse_mode: "Markdown" }
+    );
+    return;
+  }
+
   const conversations = await prisma.conversation.findMany({
     where: {
-      userId: Number(ctx.from?.id),
+      userId,
       feature: "chat",
       isActive: true,
     },

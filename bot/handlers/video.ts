@@ -78,25 +78,28 @@ export async function videoGenerateHandler(
     });
 
     // Track usage
-    try {
-      await prisma.usage.create({
-        data: {
-          userId: Number(ctx.from?.id),
-          feature: "video",
-        },
-      });
-    } catch {}
+    const userId = ctx.session.userId;
+    if (userId) {
+      try {
+        await prisma.usage.create({
+          data: {
+            userId,
+            feature: "video",
+          },
+        });
+      } catch {}
 
-    // Update user request count
-    try {
-      await prisma.user.update({
-        where: { telegramId: BigInt(ctx.from!.id) },
-        data: {
-          requestsToday: { increment: 1 },
-          totalRequests: { increment: 1 },
-        },
-      });
-    } catch {}
+      // Update user request count
+      try {
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            requestsToday: { increment: 1 },
+            totalRequests: { increment: 1 },
+          },
+        });
+      } catch {}
+    }
   } catch (error) {
     console.error("Video AI error:", error);
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id);

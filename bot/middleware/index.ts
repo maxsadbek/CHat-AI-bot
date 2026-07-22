@@ -1,3 +1,4 @@
+import { Bot } from "grammy";
 import type { BotContext } from "@/types";
 import { BotStep } from "@/types";
 import { rateLimiter } from "@/utils/rate-limit";
@@ -10,6 +11,7 @@ import { env } from "@/config";
 export function createInitialSession() {
   return {
     step: BotStep.IDLE,
+    userId: null as number | null,
     conversationId: null as string | null,
     messages: [] as Array<{ role: "user" | "assistant"; content: string }>,
     tempData: {} as Record<string, string>,
@@ -34,7 +36,7 @@ export async function rateLimitMiddleware(
 
   if (!allowed) {
     await ctx.reply(
-      "⚠️ *Rate Limit Reached*\n\nPlease wait a moment before sending another request.\n\n" +
+      "⚠️ *Rate Limit Reached*\\n\\nPlease wait a moment before sending another request.\\n\\n" +
         "This helps us maintain quality service for everyone.",
       { parse_mode: "Markdown" }
     );
@@ -47,6 +49,7 @@ export async function rateLimitMiddleware(
 /**
  * User tracking middleware
  * Creates/updates user in database and tracks activity
+ * Stores the Prisma user ID in session for downstream handlers
  */
 export async function userMiddleware(
   ctx: BotContext,
@@ -59,7 +62,7 @@ export async function userMiddleware(
   }
 
   try {
-    await prisma.user.upsert({
+    const user = await prisma.user.upsert({
       where: { telegramId: BigInt(from.id) },
       update: {
         firstName: from.first_name,
@@ -79,6 +82,9 @@ export async function userMiddleware(
         dailyLimit: env.ADMIN_IDS.includes(from.id) ? 999999 : 50,
       },
     });
+
+    // Store the Prisma user ID in session for downstream handlers
+    ctx.session.userId = user.id;
   } catch (error) {
     console.error("Failed to upsert user:", error);
   }
@@ -108,9 +114,9 @@ export async function checkDailyLimit(
       const isAdmin = env.ADMIN_IDS.includes(from.id);
       if (!isAdmin) {
         await ctx.reply(
-          "⚠️ *Daily Limit Reached*\n\n" +
-            `You've used ${user.requestsToday}/${user.dailyLimit} requests today.\n\n` +
-            "Your limit resets at midnight UTC.\n\n" +
+          "⚠️ *Daily Limit Reached*\\n\\n" +
+            `You've used ${user.requestsToday}/${user.dailyLimit} requests today.\\n\\n` +
+            "Your limit resets at midnight UTC.\\n\\n" +
             "Upgrade to Premium for higher limits! 🚀",
           { parse_mode: "Markdown" }
         );
@@ -122,4 +128,13 @@ export async function checkDailyLimit(
   }
 
   await next();
+}
+
+/**
+ * Register all middleware on the bot
+ */
+export function registerMiddleware(bot: Bot<BotContext>): void {
+  bot.use(rateLimitMiddleware);
+  bot.use(userMiddleware);
+  bot.use(checkDailyLimit);
 }

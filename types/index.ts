@@ -4,6 +4,7 @@ import type { Context, SessionFlavor } from "grammy";
 
 export interface SessionData {
   step: BotStep;
+  userId: number | null;
   conversationId: string | null;
   messages: Array<{
     role: "user" | "assistant";

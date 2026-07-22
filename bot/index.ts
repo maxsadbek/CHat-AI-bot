@@ -3,6 +3,7 @@ import type { BotContext } from "@/types";
 import { BotStep } from "@/types";
 import { env } from "@/config";
 import { createInitialSession } from "@/bot/middleware";
+import { registerMiddleware } from "@/bot/middleware";
 import { startHandler } from "@/bot/handlers/start";
 import {
   aiChatHandler,
@@ -35,6 +36,9 @@ export function createBot(): Bot<BotContext> {
       initial: createInitialSession,
     })
   );
+
+  // ─── Global Middleware ─────────────────────────────
+  registerMiddleware(bot);
 
   // ─── Commands ──────────────────────────────────────
   bot.command("start", startHandler);

@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
   },
 
   // Server-side only packages
-  serverExternalPackages: ["grammy", "prisma", "@prisma/client"],
+  serverExternalPackages: ["grammy", "prisma", "@prisma/client", "@prisma/adapter-pg"],
 };
 
 export default nextConfig;

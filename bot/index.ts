@@ -4,6 +4,7 @@ import { BotStep } from "@/types";
 import { env } from "@/config";
 import { createInitialSession } from "@/bot/middleware";
 import { registerMiddleware } from "@/bot/middleware";
+import { resetSession, clearModeData } from "@/bot/session";
 import { startHandler } from "@/bot/handlers/start";
 import {
   aiChatHandler,
@@ -44,11 +45,31 @@ export function createBot(): Bot<BotContext> {
   bot.command("start", startHandler);
   bot.command("help", helpHandler);
   bot.command("profile", profileHandler);
+
+  // /menu — return to main menu, reset session
+  bot.command("menu", async (ctx) => {
+    resetSession(ctx.session, true);
+    await ctx.reply(
+      "🏠 *Main Menu*\n\nChoose a feature below:",
+      { parse_mode: "Markdown", reply_markup: mainMenuKeyboard }
+    );
+  });
+
+  // /cancel — cancel current operation, reset to IDLE
+  bot.command("cancel", async (ctx) => {
+    resetSession(ctx.session, true);
+    await ctx.reply(
+      "❌ *Cancelled*\n\nCurrent operation has been cancelled.\n\nUse /menu to see the main menu or /start to restart.",
+      { parse_mode: "Markdown", reply_markup: mainMenuKeyboard }
+    );
+  });
+
   bot.command("chat", async (ctx) => {
+    clearModeData(ctx.session);
     ctx.session.step = BotStep.AI_CHAT;
     await ctx.reply(
       "🤖 *AI Chat*\n\nSend me a message and I'll respond!",
-      { parse_mode: "Markdown" }
+      { parse_mode: "Markdown", reply_markup: undefined }
     );
   });
 
@@ -92,10 +113,10 @@ export function createBot(): Bot<BotContext> {
     }
   });
 
-  // Menu navigation
+  // Menu navigation — full session reset
   bot.callbackQuery("menu:main", async (ctx) => {
     await ctx.answerCallbackQuery();
-    ctx.session.step = BotStep.IDLE;
+    resetSession(ctx.session, true);
     await ctx.editMessageText(
       "🏠 *Main Menu*\n\nChoose a feature below:",
       { parse_mode: "Markdown", reply_markup: mainMenuKeyboard }
@@ -106,50 +127,61 @@ export function createBot(): Bot<BotContext> {
   bot.callbackQuery("chat:new", newChatHandler);
   bot.callbackQuery("chat:history", chatHistoryHandler);
 
-  // Video platform selection
+  // Video platform selection — store in session
   bot.callbackQuery(/^video:(.+)/, async (ctx) => {
     await ctx.answerCallbackQuery();
-    const platform = ctx.match[1] === "all" ? "all" : ctx.match[1];
+    const raw = ctx.match[1];
+    const platform: import("@/types").VideoPlatform | "all" =
+      raw === "all" || !raw ? "all" : (raw as import("@/types").VideoPlatform);
+    ctx.session.selectedVideoPlatform = platform;
     await ctx.editMessageText(
       `🎬 *Video AI* - ${platform === "all" ? "All Platforms" : platform}\n\nDescribe your video idea:`,
       { parse_mode: "Markdown" }
     );
   });
 
-  // Image platform selection
+  // Image platform selection — store in session
   bot.callbackQuery(/^image:(.+)/, async (ctx) => {
     await ctx.answerCallbackQuery();
-    const platform = ctx.match[1] === "all" ? "all" : ctx.match[1];
+    const raw = ctx.match[1];
+    const platform: import("@/types").ImagePlatform | "all" =
+      raw === "all" || !raw ? "all" : (raw as import("@/types").ImagePlatform);
+    ctx.session.selectedImagePlatform = platform;
     await ctx.editMessageText(
       `🎨 *Image AI* - ${platform === "all" ? "All Platforms" : platform}\n\nDescribe your image:`,
       { parse_mode: "Markdown" }
     );
   });
 
-  // Social platform selection
+  // Social platform selection — store in session
   bot.callbackQuery(/^social:(.+)/, async (ctx) => {
     await ctx.answerCallbackQuery();
-    const platform = ctx.match[1] === "all" ? "all" : ctx.match[1];
+    const raw = ctx.match[1];
+    const platform: import("@/types").SocialPlatform | "all" =
+      raw === "all" || !raw ? "all" : (raw as import("@/types").SocialPlatform);
+    ctx.session.selectedSocialPlatform = platform;
     await ctx.editMessageText(
       `📱 *Social Media* - ${platform === "all" ? "All Platforms" : platform}\n\nDescribe your content:`,
       { parse_mode: "Markdown" }
     );
   });
 
-  // Business type selection
+  // Business type selection — store in session
   bot.callbackQuery(/^business:(.+)/, async (ctx) => {
     await ctx.answerCallbackQuery();
-    const type = ctx.match[1] ?? "startup_idea";
+    const businessType = ctx.match[1] as import("@/types").BusinessContentType ?? "startup_idea";
+    ctx.session.selectedBusinessType = businessType;
     await ctx.editMessageText(
-      `💼 *Business* - ${type.replace(/_/g, " ")}\n\nDescribe your business need:`,
+      `💼 *Business* - ${businessType.replace(/_/g, " ")}\n\nDescribe your business need:`,
       { parse_mode: "Markdown" }
     );
   });
 
-  // Coding language selection
+  // Coding language selection — store in session
   bot.callbackQuery(/^coding:(.+)/, async (ctx) => {
     await ctx.answerCallbackQuery();
-    const language = ctx.match[1];
+    const language = ctx.match[1] as import("@/types").CodeLanguage;
+    ctx.session.selectedCodeLanguage = language;
     await ctx.editMessageText(
       `💻 *Coding* - ${language}\n\nDescribe what you want to build:`,
       { parse_mode: "Markdown" }
@@ -157,6 +189,9 @@ export function createBot(): Bot<BotContext> {
   });
 
   // ─── Text Messages ────────────────────────────────
+  // Route each text message based on the current session step (active AI mode).
+  // Each mode uses session-stored platform/language/type selections,
+  // ensuring modes are fully isolated from each other.
   bot.on("message:text", async (ctx) => {
     const step = ctx.session.step;
 
@@ -165,19 +200,19 @@ export function createBot(): Bot<BotContext> {
         await aiChatHandler(ctx);
         break;
       case BotStep.VIDEO_PROMPT:
-        await videoGenerateHandler(ctx, "all");
+        await videoGenerateHandler(ctx);
         break;
       case BotStep.IMAGE_PROMPT:
-        await imageGenerateHandler(ctx, "all");
+        await imageGenerateHandler(ctx);
         break;
       case BotStep.SOCIAL_MEDIA:
-        await socialGenerateHandler(ctx, "all");
+        await socialGenerateHandler(ctx);
         break;
       case BotStep.BUSINESS:
-        await businessGenerateHandler(ctx, "startup_idea");
+        await businessGenerateHandler(ctx);
         break;
       case BotStep.CODING:
-        await codingGenerateHandler(ctx, "Next.js");
+        await codingGenerateHandler(ctx);
         break;
       case BotStep.TRANSLATE:
         if (ctx.session.tempData.pendingTranslation) {
@@ -187,7 +222,7 @@ export function createBot(): Bot<BotContext> {
         }
         break;
       default:
-        // Default to AI chat for any text
+        // IDLE or unrecognised step — route to AI chat
         ctx.session.step = BotStep.AI_CHAT;
         await aiChatHandler(ctx);
         break;

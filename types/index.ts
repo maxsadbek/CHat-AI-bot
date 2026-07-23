@@ -11,6 +11,16 @@ export interface SessionData {
     content: string;
   }>;
   tempData: Record<string, string>;
+  /** Currently selected video platform for isolated mode */
+  selectedVideoPlatform: VideoPlatform | "all";
+  /** Currently selected image platform for isolated mode */
+  selectedImagePlatform: ImagePlatform | "all";
+  /** Currently selected social platform for isolated mode */
+  selectedSocialPlatform: SocialPlatform | "all";
+  /** Currently selected business content type for isolated mode */
+  selectedBusinessType: BusinessContentType;
+  /** Currently selected coding language for isolated mode */
+  selectedCodeLanguage: CodeLanguage;
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;

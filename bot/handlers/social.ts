@@ -2,12 +2,16 @@ import type { BotContext, SocialPlatform } from "@/types";
 import { BotStep } from "@/types";
 import { socialAIService } from "@/services/ai/social";
 import { socialKeyboard, backToMainKeyboard } from "@/bot/keyboards";
+import { clearModeData } from "@/bot/session";
 
 /**
  * Social Media handler
  * Generates platform-optimized social media content
+ * Clears stale mode data and sets step to SOCIAL_MEDIA.
  */
 export async function socialHandler(ctx: BotContext): Promise<void> {
+  clearModeData(ctx.session);
+  ctx.session.selectedSocialPlatform = "all";
   ctx.session.step = BotStep.SOCIAL_MEDIA;
 
   await ctx.reply(
@@ -28,26 +32,14 @@ export async function socialHandler(ctx: BotContext): Promise<void> {
 }
 
 /**
- * Handle social media platform selection and content generation
+ * Handle social media content generation
+ * Uses the currently selected platform stored in session (selectedSocialPlatform).
  */
-export async function socialGenerateHandler(
-  ctx: BotContext,
-  platform: SocialPlatform | "all"
-): Promise<void> {
+export async function socialGenerateHandler(ctx: BotContext): Promise<void> {
   const text = ctx.message?.text;
-  if (!text) {
-    await ctx.reply(
-      "📱 *Describe Your Content*\n\n" +
-        "Send me a topic or description for your social media content.\n\n" +
-        "For example:\n" +
-        "_\"New AI-powered fitness app launching next week\"_",
-      {
-        parse_mode: "Markdown",
-        reply_markup: backToMainKeyboard,
-      }
-    );
-    return;
-  }
+  if (!text) return;
+
+  const platform = ctx.session.selectedSocialPlatform ?? "all";
 
   await ctx.replyWithChatAction("typing");
   const startMsg = await ctx.reply("📱 *Generating your social media content...*", {

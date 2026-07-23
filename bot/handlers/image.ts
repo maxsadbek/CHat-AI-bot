@@ -2,12 +2,16 @@ import type { BotContext, ImagePlatform } from "@/types";
 import { BotStep } from "@/types";
 import { imageAIService } from "@/services/ai/image";
 import { imageKeyboard, backToMainKeyboard } from "@/bot/keyboards";
+import { clearModeData } from "@/bot/session";
 
 /**
  * Image AI handler
  * Generates detailed prompts for various image AI platforms
+ * Clears stale mode data and sets step to IMAGE_PROMPT.
  */
 export async function imageHandler(ctx: BotContext): Promise<void> {
+  clearModeData(ctx.session);
+  ctx.session.selectedImagePlatform = "all";
   ctx.session.step = BotStep.IMAGE_PROMPT;
 
   await ctx.reply(
@@ -27,26 +31,14 @@ export async function imageHandler(ctx: BotContext): Promise<void> {
 }
 
 /**
- * Handle image platform selection and prompt generation
+ * Handle image prompt generation
+ * Uses the currently selected platform stored in session (selectedImagePlatform).
  */
-export async function imageGenerateHandler(
-  ctx: BotContext,
-  platform: ImagePlatform | "all"
-): Promise<void> {
+export async function imageGenerateHandler(ctx: BotContext): Promise<void> {
   const text = ctx.message?.text;
-  if (!text) {
-    await ctx.reply(
-      "🎨 *Describe Your Image*\n\n" +
-        "Send me a description of the image you want to create.\n\n" +
-        "For example:\n" +
-        "_\"A mystical forest with glowing mushrooms and bioluminescent creatures\"_",
-      {
-        parse_mode: "Markdown",
-        reply_markup: backToMainKeyboard,
-      }
-    );
-    return;
-  }
+  if (!text) return;
+
+  const platform = ctx.session.selectedImagePlatform ?? "all";
 
   await ctx.replyWithChatAction("typing");
   const startMsg = await ctx.reply("🎨 *Generating your image prompts...*", {

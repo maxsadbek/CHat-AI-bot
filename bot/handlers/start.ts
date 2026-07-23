@@ -3,14 +3,21 @@ import { BotStep } from "@/types";
 import { mainMenuKeyboard } from "@/bot/keyboards";
 import { formatDate } from "@/utils/helpers";
 import { config } from "@/config";
+import { resetSession } from "@/bot/session";
 
 /**
  * /start command handler
  * Shows a premium welcome message with animated emojis and inline keyboard
+ * ALWAYS fully resets the user session before showing the main menu.
  */
 export async function startHandler(ctx: BotContext): Promise<void> {
   const firstName = ctx.from?.first_name ?? "there";
   const now = new Date();
+
+  // ─── Full session reset ───────────────────────────
+  // Clear any stale mode data, conversation state, tempData
+  // Keep userId intact so downstream handlers can identify the user
+  resetSession(ctx.session, true);
 
   // Welcome message with premium formatting
   const welcomeMessage = [

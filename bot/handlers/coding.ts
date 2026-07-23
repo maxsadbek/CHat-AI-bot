@@ -2,12 +2,16 @@ import type { BotContext, CodeLanguage } from "@/types";
 import { BotStep } from "@/types";
 import { codingAIService } from "@/services/ai/coding";
 import { codingKeyboard, backToMainKeyboard } from "@/bot/keyboards";
+import { clearModeData } from "@/bot/session";
 
 /**
  * Coding AI handler
  * Generates code, debugs, and explains programming concepts
+ * Clears stale mode data and sets step to CODING.
  */
 export async function codingHandler(ctx: BotContext): Promise<void> {
+  clearModeData(ctx.session);
+  ctx.session.selectedCodeLanguage = "Next.js";
   ctx.session.step = BotStep.CODING;
 
   await ctx.reply(
@@ -33,25 +37,13 @@ export async function codingHandler(ctx: BotContext): Promise<void> {
 
 /**
  * Handle coding language selection and code generation
+ * Uses the currently selected language stored in session (selectedCodeLanguage).
  */
-export async function codingGenerateHandler(
-  ctx: BotContext,
-  language: CodeLanguage
-): Promise<void> {
+export async function codingGenerateHandler(ctx: BotContext): Promise<void> {
   const text = ctx.message?.text;
-  if (!text) {
-    await ctx.reply(
-      "💻 *Describe What to Build*\n\n" +
-        `Send me a description of what you want to create in ${language}.\n\n` +
-        "For example:\n" +
-        "_\"A responsive navbar with dropdown menu and mobile hamburger\"_",
-      {
-        parse_mode: "Markdown",
-        reply_markup: backToMainKeyboard,
-      }
-    );
-    return;
-  }
+  if (!text) return;
+
+  const language = ctx.session.selectedCodeLanguage ?? "Next.js";
 
   await ctx.replyWithChatAction("typing");
   const startMsg = await ctx.reply("💻 *Generating your code...*", {

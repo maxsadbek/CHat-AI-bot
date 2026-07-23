@@ -2,12 +2,16 @@ import type { BotContext, BusinessContentType } from "@/types";
 import { BotStep } from "@/types";
 import { businessAIService } from "@/services/ai/business";
 import { businessKeyboard, backToMainKeyboard } from "@/bot/keyboards";
+import { clearModeData } from "@/bot/session";
 
 /**
  * Business AI handler
  * Generates business ideas, plans, strategies, and branding
+ * Clears stale mode data and sets step to BUSINESS.
  */
 export async function businessHandler(ctx: BotContext): Promise<void> {
+  clearModeData(ctx.session);
+  ctx.session.selectedBusinessType = "startup_idea";
   ctx.session.step = BotStep.BUSINESS;
 
   await ctx.reply(
@@ -30,26 +34,14 @@ export async function businessHandler(ctx: BotContext): Promise<void> {
 }
 
 /**
- * Handle business content type selection and generation
+ * Handle business content generation
+ * Uses the currently selected type stored in session (selectedBusinessType).
  */
-export async function businessGenerateHandler(
-  ctx: BotContext,
-  type: BusinessContentType
-): Promise<void> {
+export async function businessGenerateHandler(ctx: BotContext): Promise<void> {
   const text = ctx.message?.text;
-  if (!text) {
-    await ctx.reply(
-      "💼 *Describe Your Business Need*\n\n" +
-        `Send me details about what you need for ${type.replace(/_/g, " ")}.\n\n` +
-        "For example:\n" +
-        "_\"A mobile app for connecting freelance designers with startups\"_",
-      {
-        parse_mode: "Markdown",
-        reply_markup: backToMainKeyboard,
-      }
-    );
-    return;
-  }
+  if (!text) return;
+
+  const type = ctx.session.selectedBusinessType ?? "startup_idea";
 
   await ctx.replyWithChatAction("typing");
   const startMsg = await ctx.reply("💼 *Generating your business content...*", {

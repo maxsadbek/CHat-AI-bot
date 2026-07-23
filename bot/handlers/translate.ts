@@ -10,6 +10,7 @@ import { backToMainKeyboard } from "@/bot/keyboards";
  */
 export async function translateHandler(ctx: BotContext): Promise<void> {
   ctx.session.step = BotStep.TRANSLATE;
+  ctx.session.tempData.pendingTranslation = "";
 
   await ctx.reply(
     "🌍 *AI Translator*\n\n" +
@@ -117,7 +118,6 @@ export async function translateLanguageHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
-  ctx.session.tempData.pendingTranslation = "";
   await ctx.replyWithChatAction("typing");
 
   try {
@@ -146,6 +146,9 @@ export async function translateLanguageHandler(ctx: BotContext): Promise<void> {
       `*From:* ${pendingText}\n`,
       `*To (${text}):* ${translated}`,
     ].join("\n");
+
+    // Clear pending translation after successful processing
+    ctx.session.tempData.pendingTranslation = "";
 
     await ctx.reply(response, {
       parse_mode: "Markdown",

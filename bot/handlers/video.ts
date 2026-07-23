@@ -3,12 +3,17 @@ import { BotStep } from "@/types";
 import { videoAIService } from "@/services/ai/video";
 import { videoKeyboard, backToMainKeyboard } from "@/bot/keyboards";
 import { prisma } from "@/lib/prisma";
+import { clearModeData } from "@/bot/session";
 
 /**
  * Video AI handler
  * Generates professional video prompts for various platforms
+ * Clears stale mode data and sets step to VIDEO_PROMPT.
  */
 export async function videoHandler(ctx: BotContext): Promise<void> {
+  // Clear stale conversation/tempData from other modes
+  clearModeData(ctx.session);
+  ctx.session.selectedVideoPlatform = "all";
   ctx.session.step = BotStep.VIDEO_PROMPT;
 
   await ctx.reply(
@@ -28,28 +33,15 @@ export async function videoHandler(ctx: BotContext): Promise<void> {
 }
 
 /**
- * Handle video platform selection and prompt generation
+ * Handle video prompt generation
+ * Uses the currently selected platform stored in session (selectedVideoPlatform).
+ * Platform is set by callback handlers in bot/index.ts.
  */
-export async function videoGenerateHandler(
-  ctx: BotContext,
-  platform: VideoPlatform | "all"
-): Promise<void> {
+export async function videoGenerateHandler(ctx: BotContext): Promise<void> {
   const text = ctx.message?.text;
-  if (!text && platform === "all") {
-    await ctx.reply(
-      "🎬 *Describe Your Video*\n\n" +
-        "Send me a description of the video you want to create.\n\n" +
-        "For example:\n" +
-        "_\"A cinematic drone shot of a futuristic city at sunset with neon lights\"_",
-      {
-        parse_mode: "Markdown",
-        reply_markup: backToMainKeyboard,
-      }
-    );
-    return;
-  }
-
   if (!text) return;
+
+  const platform = ctx.session.selectedVideoPlatform ?? "all";
 
   await ctx.replyWithChatAction("typing");
   const startMsg = await ctx.reply("🎬 *Generating your video prompts...*", {

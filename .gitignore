@@ -42,3 +42,5 @@ prisma/generated/
 .idea/
 *.swp
 *.swo
+
+.vercel

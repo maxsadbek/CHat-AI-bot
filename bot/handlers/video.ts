@@ -45,7 +45,8 @@ export async function videoGenerateHandler(ctx: BotContext): Promise<void> {
   try {
     const prompts = await videoAIService.generatePrompt(
       text,
-      platform === "all" ? undefined : platform
+      platform === "all" ? undefined : platform,
+      ctx.session.selectedModel
     );
 
     let response = t(lang, "video.result_title");

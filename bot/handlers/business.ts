@@ -40,7 +40,7 @@ export async function businessGenerateHandler(ctx: BotContext): Promise<void> {
   });
 
   try {
-    const result = await businessAIService.generate(text, type);
+    const result = await businessAIService.generate(text, type, ctx.session.selectedModel);
 
     const typeTitle = type
       .replace(/_/g, " ")

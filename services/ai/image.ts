@@ -1,11 +1,12 @@
-import { openai } from "@/lib/openai";
-import { env, config } from "@/config";
-import type { ImagePrompt, ImagePlatform } from "@/types";
-
 /**
  * Image AI Service
- * Generates detailed prompts for various image AI platforms
+ * Generates detailed prompts for various image AI platforms.
+ * Uses the provider registry — no direct SDK calls.
  */
+
+import { providerRegistry } from "@/services/ai/providers";
+import type { ImagePrompt, ImagePlatform } from "@/types";
+
 export class ImageAIService {
   private readonly platforms: ImagePlatform[] = [
     "GPT Image",
@@ -20,7 +21,8 @@ export class ImageAIService {
    */
   async generatePrompt(
     description: string,
-    platform?: ImagePlatform
+    platform?: ImagePlatform,
+    modelId?: string
   ): Promise<ImagePrompt[]> {
     const targetPlatforms = platform ? [platform] : this.platforms;
 
@@ -43,18 +45,15 @@ Platforms: ${targetPlatforms.join(", ")}
 
 Return the response as structured text with clear sections for each platform.`;
 
-    const completion = await openai.chat.completions.create({
-      model: env.OPENAI_MODEL,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      max_tokens: config.ai.maxTokens,
-      temperature: 0.8,
-    });
+    const provider = providerRegistry.getProvider(modelId);
 
-    const response = completion.choices[0]?.message?.content;
-    if (!response) throw new Error("No response from AI");
+    const response = await provider.chat({
+      messages: [{ role: "user", content: userPrompt }],
+      systemPrompt,
+      temperature: 0.8,
+      maxTokens: 4096,
+      modelId,
+    });
 
     return targetPlatforms.map((p) => ({
       platform: p,
@@ -64,7 +63,7 @@ Return the response as structured text with clear sections for each platform.`;
       mood: "",
       quality: "",
       negativePrompt: "",
-      fullPrompt: response,
+      fullPrompt: response.content,
     }));
   }
 

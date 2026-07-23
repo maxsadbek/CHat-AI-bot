@@ -42,7 +42,8 @@ export async function imageGenerateHandler(ctx: BotContext): Promise<void> {
   try {
     const prompts = await imageAIService.generatePrompt(
       text,
-      platform === "all" ? undefined : platform
+      platform === "all" ? undefined : platform,
+      ctx.session.selectedModel
     );
 
     let response = t(lang, "image.result_title");

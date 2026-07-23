@@ -1,11 +1,14 @@
-import { openai } from "@/lib/openai";
-import { env, config } from "@/config";
-import type { AIChatMessage, AIChatResponse } from "@/types";
-
 /**
  * AI Chat Service
- * Provides ChatGPT-like conversational AI with memory
+ * Provides ChatGPT-like conversational AI with memory.
+ * Uses the provider registry — no direct SDK calls.
  */
+
+import { providerRegistry } from "@/services/ai/providers";
+import type { ChatMessage } from "@/services/ai/providers";
+import type { AIChatResponse } from "@/types";
+import { config } from "@/config";
+
 export class AIChatService {
   private readonly systemPrompt = `You are AI Creator Studio, a premium AI assistant.
 You are helpful, creative, and professional.
@@ -19,61 +22,69 @@ Current date: ${new Date().toISOString().split("T")[0] ?? "unknown"}.`;
    * Send a message to the AI and get a response
    */
   async chat(
-    messages: AIChatMessage[],
-    userMessage: string
+    messages: Array<{ role: "user" | "assistant"; content: string }>,
+    userMessage: string,
+    modelId?: string
   ): Promise<AIChatResponse> {
-    const completion = await openai.chat.completions.create({
-      model: env.OPENAI_MODEL,
-      messages: [
-        { role: "system", content: this.systemPrompt },
-        ...messages.slice(-config.ai.maxHistoryLength),
-        { role: "user", content: userMessage },
-      ],
-      max_tokens: config.ai.maxTokens,
+    const provider = providerRegistry.getProvider(modelId);
+
+    const allMessages: ChatMessage[] = [
+      ...messages.slice(-config.ai.maxHistoryLength).map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      })),
+      { role: "user" as const, content: userMessage },
+    ];
+
+    const response = await provider.chat({
+      messages: allMessages,
+      systemPrompt: this.systemPrompt,
       temperature: config.ai.temperature,
+      maxTokens: config.ai.maxTokens,
+      modelId,
     });
 
-    const choice = completion.choices[0];
-    if (!choice?.message?.content) {
-      throw new Error("No response from AI");
-    }
-
     return {
-      content: choice.message.content,
-      usage: completion.usage
-        ? {
-            promptTokens: completion.usage.prompt_tokens,
-            completionTokens: completion.usage.completion_tokens,
-            totalTokens: completion.usage.total_tokens,
-          }
-        : undefined,
+      content: response.content,
+      usage: response.usage,
     };
   }
 
   /**
-   * Stream a response from the AI (for future use)
+   * Stream a response from the AI
    */
   async *streamChat(
-    messages: AIChatMessage[],
-    userMessage: string
+    messages: Array<{ role: "user" | "assistant"; content: string }>,
+    userMessage: string,
+    modelId?: string
   ): AsyncGenerator<string> {
-    const stream = await openai.chat.completions.create({
-      model: env.OPENAI_MODEL,
-      messages: [
-        { role: "system", content: this.systemPrompt },
-        ...messages.slice(-config.ai.maxHistoryLength),
-        { role: "user", content: userMessage },
-      ],
-      max_tokens: config.ai.maxTokens,
+    const provider = providerRegistry.getProvider(modelId);
+
+    if (!provider.streamChat) {
+      // Fallback: non-streaming
+      const response = await this.chat(messages, userMessage, modelId);
+      yield response.content;
+      return;
+    }
+
+    const allMessages: ChatMessage[] = [
+      ...messages.slice(-config.ai.maxHistoryLength).map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      })),
+      { role: "user" as const, content: userMessage },
+    ];
+
+    const stream = provider.streamChat({
+      messages: allMessages,
+      systemPrompt: this.systemPrompt,
       temperature: config.ai.temperature,
-      stream: true,
+      maxTokens: config.ai.maxTokens,
+      modelId,
     });
 
     for await (const chunk of stream) {
-      const content = chunk.choices[0]?.delta?.content;
-      if (content) {
-        yield content;
-      }
+      yield chunk;
     }
   }
 }

@@ -20,14 +20,16 @@
   },
   "mode": {
     "switched": {
-      "chat": "🤖 Switched to AI Chat.\n\nSend me a message and I'll respond!",
-      "video": "🎬 Switched to Video AI.\n\nDescribe your video idea.",
-      "image": "🎨 Switched to Image AI.\n\nDescribe your image.",
-      "social": "📱 Switched to Social Media AI.\n\nDescribe your content idea.",
-      "coding": "💻 Switched to Coding AI.\n\nDescribe what you want to build.",
-      "business": "💼 Switched to Business AI.\n\nDescribe your business need.",
-      "translate": "🌍 Switched to Translate AI.\n\nSend me text to translate."
-    }
+      "chat": "🤖 *AI Chat*\n\nSend me a message and I'll respond!",
+      "video": "🎬 *Video AI*\n\nDescribe your video idea.",
+      "image": "🎨 *Image AI*\n\nDescribe your image.",
+      "social": "📱 *Social Media AI*\n\nDescribe your content idea.",
+      "coding": "💻 *Coding AI*\n\nDescribe what you want to build.",
+      "business": "💼 *Business AI*\n\nDescribe your business need.",
+      "translate": "🌍 *Translate AI*\n\nSend me text to translate."
+    },
+    "active": "━━━━━━━━━━━━━━━━━━━━━\n🎯 *Current Mode:* {mode}\n━━━━━━━━━━━━━━━━━━━━━\n\n{description}",
+    "switched_to": "🎯 *Switched to {mode}*\n\n{description}"
   },
   "chat": {
     "welcome": "🤖 *AI Chat*\n\nSend me a message and I'll respond with AI-powered answers!\n\n_Use /new to start a fresh conversation._",
@@ -36,57 +38,62 @@
     "no_history": "📋 *No conversations yet*\n\nStart chatting and your history will appear here!",
     "history_entry": "{index}. {title}\n   💬 {count} messages\n   🕐 {date}",
     "error_no_user": "❌ *Error*\n\nCould not identify your account. Please use /start first.",
-    "error_generic": "❌ *Error*\n\nSorry, I encountered an error. Please try again.\n\nMake sure your OpenAI API key is configured correctly."
+    "error_generic": "❌ *Error*\n\nSorry, I encountered an error. Please try again.\n\nMake sure your OpenAI API key is configured correctly.",
+    "clear_done": "🧹 *Chat cleared!*\n\nAll messages in this conversation have been removed.",
+    "clear_confirm": "🧹 *Clear this conversation?*\n\nThis will delete all messages permanently."
   },
   "video": {
     "welcome": "🎬 *Video AI Studio*\n\nGenerate professional prompts for:\n• Hailuo AI\n• Kling AI\n• Google Veo\n• Runway\n• PixVerse\n\n_Choose a platform or describe your video idea below:_",
     "generating": "🎬 *Generating your video prompts...*",
-    "result_title": "🎬 *Generated Video Prompts*\n\n",
+    "result_title": "━━━━━━━━━━━━━━━━━━━━━\n🎬 *Video Prompt Ready*\n━━━━━━━━━━━━━━━━━━━━━\n\n",
     "platform_selected": "🎬 *Video AI* - {platform}\n\nDescribe your video idea:",
     "error": "❌ *Error generating video prompts*\n\nPlease try again with a different description."
   },
   "image": {
     "welcome": "🎨 *Image AI Studio*\n\nGenerate stunning prompts for:\n• GPT Image\n• Flux\n• Midjourney\n• Leonardo\n• Ideogram\n\n_Choose a platform or describe your image idea below:_",
     "generating": "🎨 *Generating your image prompts...*",
-    "result_title": "🎨 *Generated Image Prompts*\n\n",
+    "result_title": "━━━━━━━━━━━━━━━━━━━━━\n🎨 *Image Prompt Ready*\n━━━━━━━━━━━━━━━━━━━━━\n\n",
     "platform_selected": "🎨 *Image AI* - {platform}\n\nDescribe your image:",
     "error": "❌ *Error generating image prompts*\n\nPlease try again with a different description."
   },
   "social": {
     "welcome": "📱 *Social Media Studio*\n\nGenerate engaging content for:\n• Instagram 📸\n• TikTok 🎵\n• Telegram ✈️\n• Facebook 📘\n• LinkedIn 💼\n• YouTube 🎥\n\n_Choose a platform or describe your content idea below:_",
     "generating": "📱 *Generating your social media content...*",
-    "result_title": "📱 *Generated Social Media Content*\n\n",
+    "result_title": "━━━━━━━━━━━━━━━━━━━━━\n📱 *Social Content Ready*\n━━━━━━━━━━━━━━━━━━━━━\n\n",
     "platform_selected": "📱 *Social Media* - {platform}\n\nDescribe your content:",
     "error": "❌ *Error generating social media content*\n\nPlease try again."
   },
   "business": {
     "welcome": "💼 *Business AI Studio*\n\nGenerate:\n• 💡 Startup Ideas\n• 📋 Business Plans\n• 📈 Marketing Strategies\n• 🏷️ Brand Names\n• 📝 Slogans\n• 🎨 Logo Prompts\n• 🎨 Color Palettes\n• 🌐 Landing Page Copy\n\n_Choose a type or describe your business need below:_",
     "generating": "💼 *Generating your business content...*",
-    "result_title": "💼 *{type}*",
+    "result_title": "━━━━━━━━━━━━━━━━━━━━━\n💼 *{type}*\n━━━━━━━━━━━━━━━━━━━━━\n\n",
     "type_selected": "💼 *Business* - {type}\n\nDescribe your business need:",
     "error": "❌ *Error generating business content*\n\nPlease try again."
   },
   "coding": {
     "welcome": "💻 *Coding AI Studio*\n\nGenerate, debug, and explain code in:\n• 🌐 HTML\n• 🎨 CSS\n• ⚛️ React\n• ▲ Next.js\n• 🎨 Tailwind\n• 🟢 Node.js\n• 🚀 Express\n• 📊 Prisma\n• 🗄️ SQL\n• 🔌 API\n\n_Choose a language or describe what you want to build:_",
     "generating": "💻 *Generating your code...*",
-    "result_title": "💻 *{language} Code*",
+    "result_title": "━━━━━━━━━━━━━━━━━━━━━\n💻 *{language} Code*\n━━━━━━━━━━━━━━━━━━━━━\n\n",
     "language_selected": "💻 *Coding* - {language}\n\nDescribe what you want to build:",
     "error": "❌ *Error generating code*\n\nPlease try again with a different description."
   },
   "translate": {
     "welcome": "🌍 *AI Translator*\n\nTranslate text between any languages.\n\n_Send me text to translate in this format:_\n\n```\nTranslate to [language]:\n[your text here]\n```\n\n_Or just send text and I'll ask you the target language._\n\nExamples:\n• `Translate to Spanish: Hello, how are you?`\n• `Translate to Japanese: I love programming`\n• `Translate to French: What time is it?`",
     "ask_language": "🌍 *Target Language?*\n\nWhat language should I translate this to?\nSend the language name (e.g., Spanish, French, Japanese)",
-    "result": "🌍 *Translation*\n\n*From:* {source}\n*To ({language}):* {translated}",
+    "result": "━━━━━━━━━━━━━━━━━━━━━\n🌍 *Translation*\n━━━━━━━━━━━━━━━━━━━━━\n\n*From:* {source}\n*To ({language}):* {translated}",
     "error": "❌ *Error translating text*\n\nPlease try again."
   },
   "profile": {
-    "title": "👤 *Your Profile*",
+    "title": "━━━━━━━━━━━━━━━━━━━━━\n👤 *Your Profile*\n━━━━━━━━━━━━━━━━━━━━━",
     "not_found": "❌ *Profile not found*\n\nPlease use /start to create your profile.",
     "name": "*Name:* {name}",
     "username": "*Username:* {username}",
-    "status": "*Status:* {status}",
-    "member_since": "*Member Since:* {date}",
-    "stats_title": "📊 *Usage Statistics*",
+    "id": "🆔 *Telegram ID:* `{id}`",
+    "language": "🌍 *Language:* {language}",
+    "model": "🤖 *AI Model:* {model}",
+    "subscription": "⭐ *Subscription:* {status}",
+    "member_since": "📅 *Joined:* {date}",
+    "stats_title": "📊 *Daily Usage*",
     "today": "*Today:* {used} / {limit} requests",
     "total": "*Total:* {total} requests",
     "progress": "*Progress:* {bar} {percent}%",
@@ -94,51 +101,68 @@
     "conversations": "*Conversations:* {count}",
     "messages": "*Messages:* {count}",
     "last_active": "*Last Active:* {date}",
-    "upgrade": "_Need more requests? Upgrade to Premium!_ 🚀",
+    "upgrade": "━━━━━━━━━━━━━━━━━━━━━\n⭐ *Unlock Premium*\n\nGet unlimited requests, priority support,\nand exclusive features!\n━━━━━━━━━━━━━━━━━━━━━",
     "error": "❌ *Error loading profile*\n\nPlease try again later."
   },
   "help": {
-    "title": "❓ *AI Creator Studio Help*",
-    "subtitle": "*Available Commands:*",
-    "start": "*/start* — Launch the bot and show main menu",
-    "menu": "*/menu* — Return to the main menu anytime",
-    "cancel": "*/cancel* — Cancel current operation and reset",
-    "help_cmd": "*/help* — Show this help message",
-    "chat_cmd": "*/chat* — Start AI Chat mode",
-    "image_cmd": "*/image* — Start Image AI mode",
-    "video_cmd": "*/video* — Start Video AI mode",
-    "coding_cmd": "*/coding* — Start Coding AI mode",
-    "social_cmd": "*/social* — Start Social Media mode",
-    "business_cmd": "*/business* — Start Business AI mode",
-    "translate_cmd": "*/translate* — Start Translate mode",
-    "features_title": "*Features:*",
-    "chat_desc": "🤖 *AI Chat*\nChat with AI with conversation memory.\nJust send a message and I'll respond!",
-    "video_desc": "🎬 *Video AI*\nGenerate professional video prompts for:\nHailoo AI, Kling AI, Google Veo, Runway, PixVerse",
-    "image_desc": "🎨 *Image AI*\nGenerate detailed image prompts for:\nGPT Image, Flux, Midjourney, Leonardo, Ideogram",
-    "social_desc": "📱 *Social Media*\nCreate platform-optimized content for:\nInstagram, TikTok, Telegram, Facebook, LinkedIn, YouTube",
-    "coding_desc": "💻 *Coding*\nGenerate, debug, and explain code in:\nHTML, CSS, React, Next.js, Tailwind, Node.js, Express, Prisma, SQL, API",
-    "business_desc": "💼 *Business*\nGenerate startup ideas, business plans,\nmarketing strategies, brand names, slogans, and more",
-    "translate_desc": "🌍 *Translate*\nTranslate text between any languages",
-    "tips_title": "*Tips:*",
-    "tip1": "• Be specific in your descriptions for better results",
-    "tip2": "• Use the menu buttons to navigate features",
-    "tip3": "• Your daily usage resets at midnight UTC",
+    "title": "━━━━━━━━━━━━━━━━━━━━━\n❓ *Help Center*\n━━━━━━━━━━━━━━━━━━━━━\n\nChoose a topic below to learn more 👇",
+    "chat": "🤖 *AI Chat*\n\nHave intelligent conversations with AI.\nSupports chat history and memory.\nJust type your message and get instant responses!",
+    "image": "🎨 *Image AI*\n\nGenerate stunning image prompts for:\n• GPT Image\n• Flux\n• Midjourney\n\nDescribe your vision and get platform-ready prompts.",
+    "video": "🎬 *Video AI*\n\nCreate cinematic video prompts for:\n• Hailuo AI\n• Kling AI\n• Runway\n\nDescribe your scene and get production-ready prompts.",
+    "coding": "💻 *Coding AI*\n\nWrite, debug, and explain code.\nSupports: HTML, CSS, React, Next.js,\nNode.js, SQL, and more!",
+    "social": "📱 *Social Media*\n\nCreate engaging content for:\n• Instagram\n• TikTok\n• LinkedIn\n• YouTube\n\nPlatform-optimized posts with hashtags!",
+    "business": "💼 *Business AI*\n\nGenerate business ideas, plans,\nmarketing strategies, brand names,\nslogans, and landing page copy.",
+    "translate": "🌍 *Translate*\n\nTranslate text between any languages.\nFast, accurate translations with AI.",
+    "tips_title": "💡 *Pro Tips*",
+    "tip1": "• Be specific — detailed descriptions yield better results",
+    "tip2": "• Use the Main Menu to switch between features",
+    "tip3": "• Daily usage resets at midnight UTC",
     "tip4": "• Upgrade to Premium for higher limits",
-    "cta": "✨ *Ready to create something amazing?*\nChoose a feature from the menu below! 👇"
+    "support": "💬 *Need more help?*\nContact support or try /help in any chat."
   },
   "settings": {
-    "title": "⚙️ *Settings*",
+    "title": "━━━━━━━━━━━━━━━━━━━━━\n⚙️ *Settings*\n━━━━━━━━━━━━━━━━━━━━━",
     "change_language": "🌍 *Change Language*\n\nSelect your preferred language:",
-    "language_changed": "✅ Language changed to {language}"
+    "language_changed": "✅ Language changed to {language}",
+    "model": "🤖 *AI Model*\n\nCurrent model: `{model}`\n\nChoose a provider to see available models:",
+    "model_changed": "✅ AI model changed to `{model}`",
+    "select_model": "🤖 *{provider} Models*\n\nSelect a model:",
+    "clear": "🧹 *Clear Conversations*\n\nDelete all your chat conversations?\nThis action cannot be undone.",
+    "cleared": "✅ All conversations cleared successfully!",
+    "privacy": "📜 *Privacy Policy*\n\nYour data is stored securely and never shared with third parties.\n\n• Conversations are stored for chat history\n• Usage data is used for analytics\n• You can delete your data anytime",
+    "about": "ℹ️ *About AI Creator Studio*\n\nVersion 1.0.0\n\nA premium AI-powered Telegram platform\nfor content creation, coding, and business.\n\nBuilt with ❤️ using Grammy + OpenAI",
+    "back": "⬅️ *Back*"
+  },
+  "premium": {
+    "title": "━━━━━━━━━━━━━━━━━━━━━\n⭐ *Premium*\n━━━━━━━━━━━━━━━━━━━━━",
+    "subtitle": "Unlock the full power of AI Creator Studio!",
+    "features": "✨ *Premium Features:*\n\n• 🚀 Higher daily request limits\n• 🤖 Access to advanced AI models\n• 🎯 Priority processing\n• 💬 Priority support\n• 📊 Advanced analytics\n• 🔓 Exclusive AI features",
+    "coming_soon": "🚀 *Premium subscriptions coming soon!*\n\nStay tuned for updates.",
+    "current": "⭐ *You are on:* {tier}",
+    "upgrade": "⬆️ *Upgrade to Premium*"
+  },
+  "result": {
+    "copy": "📋 *Copy*",
+    "regenerate": "🔄 *Regenerate*",
+    "home": "🏠 *Home*",
+    "divider": "━━━━━━━━━━━━━━━━━━━━━",
+    "new_chat": "🔄 New Chat",
+    "continue": "💬 Continue",
+    "clear": "🧹 Clear"
   },
   "errors": {
     "generic": "❌ *Error*\n\nSomething went wrong. Please try again later.",
     "rate_limit": "⚠️ *Rate Limit Reached*\n\nPlease wait a moment before sending another request.\n\nThis helps us maintain quality service for everyone.",
-    "daily_limit": "⚠️ *Daily Limit Reached*\n\nYou've used {used}/{limit} requests today.\n\nYour limit resets at midnight UTC.\n\nUpgrade to Premium for higher limits! 🚀"
+    "daily_limit": "⚠️ *Daily Limit Reached*\n\nYou've used {used}/{limit} requests today.\n\nYour limit resets at midnight UTC.\n\nUpgrade to Premium for higher limits! 🚀",
+    "friendly": "🤖 *Oops!*\n\nI ran into a small hiccup.\nLet's try again!"
   },
   "keyboards": {
     "main_menu": "🏠 Main Menu",
     "settings": "⚙️ Settings",
-    "back": "🔙 Back"
+    "back": "🔙 Back",
+    "premium": "⭐ Premium",
+    "profile": "👤 Profile",
+    "upgrade": "⭐ Upgrade",
+    "help": "❓ Help"
   }
 }

@@ -40,7 +40,7 @@ export async function codingGenerateHandler(ctx: BotContext): Promise<void> {
   });
 
   try {
-    const result = await codingAIService.generate(text, language);
+    const result = await codingAIService.generate(text, language, ctx.session.selectedModel);
 
     const response = `${t(lang, "coding.result_title", { language })}\n\n${result.code}`;
 

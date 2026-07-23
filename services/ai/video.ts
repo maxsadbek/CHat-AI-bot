@@ -1,11 +1,6 @@
-import { openai } from "@/lib/openai";
-import { env, config } from "@/config";
+import { providerRegistry } from "@/services/ai/providers";
 import type { VideoPrompt, VideoPlatform } from "@/types";
 
-/**
- * Video AI Service
- * Generates professional prompts for various video AI platforms
- */
 export class VideoAIService {
   private readonly platforms: VideoPlatform[] = [
     "Hailuo AI",
@@ -15,12 +10,10 @@ export class VideoAIService {
     "PixVerse",
   ];
 
-  /**
-   * Generate video prompts based on user description
-   */
   async generatePrompt(
     description: string,
-    platform?: VideoPlatform
+    platform?: VideoPlatform,
+    modelId?: string
   ): Promise<VideoPrompt[]> {
     const targetPlatforms = platform ? [platform] : this.platforms;
 
@@ -47,20 +40,16 @@ Platforms: ${targetPlatforms.join(", ")}
 
 Return the response as structured text with clear sections for each platform.`;
 
-    const completion = await openai.chat.completions.create({
-      model: env.OPENAI_MODEL,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      max_tokens: config.ai.maxTokens,
+    const provider = providerRegistry.getProvider(modelId);
+
+    const response = await provider.chat({
+      messages: [{ role: "user", content: userPrompt }],
+      systemPrompt,
       temperature: 0.8,
+      maxTokens: 4096,
+      modelId,
     });
 
-    const response = completion.choices[0]?.message?.content;
-    if (!response) throw new Error("No response from AI");
-
-    // Return parsed prompts based on the response
     return targetPlatforms.map((p) => ({
       platform: p,
       scene: "",
@@ -73,13 +62,10 @@ Return the response as structured text with clear sections for each platform.`;
       music: "",
       duration: "",
       style: "",
-      fullPrompt: response,
+      fullPrompt: response.content,
     }));
   }
 
-  /**
-   * Get available platforms
-   */
   getPlatforms(): VideoPlatform[] {
     return [...this.platforms];
   }

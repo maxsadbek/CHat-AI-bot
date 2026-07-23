@@ -41,8 +41,9 @@ export async function aiChatHandler(ctx: BotContext): Promise<void> {
   await ctx.replyWithChatAction("typing");
 
   try {
-    // Get AI response
-    const response = await aiChatService.chat(ctx.session.messages, text);
+    // Get AI response (uses user's selected model from Settings)
+    const selectedModel = ctx.session.selectedModel;
+    const response = await aiChatService.chat(ctx.session.messages, text, selectedModel);
 
     // Store user message in session
     ctx.session.messages.push({ role: "user", content: text });

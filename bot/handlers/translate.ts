@@ -1,10 +1,9 @@
 import type { BotContext } from "@/types";
 import { BotStep } from "@/types";
-import { openai } from "@/lib/openai";
-import { env } from "@/config";
 import { clearModeData } from "@/bot/session";
 import { t } from "@/bot/localization";
 import { backToMainKeyboard } from "@/bot/keyboards";
+import { providerRegistry } from "@/services/ai/providers";
 
 /**
  * Translate AI handler
@@ -55,24 +54,15 @@ export async function translateProcessHandler(ctx: BotContext): Promise<void> {
   await ctx.replyWithChatAction("typing");
 
   try {
-    const completion = await openai.chat.completions.create({
-      model: env.OPENAI_MODEL,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a professional translator. Translate the text accurately while preserving tone and meaning. Only respond with the translated text.",
-        },
-        {
-          role: "user",
-          content: `Translate this to ${targetLanguage}: ${sourceText}`,
-        },
-      ],
-      max_tokens: 2048,
+    const provider = providerRegistry.getProvider(ctx.session.selectedModel);
+    const translationResponse = await provider.chat({
+      messages: [{ role: "user", content: `Translate this to ${targetLanguage}: ${sourceText}` }],
+      systemPrompt: "You are a professional translator. Translate the text accurately while preserving tone and meaning. Only respond with the translated text.",
+      maxTokens: 2048,
       temperature: 0.3,
     });
 
-    const translated = completion.choices[0]?.message?.content;
+    const translated = translationResponse.content;
     if (!translated) throw new Error("No translation");
 
     await ctx.reply(
@@ -111,24 +101,15 @@ export async function translateLanguageHandler(ctx: BotContext): Promise<void> {
   await ctx.replyWithChatAction("typing");
 
   try {
-    const completion = await openai.chat.completions.create({
-      model: env.OPENAI_MODEL,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a professional translator. Translate accurately while preserving tone and meaning.",
-        },
-        {
-          role: "user",
-          content: `Translate this to ${text}: ${pendingText}`,
-        },
-      ],
-      max_tokens: 2048,
+    const provider = providerRegistry.getProvider(ctx.session.selectedModel);
+    const translationResponse = await provider.chat({
+      messages: [{ role: "user", content: `Translate this to ${text}: ${pendingText}` }],
+      systemPrompt: "You are a professional translator. Translate accurately while preserving tone and meaning.",
+      maxTokens: 2048,
       temperature: 0.3,
     });
 
-    const translated = completion.choices[0]?.message?.content;
+    const translated = translationResponse.content;
     if (!translated) throw new Error("No translation");
 
     // Clear pending translation after successful processing

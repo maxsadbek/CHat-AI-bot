@@ -5,6 +5,9 @@ import { env } from "@/config";
 import { createInitialSession } from "@/bot/middleware";
 import { registerMiddleware } from "@/bot/middleware";
 import { resetSession, clearModeData } from "@/bot/session";
+import { sessionManager } from "@/bot/core/session-manager";
+import { modeManager } from "@/bot/core/mode-manager";
+import { logger } from "@/bot/core/logger";
 import { startHandler } from "@/bot/handlers/start";
 import {
   aiChatHandler,
@@ -22,14 +25,105 @@ import {
   translateLanguageHandler,
 } from "@/bot/handlers/translate";
 import { profileHandler } from "@/bot/handlers/profile";
-import { helpHandler } from "@/bot/handlers/help";
-import { settingsHandler } from "@/bot/handlers/settings";
+import { helpHandler, helpFeatureHandler, helpTipsHandler } from "@/bot/handlers/help";
 import {
-  languageSelectionHandler,
-  handleLanguageSelection,
-} from "@/bot/handlers/language";
-import { mainMenuKeyboard } from "@/bot/keyboards";
+  settingsHandler,
+  settingsLanguageHandler,
+  settingsModelHandler,
+  settingsModelProviderHandler,
+  settingsModelSelectHandler,
+  settingsClearHandler,
+  settingsPrivacyHandler,
+  settingsAboutHandler,
+} from "@/bot/handlers/settings";
+import { handleLanguageSelection } from "@/bot/handlers/language";
+import {
+  mainMenuKeyboard,
+  chatKeyboard,
+  settingsKeyboard,
+  backToMainKeyboard,
+  premiumKeyboard,
+} from "@/bot/keyboards";
 import { t } from "@/bot/localization";
+import type { SupportedLanguage } from "@/bot/localization";
+import { prisma } from "@/lib/prisma";
+
+const log = logger.child("bot");
+
+// ─── Mode Switch Actions ──────────────────────────────
+
+async function switchToChat(ctx: BotContext): Promise<void> {
+  const msg = modeManager.switchTo(ctx, "chat");
+  await ctx.reply(msg, { parse_mode: "Markdown" });
+}
+
+async function switchToVideo(ctx: BotContext): Promise<void> {
+  await videoHandler(ctx);
+}
+
+async function switchToImage(ctx: BotContext): Promise<void> {
+  await imageHandler(ctx);
+}
+
+async function switchToSocial(ctx: BotContext): Promise<void> {
+  await socialHandler(ctx);
+}
+
+async function switchToBusiness(ctx: BotContext): Promise<void> {
+  await businessHandler(ctx);
+}
+
+async function switchToCoding(ctx: BotContext): Promise<void> {
+  await codingHandler(ctx);
+}
+
+async function switchToTranslate(ctx: BotContext): Promise<void> {
+  await translateHandler(ctx);
+}
+
+async function switchToProfile(ctx: BotContext): Promise<void> {
+  await profileHandler(ctx);
+}
+
+async function switchToSettings(ctx: BotContext): Promise<void> {
+  await settingsHandler(ctx);
+}
+
+async function switchToPremium(ctx: BotContext): Promise<void> {
+  const lang = ctx.session.language;
+  const premiumText = [
+    t(lang, "premium.title"),
+    "",
+    t(lang, "premium.subtitle"),
+    "",
+    t(lang, "premium.features"),
+    "",
+    "━━━━━━━━━━━━━━━━━━━━━",
+    t(lang, "premium.coming_soon"),
+  ].join("\n");
+
+  await ctx.reply(premiumText, {
+    parse_mode: "Markdown",
+    reply_markup: premiumKeyboard,
+  });
+}
+
+// ─── Feature Switch Map ───────────────────────────────
+const FEATURE_SWITCHES: Record<string, (ctx: BotContext) => Promise<void>> = {
+  chat: switchToChat,
+  video: switchToVideo,
+  image: switchToImage,
+  social: switchToSocial,
+  business: switchToBusiness,
+  coding: switchToCoding,
+  translate: switchToTranslate,
+  profile: switchToProfile,
+  settings: switchToSettings,
+  premium: switchToPremium,
+  help: async (ctx) => {
+    await helpHandler(ctx);
+  },
+};
 
 /**
  * Create and configure the Telegram bot
@@ -47,12 +141,10 @@ export function createBot(): Bot<BotContext> {
   // ─── Global Middleware ─────────────────────────────
   registerMiddleware(bot);
 
-  // ─── Commands ──────────────────────────────────────
-  bot.command("start", startHandler);
-  bot.command("help", helpHandler);
-  bot.command("profile", profileHandler);
+  log.info("Bot initializing...", { model: env.OPENAI_MODEL });
 
-  // /menu — return to main menu, reset session, keep user account
+  // ─── Commands (minimal set) ───────────────────────
+  bot.command("start", startHandler);
   bot.command("menu", async (ctx) => {
     resetSession(ctx.session, true);
     const lang = ctx.session.language;
@@ -61,8 +153,7 @@ export function createBot(): Bot<BotContext> {
       reply_markup: mainMenuKeyboard,
     });
   });
-
-  // /cancel — cancel current operation, clear active mode, return to main menu
+  bot.command("help", helpHandler);
   bot.command("cancel", async (ctx) => {
     resetSession(ctx.session, true);
     const lang = ctx.session.language;
@@ -72,103 +163,22 @@ export function createBot(): Bot<BotContext> {
     });
   });
 
-  // Mode switching commands — close previous mode, activate new one with confirmation
-  bot.command("chat", async (ctx) => {
-    clearModeData(ctx.session);
-    ctx.session.step = BotStep.AI_CHAT;
-    const lang = ctx.session.language;
-    await ctx.reply(t(lang, "mode.switched.chat"), {
-      parse_mode: "Markdown",
-    });
-  });
-
-  bot.command("image", async (ctx) => {
-    await imageHandler(ctx);
-  });
-
-  bot.command("video", async (ctx) => {
-    await videoHandler(ctx);
-  });
-
-  bot.command("coding", async (ctx) => {
-    await codingHandler(ctx);
-  });
-
-  bot.command("social", async (ctx) => {
-    await socialHandler(ctx);
-  });
-
-  bot.command("business", async (ctx) => {
-    await businessHandler(ctx);
-  });
-
-  bot.command("translate", async (ctx) => {
-    await translateHandler(ctx);
-  });
-
-  bot.command("settings", async (ctx) => {
-    await settingsHandler(ctx);
-  });
-
-  bot.command("language", async (ctx) => {
-    await languageSelectionHandler(ctx, true);
-  });
-
-  // ─── Callback Queries ─────────────────────────────
+  // ─── Main Menu Callbacks ──────────────────────────
   bot.callbackQuery(/^feature:(.+)/, async (ctx) => {
-    const feature = ctx.match[1];
+    const feature = ctx.match[1] as string;
     await ctx.answerCallbackQuery();
 
-    switch (feature) {
-      case "chat": {
-        clearModeData(ctx.session);
-        ctx.session.step = BotStep.AI_CHAT;
-        const lang = ctx.session.language;
-        await ctx.editMessageText(t(lang, "chat.welcome"), {
-          parse_mode: "Markdown",
-        });
-        break;
-      }
-      case "video":
-        await videoHandler(ctx);
-        break;
-      case "image":
-        await imageHandler(ctx);
-        break;
-      case "social":
-        await socialHandler(ctx);
-        break;
-      case "business":
-        await businessHandler(ctx);
-        break;
-      case "coding":
-        await codingHandler(ctx);
-        break;
-      case "translate":
-        await translateHandler(ctx);
-        break;
-      case "profile":
-        await profileHandler(ctx);
-        break;
-      case "help":
-        await helpHandler(ctx);
-        break;
-      case "settings":
-        await settingsHandler(ctx);
-        break;
+    const handler = FEATURE_SWITCHES[feature];
+    if (handler) {
+      log.debug("Feature selected", { feature, userId: ctx.from?.id });
+      await handler(ctx);
     }
   });
 
-  // Language selection callback
+  // ─── Language Selection ───────────────────────────
   bot.callbackQuery(/^lang:(.+)/, handleLanguageSelection);
 
-  // Settings navigation
-  bot.callbackQuery("settings:language", async (ctx) => {
-    await ctx.answerCallbackQuery();
-    await languageSelectionHandler(ctx, true);
-  });
-
-  // Menu navigation — full session reset
+  // ─── Menu Navigation ──────────────────────────────
   bot.callbackQuery("menu:main", async (ctx) => {
     await ctx.answerCallbackQuery();
     resetSession(ctx.session, true);
@@ -179,79 +189,179 @@ export function createBot(): Bot<BotContext> {
     });
   });
 
-  // Chat actions
+  // ─── Chat Actions ─────────────────────────────────
   bot.callbackQuery("chat:new", newChatHandler);
   bot.callbackQuery("chat:history", chatHistoryHandler);
+  bot.callbackQuery("chat:clear", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const lang = ctx.session.language;
+    sessionManager.clearMessages(ctx.session);
+    await ctx.editMessageText(t(lang, "chat.clear_done"), {
+      parse_mode: "Markdown",
+      reply_markup: chatKeyboard,
+    });
+  });
 
-  // Video platform selection — store in session
+  // ─── Settings Navigation ──────────────────────────
+  bot.callbackQuery("settings:language", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await settingsLanguageHandler(ctx);
+  });
+  bot.callbackQuery("settings:model", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await settingsModelHandler(ctx);
+  });
+  bot.callbackQuery("settings:clear", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await settingsClearHandler(ctx);
+  });
+  bot.callbackQuery("settings:privacy", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await settingsPrivacyHandler(ctx);
+  });
+  bot.callbackQuery("settings:about", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await settingsAboutHandler(ctx);
+  });
+
+  // ─── Model Selection ─────────────────────────────
+  bot.callbackQuery("model:providers", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await settingsModelHandler(ctx);
+  });
+  bot.callbackQuery(/^model:provider:(.+)/, async (ctx) => {
+    const provider = ctx.match[1] as string;
+    await ctx.answerCallbackQuery();
+    await settingsModelProviderHandler(ctx, provider);
+  });
+  bot.callbackQuery(/^model:select:(.+)/, async (ctx) => {
+    const modelId = ctx.match[1] as string;
+    await settingsModelSelectHandler(ctx, modelId);
+  });
+
+  // ─── Clear Conversation Confirmation ──────────────
+  bot.callbackQuery("clear:confirm", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const lang = ctx.session.language;
+    const userId = ctx.session.userId;
+    try {
+      if (userId) {
+        await prisma.conversation.deleteMany({
+          where: { userId, feature: "chat" },
+        });
+      }
+    } catch (error) {
+      log.error("Clear conversations error", { userId, error: String(error) });
+    }
+    sessionManager.clearMessages(ctx.session);
+    await ctx.editMessageText(t(lang, "settings.cleared"), {
+      parse_mode: "Markdown",
+      reply_markup: settingsKeyboard,
+    });
+  });
+  bot.callbackQuery("clear:cancel", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const lang = ctx.session.language;
+    await ctx.editMessageText(t(lang, "settings.title"), {
+      parse_mode: "Markdown",
+      reply_markup: settingsKeyboard,
+    });
+  });
+
+  // ─── Help Center ──────────────────────────────────
+  bot.callbackQuery(/^help:(.+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const topic = ctx.match[1] ?? "";
+    if (topic === "tips") {
+      await helpTipsHandler(ctx);
+    } else {
+      await helpFeatureHandler(ctx, topic);
+    }
+  });
+
+  // ─── Premium ──────────────────────────────────────
+  bot.callbackQuery("premium:upgrade", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const lang = ctx.session.language;
+    await ctx.editMessageText(t(lang, "premium.coming_soon"), {
+      parse_mode: "Markdown",
+      reply_markup: backToMainKeyboard,
+    });
+  });
+
+  // ─── Result Actions (future-ready) ────────────────
+  bot.callbackQuery("result:copy", async (ctx) => {
+    await ctx.answerCallbackQuery("📋 Copied to clipboard!");
+  });
+  bot.callbackQuery("result:regenerate", async (ctx) => {
+    await ctx.answerCallbackQuery("🔄 Regenerating...");
+  });
+
+  // ─── Video / Image / Social / Business / Coding Platform Selection ───
   bot.callbackQuery(/^video:(.+)/, async (ctx) => {
     await ctx.answerCallbackQuery();
-    const raw = ctx.match[1];
+    const raw = ctx.match[1] ?? "";
     const platform: import("@/types").VideoPlatform | "all" =
       raw === "all" || !raw ? "all" : (raw as import("@/types").VideoPlatform);
     ctx.session.selectedVideoPlatform = platform;
     const lang = ctx.session.language;
     const platformName = platform === "all" ? "All Platforms" : platform;
-    ctx.session.step = BotStep.VIDEO_PROMPT;
+    sessionManager.setStep(ctx.session, BotStep.VIDEO_PROMPT);
     await ctx.editMessageText(
       t(lang, "video.platform_selected", { platform: platformName }),
       { parse_mode: "Markdown" }
     );
   });
 
-  // Image platform selection — store in session
   bot.callbackQuery(/^image:(.+)/, async (ctx) => {
     await ctx.answerCallbackQuery();
-    const raw = ctx.match[1];
+    const raw = ctx.match[1] ?? "";
     const platform: import("@/types").ImagePlatform | "all" =
       raw === "all" || !raw ? "all" : (raw as import("@/types").ImagePlatform);
     ctx.session.selectedImagePlatform = platform;
     const lang = ctx.session.language;
     const platformName = platform === "all" ? "All Platforms" : platform;
-    ctx.session.step = BotStep.IMAGE_PROMPT;
+    sessionManager.setStep(ctx.session, BotStep.IMAGE_PROMPT);
     await ctx.editMessageText(
       t(lang, "image.platform_selected", { platform: platformName }),
       { parse_mode: "Markdown" }
     );
   });
 
-  // Social platform selection — store in session
   bot.callbackQuery(/^social:(.+)/, async (ctx) => {
     await ctx.answerCallbackQuery();
-    const raw = ctx.match[1];
+    const raw = ctx.match[1] ?? "";
     const platform: import("@/types").SocialPlatform | "all" =
       raw === "all" || !raw ? "all" : (raw as import("@/types").SocialPlatform);
     ctx.session.selectedSocialPlatform = platform;
     const lang = ctx.session.language;
     const platformName = platform === "all" ? "All Platforms" : platform;
-    ctx.session.step = BotStep.SOCIAL_MEDIA;
+    sessionManager.setStep(ctx.session, BotStep.SOCIAL_MEDIA);
     await ctx.editMessageText(
       t(lang, "social.platform_selected", { platform: platformName }),
       { parse_mode: "Markdown" }
     );
   });
 
-  // Business type selection — store in session
   bot.callbackQuery(/^business:(.+)/, async (ctx) => {
     await ctx.answerCallbackQuery();
-    const businessType = ctx.match[1] as import("@/types").BusinessContentType ?? "startup_idea";
+    const businessType = (ctx.match[1] ?? "startup_idea") as import("@/types").BusinessContentType;
     ctx.session.selectedBusinessType = businessType;
     const lang = ctx.session.language;
     const typeName = businessType.replace(/_/g, " ");
-    ctx.session.step = BotStep.BUSINESS;
+    sessionManager.setStep(ctx.session, BotStep.BUSINESS);
     await ctx.editMessageText(
       t(lang, "business.type_selected", { type: typeName }),
       { parse_mode: "Markdown" }
     );
   });
 
-  // Coding language selection — store in session
   bot.callbackQuery(/^coding:(.+)/, async (ctx) => {
     await ctx.answerCallbackQuery();
-    const language = ctx.match[1] as import("@/types").CodeLanguage;
+    const language = (ctx.match[1] ?? "Next.js") as import("@/types").CodeLanguage;
     ctx.session.selectedCodeLanguage = language;
     const lang = ctx.session.language;
-    ctx.session.step = BotStep.CODING;
+    sessionManager.setStep(ctx.session, BotStep.CODING);
     await ctx.editMessageText(
       t(lang, "coding.language_selected", { language }),
       { parse_mode: "Markdown" }
@@ -289,9 +399,13 @@ export function createBot(): Bot<BotContext> {
         }
         break;
       default:
-        // IDLE or unrecognised step — route to AI chat
+        // IDLE or unrecognised — route to AI Chat
         clearModeData(ctx.session);
-        ctx.session.step = BotStep.AI_CHAT;
+        sessionManager.setStep(ctx.session, BotStep.AI_CHAT);
+        const lang = ctx.session.language;
+        await ctx.reply(modeManager.getModeSwitchedMessage(lang, "chat"), {
+          parse_mode: "Markdown",
+        });
         await aiChatHandler(ctx);
         break;
     }

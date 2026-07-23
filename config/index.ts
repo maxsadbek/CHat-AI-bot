@@ -9,10 +9,18 @@ const envSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(1, "TELEGRAM_BOT_TOKEN is required"),
   TELEGRAM_WEBHOOK_URL: z.string().url().optional(),
 
-  // OpenAI Compatible API
+  // ─── OpenAI Compatible API ────────────────
   OPENAI_API_KEY: z.string().min(1, "OPENAI_API_KEY is required"),
   OPENAI_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
   OPENAI_MODEL: z.string().default("gpt-4o-mini"),
+
+  // ─── Google Gemini API ────────────────────
+  GEMINI_API_KEY: z.string().optional(),
+  GEMINI_MODEL: z.string().default("gemini-2.0-flash"),
+
+  // ─── Anthropic Claude API ─────────────────
+  ANTHROPIC_API_KEY: z.string().optional(),
+  ANTHROPIC_MODEL: z.string().default("claude-sonnet-4-20250514"),
 
   // Database
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),

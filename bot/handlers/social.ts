@@ -42,7 +42,9 @@ export async function socialGenerateHandler(ctx: BotContext): Promise<void> {
   try {
     const contents = await socialAIService.generateContent(
       text,
-      platform === "all" ? undefined : platform
+      platform === "all" ? undefined : platform,
+      "professional",
+      ctx.session.selectedModel
     );
 
     let response = t(lang, "social.result_title");

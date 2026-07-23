@@ -1,44 +1,23 @@
-import { openai } from "@/lib/openai";
-import { env, config } from "@/config";
+import { providerRegistry } from "@/services/ai/providers";
 import type { CodeGeneration, CodeLanguage } from "@/types";
 
-/**
- * Coding AI Service
- * Generates code, explains code, and helps with programming tasks
- */
 export class CodingAIService {
   private readonly languages: CodeLanguage[] = [
-    "HTML",
-    "CSS",
-    "React",
-    "Next.js",
-    "Tailwind",
-    "Node.js",
-    "Express",
-    "Prisma",
-    "SQL",
-    "API",
+    "HTML", "CSS", "React", "Next.js", "Tailwind",
+    "Node.js", "Express", "Prisma", "SQL", "API",
   ];
 
-  /**
-   * Generate code based on user description
-   */
   async generate(
     description: string,
-    language: CodeLanguage
+    language: CodeLanguage,
+    modelId?: string
   ): Promise<CodeGeneration> {
     const systemPrompt = `You are an expert software engineer.
 You write clean, production-ready code.
 You follow best practices and design patterns.
 You provide explanations with your code.`;
 
-    const completion = await openai.chat.completions.create({
-      model: env.OPENAI_MODEL,
-      messages: [
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content: `Generate ${language} code for: "${description}"
+    const userPrompt = `Generate ${language} code for: "${description}"
 
 Provide:
 1. The complete code with proper formatting
@@ -49,99 +28,63 @@ Make sure the code is:
 - Production-ready
 - Well-commented
 - Following best practices
-- Error-handled`,
-        },
-      ],
-      max_tokens: config.ai.maxTokens,
-      temperature: 0.3,
-    });
+- Error-handled`;
 
-    const response = completion.choices[0]?.message?.content;
-    if (!response) throw new Error("No response from AI");
+    const provider = providerRegistry.getProvider(modelId);
+
+    const response = await provider.chat({
+      messages: [{ role: "user", content: userPrompt }],
+      systemPrompt,
+      temperature: 0.3,
+      maxTokens: 4096,
+      modelId,
+    });
 
     return {
       language,
-      code: response,
+      code: response.content,
       explanation: "",
     };
   }
 
-  /**
-   * Debug and fix code
-   */
-  async debug(code: string, language: string): Promise<CodeGeneration> {
-    const completion = await openai.chat.completions.create({
-      model: env.OPENAI_MODEL,
-      messages: [
-        {
-          role: "system",
-          content: "You are an expert debugger. Find and fix issues in code.",
-        },
-        {
-          role: "user",
-          content: `Debug this ${language} code and explain the issues:
+  async debug(code: string, language: string, modelId?: string): Promise<CodeGeneration> {
+    const provider = providerRegistry.getProvider(modelId);
 
-${code}
-
-Provide:
-1. The fixed code
-2. List of issues found
-3. Explanation of fixes
-4. Prevention tips`,
-        },
-      ],
-      max_tokens: config.ai.maxTokens,
+    const response = await provider.chat({
+      messages: [{
+        role: "user",
+        content: `Debug this ${language} code and explain the issues:\n\n${code}\n\nProvide:\n1. The fixed code\n2. List of issues found\n3. Explanation of fixes\n4. Prevention tips`,
+      }],
+      systemPrompt: "You are an expert debugger. Find and fix issues in code.",
       temperature: 0.3,
+      maxTokens: 4096,
+      modelId,
     });
-
-    const response = completion.choices[0]?.message?.content;
-    if (!response) throw new Error("No response from AI");
 
     return {
       language: language as CodeLanguage,
-      code: response,
+      code: response.content,
       explanation: "",
     };
   }
 
-  /**
-   * Explain code
-   */
-  async explain(code: string, language: string): Promise<string> {
-    const completion = await openai.chat.completions.create({
-      model: env.OPENAI_MODEL,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are an expert programming teacher. Explain code clearly and thoroughly.",
-        },
-        {
-          role: "user",
-          content: `Explain this ${language} code in detail:
+  async explain(code: string, language: string, modelId?: string): Promise<string> {
+    const provider = providerRegistry.getProvider(modelId);
 
-${code}
-
-Cover:
-- What the code does
-- How it works (line by line)
-- Key concepts used
-- Potential improvements`,
-        },
-      ],
-      max_tokens: config.ai.maxTokens,
+    const response = await provider.chat({
+      messages: [{
+        role: "user",
+        content: `Explain this ${language} code in detail:\n\n${code}\n\nCover:\n- What the code does\n- How it works (line by line)\n- Key concepts used\n- Potential improvements`,
+      }],
+      systemPrompt: "You are an expert programming teacher. Explain code clearly and thoroughly.",
       temperature: 0.5,
+      maxTokens: 4096,
+      modelId,
     });
 
-    const response = completion.choices[0]?.message?.content;
-    if (!response) throw new Error("No response from AI");
-
-    return response;
+    return response.content;
   }
 
-  /**
-   * Get available languages
-   */
   getLanguages(): CodeLanguage[] {
     return [...this.languages];
   }

@@ -1,7 +1,7 @@
 {
   "language": {
     "select": "🌍 *Tilni tanlang*",
-    "selected": "✅ Til Ingliz tiliga o'rnatildi",
+    "selected": "✅ Til o'rnatildi",
     "change": "🌍 *Tilni o'zgartirish*\n\nO'zingizga kerakli tilni tanlang:",
     "changed": "✅ Til o'zgartirildi"
   },
@@ -20,14 +20,16 @@
   },
   "mode": {
     "switched": {
-      "chat": "🤖 AI Chat'ga o'tildi.\n\nXabar yuboring, men javob beraman!",
-      "video": "🎬 Video AI'ga o'tildi.\n\nVideo g'oyangizni tasvirlab bering.",
-      "image": "🎨 Image AI'ga o'tildi.\n\nRasm g'oyangizni tasvirlab bering.",
-      "social": "📱 Social Media AI'ga o'tildi.\n\nKontent g'oyangizni tasvirlab bering.",
-      "coding": "💻 Coding AI'ga o'tildi.\n\nNima yaratmoqchi ekanligingizni tasvirlab bering.",
-      "business": "💼 Business AI'ga o'tildi.\n\nBiznes ehtiyojingizni tasvirlab bering.",
-      "translate": "🌍 Translate AI'ga o'tildi.\n\nTarjima uchun matn yuboring."
-    }
+      "chat": "🤖 *AI Chat*\n\nXabar yuboring, men javob beraman!",
+      "video": "🎬 *Video AI*\n\nVideo g'oyangizni tasvirlab bering.",
+      "image": "🎨 *Image AI*\n\nRasm g'oyangizni tasvirlab bering.",
+      "social": "📱 *Social Media AI*\n\nKontent g'oyangizni tasvirlab bering.",
+      "coding": "💻 *Coding AI*\n\nNima yaratmoqchi ekanligingizni tasvirlab bering.",
+      "business": "💼 *Business AI*\n\nBiznes ehtiyojingizni tasvirlab bering.",
+      "translate": "🌍 *Translate AI*\n\nTarjima uchun matn yuboring."
+    },
+    "active": "━━━━━━━━━━━━━━━━━━━━━\n🎯 *Joriy rejim:* {mode}\n━━━━━━━━━━━━━━━━━━━━━\n\n{description}",
+    "switched_to": "🎯 *{mode} rejimiga o'tildi*\n\n{description}"
   },
   "chat": {
     "welcome": "🤖 *AI Chat*\n\nMenga xabar yuboring, men AI yordamida javob beraman!\n\n_Yangi suhbat boshlash uchun /new dan foydalaning._",
@@ -36,57 +38,62 @@
     "no_history": "📋 *Suhbatlar mavjud emas*\n\nSuhbatlashing va tarix shu yerda ko'rinadi!",
     "history_entry": "{index}. {title}\n   💬 {count} ta xabar\n   🕐 {date}",
     "error_no_user": "❌ *Xatolik*\n\nHisobingizni aniqlab bo'lmadi. Iltimos, /start buyrug'idan foydalaning.",
-    "error_generic": "❌ *Xatolik*\n\nKechirasiz, xatolik yuz berdi. Iltimos, qayta urinib ko'ring.\n\nOpenAI API kaliti to'g'ri sozlanganligiga ishonch hosil qiling."
+    "error_generic": "❌ *Xatolik*\n\nKechirasiz, xatolik yuz berdi. Iltimos, qayta urinib ko'ring.",
+    "clear_done": "🧹 *Suhbat tozalandi!*\n\nBarcha xabarlar o'chirildi.",
+    "clear_confirm": "🧹 *Suhbatni tozalash?*\n\nBarcha xabarlar butunlay o'chiriladi."
   },
   "video": {
     "welcome": "🎬 *Video AI Studio*\n\nQuyidagi platformalar uchun professional videolar yaratish:\n• Hailuo AI\n• Kling AI\n• Google Veo\n• Runway\n• PixVerse\n\n_Platformani tanlang yoki video g'oyangizni tasvirlab bering:_",
     "generating": "🎬 *Video treylerlar yaratilmoqda...*",
-    "result_title": "🎬 *Yaratilgan Video Treylerlar*\n\n",
+    "result_title": "━━━━━━━━━━━━━━━━━━━━━\n🎬 *Video Prompt Tayyor*\n━━━━━━━━━━━━━━━━━━━━━\n\n",
     "platform_selected": "🎬 *Video AI* - {platform}\n\nVideo g'oyangizni tasvirlab bering:",
-    "error": "❌ *Video treyler yaratishda xatolik*\n\nIltimos, boshqa ta'rif bilan qayta urinib ko'ring."
+    "error": "❌ *Video prompt yaratishda xatolik*\n\nIltimos, boshqa ta'rif bilan qayta urinib ko'ring."
   },
   "image": {
     "welcome": "🎨 *Image AI Studio*\n\nQuyidagi platformalar uchun ajoyib tasvirlar yaratish:\n• GPT Image\n• Flux\n• Midjourney\n• Leonardo\n• Ideogram\n\n_Platformani tanlang yoki rasm g'oyangizni tasvirlab bering:_",
-    "generating": "🎨 *Rasm treylerlari yaratilmoqda...*",
-    "result_title": "🎨 *Yaratilgan Rasm Treylerlari*\n\n",
+    "generating": "🎨 *Rasm promptlari yaratilmoqda...*",
+    "result_title": "━━━━━━━━━━━━━━━━━━━━━\n🎨 *Rasmlar Prompti Tayyor*\n━━━━━━━━━━━━━━━━━━━━━\n\n",
     "platform_selected": "🎨 *Image AI* - {platform}\n\nRasm g'oyangizni tasvirlab bering:",
-    "error": "❌ *Rasm treyler yaratishda xatolik*\n\nIltimos, boshqa ta'rif bilan qayta urinib ko'ring."
+    "error": "❌ *Rasm prompti yaratishda xatolik*\n\nIltimos, boshqa ta'rif bilan qayta urinib ko'ring."
   },
   "social": {
     "welcome": "📱 *Social Media Studio*\n\nQuyidagi platformalar uchun kontent yaratish:\n• Instagram 📸\n• TikTok 🎵\n• Telegram ✈️\n• Facebook 📘\n• LinkedIn 💼\n• YouTube 🎥\n\n_Platformani tanlang yoki kontent g'oyangizni tasvirlab bering:_",
     "generating": "📱 *Social media kontenti yaratilmoqda...*",
-    "result_title": "📱 *Yaratilgan Social Media Kontenti*\n\n",
+    "result_title": "━━━━━━━━━━━━━━━━━━━━━\n📱 *Social Kontent Tayyor*\n━━━━━━━━━━━━━━━━━━━━━\n\n",
     "platform_selected": "📱 *Social Media* - {platform}\n\nKontent g'oyangizni tasvirlab bering:",
     "error": "❌ *Social media kontenti yaratishda xatolik*\n\nIltimos, qayta urinib ko'ring."
   },
   "business": {
-    "welcome": "💼 *Business AI Studio*\n\nYaratish:\n• 💡 Startup g'oyalari\n• 📋 Biznes rejalar\n• 📈 Marketing strategiyalari\n• 🏷️ Brend nomlari\n• 📝 Shiorlar\n• 🎨 Logo treylerlari\n• 🎨 Rang palitralari\n• 🌐 Landing Page matnlari\n\n_Turni tanlang yoki biznes ehtiyojingizni tasvirlab bering:_",
+    "welcome": "💼 *Business AI Studio*\n\nYaratish:\n• 💡 Startup g'oyalari\n• 📋 Biznes rejalar\n• 📈 Marketing strategiyalari\n• 🏷️ Brend nomlari\n• 📝 Shiorlar\n• 🎨 Logo promptlari\n• 🎨 Rang palitralari\n• 🌐 Landing Page matnlari\n\n_Turni tanlang yoki biznes ehtiyojingizni tasvirlab bering:_",
     "generating": "💼 *Biznes kontenti yaratilmoqda...*",
-    "result_title": "💼 *{type}*",
+    "result_title": "━━━━━━━━━━━━━━━━━━━━━\n💼 *{type}*\n━━━━━━━━━━━━━━━━━━━━━\n\n",
     "type_selected": "💼 *Business* - {type}\n\nBiznes ehtiyojingizni tasvirlab bering:",
     "error": "❌ *Biznes kontenti yaratishda xatolik*\n\nIltimos, qayta urinib ko'ring."
   },
   "coding": {
     "welcome": "💻 *Coding AI Studio*\n\nQuyidagi tillarda kod yozish va tushuntirish:\n• 🌐 HTML\n• 🎨 CSS\n• ⚛️ React\n• ▲ Next.js\n• 🎨 Tailwind\n• 🟢 Node.js\n• 🚀 Express\n• 📊 Prisma\n• 🗄️ SQL\n• 🔌 API\n\n_Tilni tanlang yoki nima yaratmoqchi ekanligingizni tasvirlab bering:_",
     "generating": "💻 *Kod yaratilmoqda...*",
-    "result_title": "💻 *{language} Kodi*",
+    "result_title": "━━━━━━━━━━━━━━━━━━━━━\n💻 *{language} Kodi*\n━━━━━━━━━━━━━━━━━━━━━\n\n",
     "language_selected": "💻 *Coding* - {language}\n\nNima yaratmoqchi ekanligingizni tasvirlab bering:",
     "error": "❌ *Kod yaratishda xatolik*\n\nIltimos, boshqa ta'rif bilan qayta urinib ko'ring."
   },
   "translate": {
     "welcome": "🌍 *AI Tarjimon*\n\nMatnlarni istalgan tilga tarjima qilish.\n\n_Matnni quyidagi formatda yuboring:_\n\n```\n[tilga] tarjima qil:\n[matningiz]\n```\n\n_Yoki matnni yuboring, men tilni so'rayman._\n\nMisollar:\n• `Ispan tiliga tarjima qil: Salom, qandaysiz?`\n• `Yapon tiliga tarjima qil: Men dasturlashni yaxshi ko'raman`",
     "ask_language": "🌍 *Qaysi til?*\n\nQaysi tilga tarjima qilish kerak?\nTil nomini yuboring (masalan, Ingliz, Fransuz, Yapon)",
-    "result": "🌍 *Tarjima*\n\n*Asl matn:* {source}\n*({language}):* {translated}",
+    "result": "━━━━━━━━━━━━━━━━━━━━━\n🌍 *Tarjima*\n━━━━━━━━━━━━━━━━━━━━━\n\n*Asl matn:* {source}\n*({language}):* {translated}",
     "error": "❌ *Tarjima qilishda xatolik*\n\nIltimos, qayta urinib ko'ring."
   },
   "profile": {
-    "title": "👤 *Profilingiz*",
+    "title": "━━━━━━━━━━━━━━━━━━━━━\n👤 *Profilingiz*\n━━━━━━━━━━━━━━━━━━━━━",
     "not_found": "❌ *Profil topilmadi*\n\nIltimos, profil yaratish uchun /start buyrug'idan foydalaning.",
     "name": "*Ism:* {name}",
     "username": "*Foydalanuvchi nomi:* {username}",
-    "status": "*Holat:* {status}",
-    "member_since": "*A'zo bo'lgan:* {date}",
-    "stats_title": "📊 *Foydalanish statistikasi*",
+    "id": "🆔 *Telegram ID:* `{id}`",
+    "language": "🌍 *Til:* {language}",
+    "model": "🤖 *AI Model:* {model}",
+    "subscription": "⭐ *Obuna:* {status}",
+    "member_since": "📅 *A'zo bo'lgan:* {date}",
+    "stats_title": "📊 *Kunlik foydalanish*",
     "today": "*Bugun:* {used} / {limit} ta so'rov",
     "total": "*Jami:* {total} ta so'rov",
     "progress": "*Progress:* {bar} {percent}%",
@@ -94,51 +101,68 @@
     "conversations": "*Suhbatlar:* {count}",
     "messages": "*Xabarlar:* {count}",
     "last_active": "*Oxirgi faollik:* {date}",
-    "upgrade": "_Ko'proq so'rov kerakmi? Premium'ga o'ting!_ 🚀",
+    "upgrade": "━━━━━━━━━━━━━━━━━━━━━\n⭐ *Premium-ni oching*\n\nCheksiz so'rovlar, ustuvor yordam\nva eksklyuziv funksiyalar!\n━━━━━━━━━━━━━━━━━━━━━",
     "error": "❌ *Profilni yuklashda xatolik*\n\nIltimos, keyinroq qayta urinib ko'ring."
   },
   "help": {
-    "title": "❓ *AI Creator Studio Yordam*",
-    "subtitle": "*Mavjud buyruqlar:*",
-    "start": "*/start* — Botni ishga tushirish va asosiy menyu",
-    "menu": "*/menu* — Asosiy menyuga qaytish",
-    "cancel": "*/cancel* — Joriy operatsiyani bekor qilish",
-    "help_cmd": "*/help* — Yordam oynasi",
-    "chat_cmd": "*/chat* — AI Chat rejimi",
-    "image_cmd": "*/image* — Image AI rejimi",
-    "video_cmd": "*/video* — Video AI rejimi",
-    "coding_cmd": "*/coding* — Coding AI rejimi",
-    "social_cmd": "*/social* — Social Media rejimi",
-    "business_cmd": "*/business* — Business AI rejimi",
-    "translate_cmd": "*/translate* — Translate rejimi",
-    "features_title": "*Funksiyalar:*",
-    "chat_desc": "🤖 *AI Chat*\nAI bilan suhbatlashing.\nXabar yuboring va men javob beraman!",
-    "video_desc": "🎬 *Video AI*\nProfessional video treylerlar yaratish.",
-    "image_desc": "🎨 *Image AI*\nBatafsil rasm treylerlari yaratish.",
-    "social_desc": "📱 *Social Media*\nPlatformaga mos kontent yaratish.",
-    "coding_desc": "💻 *Coding*\nKod yozish, tuzatish va tushuntirish.",
-    "business_desc": "💼 *Business*\nStartup g'oyalar, biznes rejalar va strategiyalar.",
-    "translate_desc": "🌍 *Translate*\nMatnlarni istalgan tilga tarjima qilish.",
-    "tips_title": "*Maslahatlar:*",
-    "tip1": "• Yaxshi natija uchun aniq ta'rif bering",
-    "tip2": "• Funksiyalar bo'ylab harakatlanish uchun menyu tugmalaridan foydalaning",
-    "tip3": "• Kundalik limitlar UTC yarim tunda yangilanadi",
+    "title": "━━━━━━━━━━━━━━━━━━━━━\n❓ *Yordam Markazi*\n━━━━━━━━━━━━━━━━━━━━━\n\nBatafsil ma'lumot olish uchun mavzuni tanlang 👇",
+    "chat": "🤖 *AI Chat*\n\nAI bilan aqlli suhbatlar.\nSuhbat tarixi va xotira mavjud.\nXabar yuboring va javob oling!",
+    "image": "🎨 *Image AI*\n\nAjoyib rasm promptlarini yaratish.\nGPT Image, Flux, Midjourney va boshqalar.",
+    "video": "🎬 *Video AI*\n\nKinematik video promptlarini yaratish.\nHailuo AI, Kling AI, Runway va boshqalar.",
+    "coding": "💻 *Coding AI*\n\nKod yozish, tuzatish va tushuntirish.\nHTML, CSS, React, Next.js va boshqalar!",
+    "social": "📱 *Social Media*\n\nPlatformaga mos kontent yaratish.\nInstagram, TikTok, LinkedIn, YouTube!",
+    "business": "💼 *Business AI*\n\nBiznes g'oyalar, rejalar,\nmarketing strategiyalari va brend nomlari.",
+    "translate": "🌍 *Translate*\n\nMatnlarni istalgan tilga tarjima qilish.",
+    "tips_title": "💡 *Maslahatlar*",
+    "tip1": "• Aniq ta'rif bering — yaxshi natija oling",
+    "tip2": "• Funksiyalar o'rtasida o'tish uchun Asosiy menyudan foydalaning",
+    "tip3": "• Kunlik limit UTC yarim tunda yangilanadi",
     "tip4": "• Premium'ga o'tish orqali limitlarni oshiring",
-    "cta": "✨ *Ajoyib narsa yaratishga tayyormisiz?*\nQuyidagi menyudan funksiyani tanlang! 👇"
+    "support": "💬 *Ko'mok kerakmi?*\nQo'llab-quvvatlash xizmatiga murojaat qiling."
   },
   "settings": {
-    "title": "⚙️ *Sozlamalar*",
+    "title": "━━━━━━━━━━━━━━━━━━━━━\n⚙️ *Sozlamalar*\n━━━━━━━━━━━━━━━━━━━━━",
     "change_language": "🌍 *Tilni o'zgartirish*\n\nO'zingizga kerakli tilni tanlang:",
-    "language_changed": "✅ Til {language} ga o'zgartirildi"
+    "language_changed": "✅ Til {language} ga o'zgartirildi",
+    "model": "🤖 *AI Model*\n\nJoriy model: `{model}`\n\nBoshqa modelni tanlang:",
+    "model_changed": "✅ AI modeli `{model}` ga o'zgartirildi",
+    "select_model": "🤖 *{provider} Modellari*\n\nModelni tanlang:",
+    "clear": "🧹 *Suhbatlarni tozalash*\n\nBarcha suhbatlarni o'chirishni xohlaysizmi?\nBu amalni qaytarib bo'lmaydi.",
+    "cleared": "✅ Barcha suhbatlar muvaffaqiyatli tozalandi!",
+    "privacy": "📜 *Maxfiylik siyosati*\n\nMa'lumotlaringiz xavfsiz saqlanadi va uchinchi shaxslarga berilmaydi.\n\n• Suhbatlar tarix uchun saqlanadi\n• Foydalanish ma'lumotlari tahlil uchun ishlatiladi\n• Ma'lumotlaringizni istalgan vaqtda o'chirishingiz mumkin",
+    "about": "ℹ️ *AI Creator Studio haqida*\n\nVersiya 1.0.0\n\nPremium AI Telegram platformasi\nkontent yaratish, kodlash va biznes uchun.\n\nGrammy + OpenAI bilan ❤️ asosida yaratilgan",
+    "back": "⬅️ *Orqaga*"
+  },
+  "premium": {
+    "title": "━━━━━━━━━━━━━━━━━━━━━\n⭐ *Premium*\n━━━━━━━━━━━━━━━━━━━━━",
+    "subtitle": "AI Creator Studio imkoniyatlarini to'liq oching!",
+    "features": "✨ *Premium xususiyatlari:*\n\n• 🚀 Yuqori kunlik so'rov limitlari\n• 🤖 Rivojlangan AI modellariga kirish\n• 🎯 Ustuvor ishlov berish\n• 💬 Ustuvor qo'llab-quvvatlash\n• 📊 Rivojlangan tahlillar\n• 🔓 Eksklyuziv AI xususiyatlari",
+    "coming_soon": "🚀 *Premium obunalar tez orada!*\n\nYangilanishlarni kuzatib boring.",
+    "current": "⭐ *Sizning tarifingiz:* {tier}",
+    "upgrade": "⬆️ *Premium-ga o'tish*"
+  },
+  "result": {
+    "copy": "📋 *Nusxalash*",
+    "regenerate": "🔄 *Qayta yaratish*",
+    "home": "🏠 *Bosh menyu*",
+    "divider": "━━━━━━━━━━━━━━━━━━━━━",
+    "new_chat": "🔄 Yangi suhbat",
+    "continue": "💬 Davom etish",
+    "clear": "🧹 Tozalash"
   },
   "errors": {
     "generic": "❌ *Xatolik*\n\nNimadir noto'g'ri ketdi. Iltimos, keyinroq qayta urinib ko'ring.",
-    "rate_limit": "⚠️ *Limitga erishildi*\n\nIltimos, keyingi so'rovni yuborishdan oldin biroz kuting.\n\nBu barcha uchun sifatli xizmat ko'rsatishga yordam beradi.",
-    "daily_limit": "⚠️ *Kundalik limitga erishildi*\n\nSiz {used}/{limit} ta so'rovdan foydalandingiz.\n\nLimit UTC yarim tunda yangilanadi.\n\nPremium'ga o'tish orqali limitlarni oshiring! 🚀"
+    "rate_limit": "⚠️ *Limitga erishildi*\n\nIltimos, keyingi so'rovni yuborishdan oldin biroz kuting.",
+    "daily_limit": "⚠️ *Kundalik limitga erishildi*\n\nSiz {used}/{limit} ta so'rovdan foydalandingiz.\n\nLimit UTC yarim tunda yangilanadi.\n\nPremium'ga o'tish orqali limitlarni oshiring! 🚀",
+    "friendly": "🤖 *Ups!*\n\nKichkina muammo yuz berdi.\nQayta urinib ko'ramiz!"
   },
   "keyboards": {
     "main_menu": "🏠 Asosiy menyu",
     "settings": "⚙️ Sozlamalar",
-    "back": "🔙 Orqaga"
+    "back": "🔙 Orqaga",
+    "premium": "⭐ Premium",
+    "profile": "👤 Profil",
+    "upgrade": "⭐ Yangilash",
+    "help": "❓ Yordam"
   }
 }

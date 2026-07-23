@@ -26,6 +26,8 @@ export interface SessionData {
   selectedBusinessType: BusinessContentType;
   /** Currently selected coding language for isolated mode */
   selectedCodeLanguage: CodeLanguage;
+  /** Currently selected AI model (e.g., "gpt-4o", "gemini-2.0-flash", "claude-sonnet-4-20250514") */
+  selectedModel: string;
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;

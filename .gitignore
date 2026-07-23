@@ -44,3 +44,4 @@ prisma/generated/
 *.swo
 
 .vercel
+.env*

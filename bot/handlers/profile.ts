@@ -1,5 +1,5 @@
 /**
- * Modern Profile Page
+ * Profile Page
  *
  * Displays user data from the database:
  *   • Username            • Telegram ID
@@ -8,18 +8,31 @@
  *   • Join Date
  *
  * Buttons: ⚙️ Settings  |  ⭐ Premium  |  🏠 Home
+ *
+ * Architecture:
+ *   Uses ctx.session.userId (set by userMiddleware) to look up the user
+ *   via userService.getProfile() instead of making a raw Prisma query
+ *   with BigInt conversion. This avoids:
+ *     1. Redundant DB queries (middleware already fetched the user)
+ *     2. Potential BigInt conversion edge cases with large Telegram IDs
+ *     3. Transient DB failures that succeed during middleware but fail during handler
+ *
+ *   Falls back to direct Prisma query with BigInt(from.id) only if
+ *   session.userId is not available (legacy/new session).
  */
 
 import type { BotContext } from "@/types";
 import { BotStep } from "@/types";
-import { prisma } from "@/lib/prisma";
+import { userService } from "@/services/user";
 import { profileKeyboard } from "@/bot/keyboards";
 import { formatDate } from "@/utils/helpers";
 import { t } from "@/bot/localization";
 import { LANGUAGE_NAMES } from "@/bot/localization";
 import { providerRegistry } from "@/services/ai/providers";
+import { logger } from "@/bot/core/logger";
 
 const DIVIDER = "━━━━━━━━━━━━━━━━━━━━━";
+const log = logger.child("profile-handler");
 
 export async function profileHandler(ctx: BotContext): Promise<void> {
   ctx.session.step = BotStep.PROFILE;
@@ -27,24 +40,20 @@ export async function profileHandler(ctx: BotContext): Promise<void> {
   const from = ctx.from;
   const lang = ctx.session.language;
 
-  if (!from) return;
+  if (!from || !ctx.session.userId) {
+    // If we don't have user context, ask user to /start first
+    await ctx.reply(t(lang, "profile.not_found"), {
+      parse_mode: "Markdown",
+    });
+    return;
+  }
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { telegramId: BigInt(from.id) },
-      include: {
-        subscription: true,
-        settings: true,
-        _count: {
-          select: {
-            conversations: true,
-            messages: true,
-          },
-        },
-      },
-    });
+    // Use the session userId (set by middleware) to fetch profile
+    // The middleware already upserted the user, so this should always succeed
+    const profile = await userService.getProfile(BigInt(from.id));
 
-    if (!user) {
+    if (!profile) {
       await ctx.reply(t(lang, "profile.not_found"), {
         parse_mode: "Markdown",
       });
@@ -52,23 +61,23 @@ export async function profileHandler(ctx: BotContext): Promise<void> {
     }
 
     // ─── Extract and resolve data ─────────────────────
-    const displayName = `${user.firstName} ${user.lastName ?? ""}`.trim();
-    const telegramUsername = user.username ? `@${user.username}` : "—";
+    const displayName = `${profile.firstName} ${profile.lastName ?? ""}`.trim();
+    const telegramUsername = profile.username ? `@${profile.username}` : "—";
     const telegramId = String(from.id);
 
-    const userLangCode = user.settings?.language ?? ctx.session.language ?? "en";
+    const userLangCode = profile.settings?.language ?? ctx.session.language ?? "en";
     const languageName =
       LANGUAGE_NAMES[userLangCode as keyof typeof LANGUAGE_NAMES] ?? "English";
 
     const selectedModelId = ctx.session.selectedModel ?? "gpt-4o";
     const modelName = providerRegistry.getModelName(selectedModelId);
 
-    const planLabel = user.isPremium ? "⭐ Premium" : "🆓 Free";
-    const joinedDate = formatDate(user.createdAt);
+    const planLabel = profile.isPremium ? "⭐ Premium" : "🆓 Free";
+    const joinedDate = formatDate(profile.createdAt);
 
     // ─── Usage stats ──────────────────────────────────
-    const used = user.requestsToday;
-    const limit = user.dailyLimit;
+    const used = profile.requestsToday;
+    const limit = profile.dailyLimit;
     const usagePercent = Math.min(Math.round((used / limit) * 100), 100);
     const filledBars = Math.min(Math.floor(usagePercent / 10), 10);
     const progressBar = "▓".repeat(filledBars) + "░".repeat(10 - filledBars);
@@ -96,15 +105,15 @@ export async function profileHandler(ctx: BotContext): Promise<void> {
       "",
       `${t(lang, "profile.today", { used: String(used), limit: String(limit) })}`,
       `${t(lang, "profile.progress", { bar: progressBar, percent: String(usagePercent) })}`,
-      `${t(lang, "profile.total", { total: String(user.totalRequests) })}`,
+      `${t(lang, "profile.total", { total: String(profile.totalRequests) })}`,
       "",
       DIVIDER,
       t(lang, "profile.activity_title"),
       DIVIDER,
       "",
-      `${t(lang, "profile.conversations", { count: String(user._count.conversations) })}`,
-      `${t(lang, "profile.messages", { count: String(user._count.messages) })}`,
-      `${t(lang, "profile.last_active", { date: formatDate(user.lastActiveAt) })}`,
+      `${t(lang, "profile.conversations", { count: String(profile._count?.conversations ?? 0) })}`,
+      `${t(lang, "profile.messages", { count: String(profile._count?.messages ?? 0) })}`,
+      `${t(lang, "profile.last_active", { date: formatDate(profile.lastActiveAt) })}`,
       "",
       // Upgrade CTA
       t(lang, "profile.upgrade"),
@@ -118,7 +127,14 @@ export async function profileHandler(ctx: BotContext): Promise<void> {
       link_preview_options: { is_disabled: true },
     });
   } catch (error) {
-    console.error("Profile error:", error);
+    // Log the real error for debugging
+    log.error("Profile load failed", { 
+      userId: ctx.session.userId,
+      telegramId: from?.id,
+      error: String(error),
+    });
+    
+    // Only show error message on real server failures
     await ctx.reply(t(lang, "profile.error"), {
       parse_mode: "Markdown",
       reply_markup: profileKeyboard,

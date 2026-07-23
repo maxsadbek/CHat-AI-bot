@@ -169,6 +169,56 @@ export class UserManagementService {
   }
 
   /**
+   * Ban a user — set dailyLimit to 0 so they can't use the bot
+   */
+  async banUser(userId: number, adminId: number) {
+    try {
+      const updated = await prisma.user.update({
+        where: { id: userId },
+        data: { dailyLimit: 0 },
+      });
+
+      await logAdminAction(
+        adminId,
+        "ban_user",
+        `User ${userId} (${updated.firstName}) banned`
+      );
+
+      return updated;
+    } catch (error) {
+      log.error("Error banning user", { userId, error: String(error) });
+      throw error;
+    }
+  }
+
+  /**
+   * Unban a user — restore dailyLimit to plan default
+   */
+  async unbanUser(userId: number, adminId: number) {
+    try {
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user) throw new Error("User not found");
+
+      const defaultLimit = user.isPremium ? 999999 : 50;
+      const updated = await prisma.user.update({
+        where: { id: userId },
+        data: { dailyLimit: defaultLimit },
+      });
+
+      await logAdminAction(
+        adminId,
+        "unban_user",
+        `User ${userId} (${updated.firstName}) unbanned`
+      );
+
+      return updated;
+    } catch (error) {
+      log.error("Error unbanning user", { userId, error: String(error) });
+      throw error;
+    }
+  }
+
+  /**
    * Delete all user data (GDPR/privacy)
    */
   async deleteUserData(userId: number, adminId: number) {

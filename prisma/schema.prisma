@@ -33,6 +33,7 @@ model User {
   projects      Project[]
   projectFiles  ProjectFile[]
   projectNotes  ProjectNote[]
+  payments      Payment[]
 
   @@index([telegramId])
   @@index([createdAt])
@@ -106,37 +107,66 @@ model Usage {
 // ─── Subscription ─────────────────────────────────────
 
 model Subscription {
-  id            String   @id @default(uuid())
-  userId        Int      @unique
-  tier          String   @default("free")      // "free" | "pro"
-  planType      String   @default("free")      // "free" | "pro_monthly" | "pro_yearly" | "lifetime"
-  billingPeriod String   @default("none")      // "none" | "monthly" | "yearly" | "lifetime"
-  dailyLimit    Int      @default(50)
-  startsAt      DateTime @default(now())
-  expiresAt     DateTime?
-  paymentId     String?
-  paymentProvider String? // "telegram_stars" | "stripe" | etc.
-  autoRenew     Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id              String    @id @default(uuid())
+  userId          Int       @unique
+  tier            String    @default("free")           // "free" | "pro"
+  planType        String    @default("free")           // "free" | "pro_monthly" | "pro_yearly" | "lifetime"
+  billingPeriod   String    @default("none")           // "none" | "monthly" | "yearly" | "lifetime"
+  status          String    @default("ACTIVE")         // "ACTIVE" | "EXPIRED" | "CANCELED"
+  dailyLimit      Int       @default(50)
+  startsAt        DateTime  @default(now())
+  expiresAt       DateTime?
+  canceledAt      DateTime?                            // When the subscription was canceled
+  paymentId       String?
+  paymentProvider String?                              // "telegram_stars" | "stripe" | "click" | "payme" | etc.
+  autoRenew       Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([planType])
+  @@index([status])
   @@index([expiresAt])
   @@map("subscriptions")
+}
+
+// ─── Payment ──────────────────────────────────────────
+
+model Payment {
+  id            String    @id @default(uuid())
+  userId        Int
+  provider      String                                // "click" | "payme" | "stripe" | "telegram_stars"
+  plan          String                                // "free" | "pro_monthly" | "pro_yearly" | "lifetime"
+  amount        Int                                   // Amount in minor units (cents / tiyin / stars)
+  currency      String    @default("USD")             // ISO 4217 — "USD", "UZS", "XTR" (Telegram Stars)
+  transactionId String?                               // Provider transaction ID
+  status        String    @default("PENDING")         // "PENDING" | "SUCCESS" | "FAILED" | "CANCELED"
+  metadata      Json?                                 // Provider-specific raw response data
+  createdAt     DateTime  @default(now())
+  paidAt        DateTime?                             // When payment was confirmed
+  updatedAt     DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([provider])
+  @@index([transactionId])
+  @@index([createdAt])
+  @@map("payments")
 }
 
 // ─── User Settings ────────────────────────────────────
 
 model UserSettings {
-  id          String  @id @default(uuid())
-  userId      Int     @unique
-  language    String  @default("en")
-  theme       String  @default("dark")
+  id                   String  @id @default(uuid())
+  userId               Int     @unique
+  language             String  @default("en")
+  theme                String  @default("dark")
   notificationsEnabled Boolean @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

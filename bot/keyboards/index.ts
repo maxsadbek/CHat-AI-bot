@@ -45,9 +45,10 @@ export const mainMenuKeyboard = new InlineKeyboard()
   .text("🌍 Translate", "feature:translate")
   .text("📁 Projects", "feature:projects")
   .row()
+  .text("🕒 History", "feature:history")
   .text("👤 Profile", "feature:profile")
-  .text("⚙️ Settings", "feature:settings")
   .row()
+  .text("⚙️ Settings", "feature:settings")
   .text("⭐ Premium", "feature:premium");
 
 // ═══════════════════════════════════════════════════════

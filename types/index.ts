@@ -290,12 +290,35 @@ export interface RetentionStats {
 // ─── Admin Types ─────────────────────────────────────────
 
 export interface AdminStats {
+  // Core
   totalUsers: number;
   activeUsersToday: number;
   totalRequests: number;
   requestsToday: number;
   premiumUsers: number;
   topFeatures: Array<{ feature: string; count: number }>;
+
+  // Granular feature counts (today)
+  chatRequests: number;
+  imageRequests: number;
+  videoRequests: number;
+  codingRequests: number;
+  socialRequests: number;
+  businessRequests: number;
+  translateRequests: number;
+
+  // Provider
+  mostUsedProvider: string | null;
+  providers: Array<{ provider: string; count: number }>;
+
+  // Growth
+  newUsersToday: number;
+
+  // Payment overview
+  paymentsPending: number;
+  paymentsApproved: number;
+  paymentsRejected: number;
+  totalRevenue: number;
 }
 
 export interface AdminLog {

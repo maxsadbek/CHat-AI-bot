@@ -38,6 +38,13 @@ import {
   resumeTranslateHandler,
 } from "@/bot/handlers/translate";
 import { profileHandler } from "@/bot/handlers/profile";
+import {
+  historyMenuHandler,
+  historyDetailHandler,
+  historyContinueHandler,
+  historyDeleteHandler,
+  historyDeleteConfirmHandler,
+} from "@/bot/handlers/history-menu";
 import { premiumHandler, premiumPlanHandler, premiumUpgradeHandler } from "@/bot/handlers/premium";
 import {
   projectsHandler,
@@ -76,18 +83,27 @@ import {
 } from "@/bot/handlers/settings";
 import {
   adminHandler,
+  adminDashboardHandler,
   adminUsersHandler,
+  adminUserSearchHandler,
   adminUserDetailHandler,
-  adminUserPremiumHandler,
+  adminUserGivePremiumHandler,
+  adminUserRemovePremiumHandler,
+  adminUserBanHandler,
+  adminUserUnbanHandler,
   adminUserResetHandler,
-  adminPremiumHandler,
-  adminPremiumUsersHandler,
-  adminStatsHandler,
-  adminAnalyticsHandler,
+  adminPaymentsHandler,
+  adminPaymentDetailHandler,
+  adminPaymentApproveHandler,
+  adminPaymentRejectHandler,
   adminBroadcastHandler,
-  adminBroadcastSendHandler,
-  adminHealthHandler,
-  adminLogsHandler,
+  adminBroadcastTextHandler,
+  adminBroadcastPhotoHandler,
+  adminBroadcastSendTextHandler,
+  adminBroadcastSendPhotoHandler,
+  adminSettingsHandler,
+  adminSettingsMaintenanceHandler,
+  isMaintenanceMode,
 } from "@/bot/handlers/admin";
 import { handleLanguageSelection } from "@/bot/handlers/language";
 import {
@@ -164,6 +180,9 @@ const FEATURE_SWITCHES: Record<string, (ctx: BotContext) => Promise<void>> = {
   settings: switchToSettings,
   projects: switchToProjects,
   premium: switchToPremium,
+  history: async (ctx) => {
+    await historyMenuHandler(ctx);
+  },
   help: async (ctx) => {
     await helpHandler(ctx);
   },
@@ -191,6 +210,8 @@ export function createBot(): Bot<BotContext> {
   bot.command("start", startHandler);
   // Admin command (only for admin users)
   bot.command("admin", adminHandler);
+  // Admin search: /admin search [Telegram ID] or /admin search @[username]
+  bot.hears(/^\/admin\s+search/i, adminUserSearchHandler);
   bot.command("menu", async (ctx) => {
     resetSession(ctx.session, true);
     const lang = ctx.session.language;
@@ -221,6 +242,18 @@ export function createBot(): Bot<BotContext> {
   bot.callbackQuery(/^feature:(.+)/, async (ctx) => {
     const feature = ctx.match[1] as string;
     await ctx.answerCallbackQuery();
+
+    // Check maintenance mode — block non-admins from accessing features
+    if (isMaintenanceMode()) {
+      const tid = ctx.from?.id;
+      const { isAdmin } = await import("@/services/admin/admin-guard");
+      if (tid && !isAdmin(tid)) {
+        await ctx.reply("🚧 *The bot is currently under maintenance. Please try again later.*", {
+          parse_mode: "Markdown",
+        });
+        return;
+      }
+    }
 
     const handler = FEATURE_SWITCHES[feature];
     if (handler) {
@@ -374,11 +407,42 @@ export function createBot(): Bot<BotContext> {
     }
   });
 
-  // ─── Admin Panel ─────────────────────────────────
+  // ─── Global History (🕒 History menu) ────────────
+  bot.callbackQuery("history:menu", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await historyMenuHandler(ctx);
+  });
+  bot.callbackQuery(/^history:detail:(.+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await historyDetailHandler(ctx, ctx.match[1]!);
+  });
+  bot.callbackQuery(/^history:continue:(.+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await historyContinueHandler(ctx, ctx.match[1]!);
+  });
+  bot.callbackQuery(/^history:delete:(.+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await historyDeleteHandler(ctx, ctx.match[1]!);
+  });
+  bot.callbackQuery(/^history:delete:confirm:(.+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await historyDeleteConfirmHandler(ctx, ctx.match[1]!);
+  });
+
+  // ─── Admin Panel — MVP (5 menus) ─────────────────
+  // Main menu
   bot.callbackQuery("admin:panel", async (ctx) => {
     await ctx.answerCallbackQuery();
     await adminHandler(ctx);
   });
+
+  // Dashboard
+  bot.callbackQuery("admin:dashboard", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await adminDashboardHandler(ctx);
+  });
+
+  // Users
   bot.callbackQuery("admin:users", async (ctx) => {
     await ctx.answerCallbackQuery();
     await adminUsersHandler(ctx);
@@ -387,41 +451,67 @@ export function createBot(): Bot<BotContext> {
     await ctx.answerCallbackQuery();
     await adminUserDetailHandler(ctx, parseInt(ctx.match[1]!, 10));
   });
-  bot.callbackQuery(/^admin:user:premium:(\d+)/, async (ctx) => {
+  bot.callbackQuery(/^admin:user:givepremium:(\d+)/, async (ctx) => {
     await ctx.answerCallbackQuery();
-    await adminUserPremiumHandler(ctx, parseInt(ctx.match[1]!, 10));
+    await adminUserGivePremiumHandler(ctx, parseInt(ctx.match[1]!, 10));
+  });
+  bot.callbackQuery(/^admin:user:removepremium:(\d+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await adminUserRemovePremiumHandler(ctx, parseInt(ctx.match[1]!, 10));
+  });
+  bot.callbackQuery(/^admin:user:ban:(\d+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await adminUserBanHandler(ctx, parseInt(ctx.match[1]!, 10));
+  });
+  bot.callbackQuery(/^admin:user:unban:(\d+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await adminUserUnbanHandler(ctx, parseInt(ctx.match[1]!, 10));
   });
   bot.callbackQuery(/^admin:user:reset:(\d+)/, async (ctx) => {
     await ctx.answerCallbackQuery();
     await adminUserResetHandler(ctx, parseInt(ctx.match[1]!, 10));
   });
-  bot.callbackQuery("admin:premium", async (ctx) => {
+
+  // Payments
+  bot.callbackQuery("admin:payments", async (ctx) => {
     await ctx.answerCallbackQuery();
-    await adminPremiumHandler(ctx);
+    await adminPaymentsHandler(ctx);
   });
-  bot.callbackQuery("admin:premium:users", async (ctx) => {
+  bot.callbackQuery(/^admin:payment:detail:(.+)/, async (ctx) => {
     await ctx.answerCallbackQuery();
-    await adminPremiumUsersHandler(ctx);
+    await adminPaymentDetailHandler(ctx, ctx.match[1]!);
   });
-  bot.callbackQuery("admin:stats", async (ctx) => {
+  bot.callbackQuery(/^admin:payment:approve:(.+)/, async (ctx) => {
     await ctx.answerCallbackQuery();
-    await adminStatsHandler(ctx);
+    await adminPaymentApproveHandler(ctx, ctx.match[1]!);
   });
-  bot.callbackQuery("admin:analytics", async (ctx) => {
+  bot.callbackQuery(/^admin:payment:reject:(.+)/, async (ctx) => {
     await ctx.answerCallbackQuery();
-    await adminAnalyticsHandler(ctx);
+    await adminPaymentRejectHandler(ctx, ctx.match[1]!);
   });
+
+  // Broadcast
   bot.callbackQuery("admin:broadcast", async (ctx) => {
     await ctx.answerCallbackQuery();
     await adminBroadcastHandler(ctx);
   });
-  bot.callbackQuery("admin:health", async (ctx) => {
+  bot.callbackQuery("admin:broadcast:text", async (ctx) => {
     await ctx.answerCallbackQuery();
-    await adminHealthHandler(ctx);
+    await adminBroadcastTextHandler(ctx);
   });
-  bot.callbackQuery("admin:logs", async (ctx) => {
+  bot.callbackQuery("admin:broadcast:photo", async (ctx) => {
     await ctx.answerCallbackQuery();
-    await adminLogsHandler(ctx);
+    await adminBroadcastPhotoHandler(ctx);
+  });
+
+  // Settings
+  bot.callbackQuery("admin:settings", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await adminSettingsHandler(ctx);
+  });
+  bot.callbackQuery("admin:settings:maintenance", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await adminSettingsMaintenanceHandler(ctx);
   });
 
   // ─── Image History ──────────────────────────────
@@ -715,12 +805,23 @@ export function createBot(): Bot<BotContext> {
         }
         break;
       default:
-        // Check for admin broadcast mode
-        if (ctx.session.tempData?.adminMode === "broadcast") {
-          await adminBroadcastSendHandler(ctx);
+        // Check for admin broadcast modes
+        if (ctx.session.tempData?.adminMode === "broadcast_text") {
+          await adminBroadcastSendTextHandler(ctx);
           break;
         }
         // IDLE or unrecognised — route to AI Chat
+        // Check maintenance mode — block non-admins
+        if (isMaintenanceMode()) {
+          const tid = ctx.from?.id;
+          const { isAdmin } = await import("@/services/admin/admin-guard");
+          if (tid && !isAdmin(tid)) {
+            await ctx.reply("🚧 *The bot is currently under maintenance. Please try again later.*", {
+              parse_mode: "Markdown",
+            });
+            return;
+          }
+        }
         clearModeData(ctx.session);
         sessionManager.setStep(ctx.session, BotStep.AI_CHAT);
         const lang = ctx.session.language;
@@ -729,6 +830,13 @@ export function createBot(): Bot<BotContext> {
         });
         await aiChatHandler(ctx);
         break;
+    }
+  });
+
+  // ─── Photo Messages (for admin broadcast) ────────
+  bot.on("message:photo", async (ctx) => {
+    if (ctx.session.tempData?.adminMode === "broadcast_photo") {
+      await adminBroadcastSendPhotoHandler(ctx);
     }
   });
 

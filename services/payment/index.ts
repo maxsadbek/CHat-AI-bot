@@ -10,12 +10,12 @@
  *   - Telegram Stars (Global — best for Telegram bots)
  *
  * Usage:
- *   import { paymentRegistry } from "@/services/payment";
- *   const provider = paymentRegistry.getProvider("stripe");
- *   const session = await provider.createPayment({ ... });
+ *   import { paymentRegistry, paymentService } from "@/services/payment";
+ *   const session = await paymentService.createPayment({ ... });
  */
 
 export { paymentRegistry } from "./registry";
+export { paymentService } from "./payment-service";
 export type {
   PaymentProvider,
   PaymentProviderConfig,
@@ -31,6 +31,12 @@ export type {
   WebhookResult,
   PaymentProviderDefinition,
 } from "./interface";
+
+export type {
+  PaymentSession,
+  CreatePaymentInput,
+  VerifyPaymentInput,
+} from "./payment-service";
 
 // Provider classes (for direct instantiation in tests only)
 export { ClickProvider } from "./providers/click";

@@ -5,7 +5,6 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { env } from "@/config";
 import type { AdminStats, AdminLog } from "@/types";
 import { isAdmin, logAdminAction } from "./admin-guard";
 import { userManagementService } from "./user-management";
@@ -34,20 +33,78 @@ export class AdminService {
   }
 
   /**
-   * Get dashboard statistics
+   * Get enhanced dashboard statistics with:
+   * - Granular feature counts (chat, images, videos, coding, social, business, translate)
+   * - Most Used AI Provider
+   * - Today's New Users
+   * - Payment overview (pending, approved, rejected, revenue)
    */
   async getStats(): Promise<AdminStats> {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const thisWeekStart = new Date(todayStart);
+    thisWeekStart.setDate(thisWeekStart.getDate() - 7);
+    const thisMonthStart = new Date(todayStart);
+    thisMonthStart.setDate(thisMonthStart.getDate() - 30);
 
-    const [totalUsers, activeToday, totalRequests, todayRequests, premiumUsers] =
-      await Promise.all([
-        prisma.user.count(),
-        prisma.user.count({ where: { lastActiveAt: { gte: todayStart } } }),
-        prisma.message.count(),
-        prisma.message.count({ where: { createdAt: { gte: todayStart } } }),
-        prisma.user.count({ where: { isPremium: true } }),
-      ]);
+    const [
+      totalUsers,
+      activeToday,
+      newUsersToday,
+      totalRequests,
+      todayRequests,
+      premiumUsers,
+      // Feature-specific counts today
+      chatRequests,
+      imageRequests,
+      videoRequests,
+      codingRequests,
+      socialRequests,
+      businessRequests,
+      translateRequests,
+      // Provider breakdown
+      providerBreakdown,
+      topFeatures,
+      // Payment stats
+      paymentsPending,
+      paymentsApproved,
+      paymentsFailed,
+      revenueResult,
+    ] = await Promise.all([
+      prisma.user.count(),
+      prisma.user.count({ where: { lastActiveAt: { gte: todayStart } } }),
+      prisma.user.count({ where: { createdAt: { gte: todayStart } } }),
+      prisma.message.count(),
+      prisma.message.count({ where: { createdAt: { gte: todayStart } } }),
+      prisma.user.count({ where: { isPremium: true } }),
+
+      // Feature counts today
+      this.getFeatureUsageCount("chat", todayStart),
+      this.getFeatureUsageCount("image", todayStart),
+      this.getFeatureUsageCount("video", todayStart),
+      this.getFeatureUsageCount("coding", todayStart),
+      this.getFeatureUsageCount("social", todayStart),
+      this.getFeatureUsageCount("business", todayStart),
+      this.getFeatureUsageCount("translate", todayStart),
+
+      // Provider breakdown (all time)
+      this.getProviderUsage(),
+      this.getTopFeatures(todayStart),
+
+      // Payment stats
+      prisma.payment.count({ where: { status: "PENDING" } }),
+      prisma.payment.count({ where: { status: "SUCCESS" } }),
+      prisma.payment.count({ where: { status: "FAILED" } }),
+      prisma.payment.aggregate({
+        _sum: { amount: true },
+        where: { status: "SUCCESS" },
+      }),
+    ]);
+
+    // Determine most used provider
+    const mostUsedProvider = providerBreakdown.length > 0
+      ? providerBreakdown[0]!.provider
+      : null;
 
     return {
       totalUsers,
@@ -55,19 +112,74 @@ export class AdminService {
       totalRequests,
       requestsToday: todayRequests,
       premiumUsers,
-      topFeatures: await this.getTopFeatures(todayStart),
+      topFeatures,
+
+      // Granular feature counts
+      chatRequests,
+      imageRequests,
+      videoRequests,
+      codingRequests,
+      socialRequests,
+      businessRequests,
+      translateRequests,
+
+      // Provider
+      mostUsedProvider,
+      providers: providerBreakdown,
+
+      // Growth
+      newUsersToday,
+
+      // Payment overview
+      paymentsPending,
+      paymentsApproved,
+      paymentsRejected: paymentsFailed,
+      totalRevenue: revenueResult._sum.amount ?? 0,
     };
   }
 
-  /** Get top features by usage */
-  private async getTopFeatures(since: Date) {
+  /**
+   * Get usage count for a specific feature
+   */
+  private async getFeatureUsageCount(feature: string, since: Date): Promise<number> {
+    try {
+      return await prisma.usage.count({
+        where: { feature, createdAt: { gte: since } },
+      });
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Get provider usage breakdown (all time)
+   */
+  private async getProviderUsage(): Promise<Array<{ provider: string; count: number }>> {
+    try {
+      const usage = await prisma.usage.groupBy({
+        by: ["provider"],
+        _count: true,
+        where: { provider: { not: null } },
+        orderBy: { _count: { provider: "desc" } },
+      });
+      return usage.map((u) => ({
+        provider: u.provider ?? "unknown",
+        count: u._count,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  /** Get top features by usage today */
+  private async getTopFeatures(since: Date): Promise<Array<{ feature: string; count: number }>> {
     try {
       const usage = await prisma.usage.groupBy({
         by: ["feature"],
         _count: true,
         where: { createdAt: { gte: since } },
         orderBy: { _count: { feature: "desc" } },
-        take: 5,
+        take: 10,
       });
       return usage.map((u) => ({ feature: u.feature, count: u._count }));
     } catch {
@@ -125,11 +237,15 @@ export class AdminService {
 
   /** Reset all users' daily limits */
   async resetDailyLimits(): Promise<number> {
-    const result = await prisma.user.updateMany({
-      where: { lastResetAt: { lt: new Date(new Date().setHours(0, 0, 0, 0)) } },
-      data: { requestsToday: 0, lastResetAt: new Date() },
-    });
-    return result.count;
+    try {
+      const result = await prisma.user.updateMany({
+        where: { lastResetAt: { lt: new Date(new Date().setHours(0, 0, 0, 0)) } },
+        data: { requestsToday: 0, lastResetAt: new Date() },
+      });
+      return result.count;
+    } catch {
+      return 0;
+    }
   }
 }
 

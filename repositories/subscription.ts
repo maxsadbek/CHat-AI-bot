@@ -24,6 +24,8 @@ export class SubscriptionRepository {
     paymentId?: string | null;
     paymentProvider?: string | null;
     autoRenew?: boolean;
+    status?: string;
+    canceledAt?: Date | null;
   }) {
     try {
       return await prisma.subscription.upsert({
@@ -37,6 +39,8 @@ export class SubscriptionRepository {
           paymentId: data.paymentId ?? null,
           paymentProvider: data.paymentProvider ?? null,
           autoRenew: data.autoRenew ?? false,
+          ...(data.status !== undefined ? { status: data.status } : {}),
+          ...(data.canceledAt !== undefined ? { canceledAt: data.canceledAt } : {}),
         },
         create: {
           userId,
@@ -48,6 +52,8 @@ export class SubscriptionRepository {
           paymentId: data.paymentId ?? null,
           paymentProvider: data.paymentProvider ?? null,
           autoRenew: data.autoRenew ?? false,
+          status: data.status ?? "ACTIVE",
+          canceledAt: data.canceledAt ?? null,
         },
       });
     } catch (error) {
@@ -56,6 +62,28 @@ export class SubscriptionRepository {
     }
   }
 
+  /**
+   * Find all subscriptions with expired non-free, non-lifetime plans
+   */
+  async findExpired(now: Date) {
+    try {
+      return await prisma.subscription.findMany({
+        where: {
+          planType: { notIn: ["free", "lifetime"] },
+          expiresAt: { lt: now },
+          status: { not: "EXPIRED" },
+        },
+        select: { userId: true, planType: true, id: true },
+      });
+    } catch (error) {
+      log.error("Error finding expired subscriptions", { error: String(error) });
+      throw error;
+    }
+  }
+
+  /**
+   * Count subscriptions by plan type
+   */
   async countByPlanType(planType: string): Promise<number> {
     try {
       return await prisma.subscription.count({ where: { planType } });
@@ -65,11 +93,26 @@ export class SubscriptionRepository {
     }
   }
 
+  /**
+   * Count subscriptions by tier
+   */
   async countByTier(tier: string): Promise<number> {
     try {
       return await prisma.subscription.count({ where: { tier } });
     } catch (error) {
       log.error("Error counting subscription tier", { tier, error: String(error) });
+      throw error;
+    }
+  }
+
+  /**
+   * Count subscriptions by status
+   */
+  async countByStatus(status: string): Promise<number> {
+    try {
+      return await prisma.subscription.count({ where: { status } });
+    } catch (error) {
+      log.error("Error counting subscription by status", { status, error: String(error) });
       throw error;
     }
   }

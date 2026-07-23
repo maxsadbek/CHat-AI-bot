@@ -1,144 +1,223 @@
 /**
- * Admin Bot Handler
- * Telegram-based admin panel for managing the platform.
- * Only accessible to users with ADMIN_IDS.
+ * Admin Bot Handler — MVP Admin Panel
  *
- * Commands:
- *   /admin — Open admin panel
- *   /admin users — List/search users
- *   /admin premium — Premium management
- *   /admin stats — Quick statistics
- *   /admin health — System health
- *   /admin broadcast — Broadcast a message
+ * Only accessible to users with Telegram IDs in ADMIN_IDS env var.
+ * Non-admin users see: ❌ Access Denied
+ *
+ * Menu sections:
+ *   📊 Dashboard   👥 Users   💳 Payments   📢 Broadcast   ⚙️ Settings
+ *
+ * Architecture:
+ *   - adminGuard() wraps every handler with isAdmin check
+ *   - Broadcast uses ctx.api (not bot import) to avoid circular deps
+ *   - All actions logged via logAdminAction
  */
 
 import { InlineKeyboard } from "grammy";
 import type { BotContext } from "@/types";
-import { BotStep } from "@/types";
-import { isAdmin } from "@/services/admin/admin-guard";
 import { logAdminAction } from "@/services/admin/admin-guard";
+import { adminGuard } from "@/bot/middleware/admin";
+import { adminService } from "@/services/admin";
 import { userManagementService } from "@/services/admin/user-management";
 import { premiumManagementService } from "@/services/admin/premium-management";
-import { systemHealthService } from "@/services/admin/health";
-import { analyticsService } from "@/services/analytics";
-import { adminService } from "@/services/admin";
+import { paymentService } from "@/services/payment/payment-service";
 import { sessionManager } from "@/bot/core/session-manager";
-import { t } from "@/bot/localization";
 import { logger } from "@/bot/core/logger";
 import { addNavRow } from "@/bot/keyboards";
 import { formatDate } from "@/utils/helpers";
-
-// Track process start time for uptime calculation
-(global as any).__START_TIME = (global as any).__START_TIME ?? Date.now();
+import { prisma } from "@/lib/prisma";
 
 const log = logger.child("admin-handler");
 
-// ═══════════════════════════════════════════════════════════════
+// ─── Maintenance Mode (runtime toggle) ─────────────────
+(global as any).__MAINTENANCE_MODE = (global as any).__MAINTENANCE_MODE ?? false;
+(global as any).__START_TIME = (global as any).__START_TIME ?? Date.now();
+
+export function isMaintenanceMode(): boolean {
+  return (global as any).__MAINTENANCE_MODE === true;
+}
+
+export function setMaintenanceMode(enabled: boolean): void {
+  (global as any).__MAINTENANCE_MODE = enabled;
+}
+
+// ══════════════════════════════════════════════════════════
 // KEYBOARDS
-// ═══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════
 
-function adminMainKeyboard(): InlineKeyboard {
+function mainMenuKb(): InlineKeyboard {
   return addNavRow(
     new InlineKeyboard()
+      .text("📊 Dashboard", "admin:dashboard")
       .text("👥 Users", "admin:users")
-      .text("⭐ Premium", "admin:premium")
       .row()
-      .text("📊 Stats", "admin:stats")
-      .text("📋 Analytics", "admin:analytics")
-      .row()
+      .text("💳 Payments", "admin:payments")
       .text("📢 Broadcast", "admin:broadcast")
-      .text("❤️ Health", "admin:health")
       .row()
-      .text("📜 Logs", "admin:logs")
+      .text("⚙️ Settings", "admin:settings")
   );
 }
 
-function adminUserActionsKeyboard(userId: number): InlineKeyboard {
+function userActionsKb(userId: number, isP: boolean, isBanned: boolean): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  if (isP) {
+    kb.text("❌ Remove Premium", `admin:user:removepremium:${userId}`);
+  } else {
+    kb.text("⭐ Give Premium", `admin:user:givepremium:${userId}`);
+  }
+  if (isBanned) {
+    kb.text("✅ Unban", `admin:user:unban:${userId}`);
+  } else {
+    kb.text("🚫 Ban", `admin:user:ban:${userId}`);
+  }
+  kb.row();
+  kb.text("🔄 Reset Daily", `admin:user:reset:${userId}`);
+  kb.row();
+  kb.text("🔙 Back", "admin:users");
+  return addNavRow(kb);
+}
+
+function paymentActionsKb(paymentId: string): InlineKeyboard {
   return addNavRow(
     new InlineKeyboard()
-      .text("⭐ Toggle Premium", `admin:user:premium:${userId}`)
-      .text("🔄 Reset Daily", `admin:user:reset:${userId}`)
-      .row()
-      .text("🔙 Back to Users", "admin:users")
+      .text("✅ Approve", `admin:payment:approve:${paymentId}`)
+      .text("❌ Reject", `admin:payment:reject:${paymentId}`)
   );
 }
 
-// ═══════════════════════════════════════════════════════════════
-// HANDLERS
-// ═══════════════════════════════════════════════════════════════
+function broadcastTypeKb(): InlineKeyboard {
+  return addNavRow(
+    new InlineKeyboard()
+      .text("📝 Text", "admin:broadcast:text")
+      .text("🖼️ Photo", "admin:broadcast:photo")
+  );
+}
 
-/**
- * Main admin panel
- */
+function settingsKb(): InlineKeyboard {
+  const mm = isMaintenanceMode() ? "🔴 ON" : "🟢 OFF";
+  return addNavRow(
+    new InlineKeyboard()
+      .text(`${mm} Maintenance`, "admin:settings:maintenance")
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// 1. DASHBOARD
+// ══════════════════════════════════════════════════════════
+
 export async function adminHandler(ctx: BotContext): Promise<void> {
-  const telegramId = ctx.from?.id;
-  if (!telegramId || !isAdmin(telegramId)) {
-    await ctx.reply("⛔ *Access Denied*", { parse_mode: "Markdown" });
-    return;
-  }
+  if (!(await adminGuard(ctx))) return;
 
   const uptime = Math.floor((Date.now() - ((global as any).__START_TIME || Date.now())) / 1000);
-  const text = [
-    "🛡️ *Admin Panel*",
-    "",
-    `👤 Admin ID: \`${telegramId}\``,
-    `⏱️ Uptime: ${uptime}s`,
-    "",
-    "Select a module:",
-  ].join("\n");
+  const mmStatus = isMaintenanceMode() ? "🔴 ON" : "🟢 OFF";
 
-  await ctx.reply(text, {
-    parse_mode: "Markdown",
-    reply_markup: adminMainKeyboard(),
-  });
+  await ctx.reply(
+    [
+      "🛡️ *Admin Panel*",
+      "",
+      `👤 Admin ID: ${ctx.from!.id}`,
+      `⏱️ Uptime: ${uptime}s`,
+      `⚙️ Maintenance: ${mmStatus}`,
+      "",
+      "Select a module:",
+    ].join("\n"),
+    { parse_mode: "Markdown", reply_markup: mainMenuKb() }
+  );
 }
 
-/**
- * User management — list/search users
- */
+export async function adminDashboardHandler(ctx: BotContext): Promise<void> {
+  if (!(await adminGuard(ctx))) return;
+
+  try {
+    const s = await adminService.getStats();
+    const revenue = (s.totalRevenue / 100).toFixed(2);
+    await ctx.reply(
+      [
+        "📊 *Dashboard*",
+        "",
+        `👥 Total Users: ${s.totalUsers}`,
+        `🟢 Active Today: ${s.activeUsersToday}`,
+        `⭐ Premium: ${s.premiumUsers}`,
+        `💬 Total AI Requests: ${s.totalRequests.toLocaleString()}`,
+        `💰 Revenue: $${revenue}`,
+      ].join("\n"),
+      { parse_mode: "Markdown", reply_markup: mainMenuKb() }
+    );
+  } catch (error) {
+    log.error("Dashboard error", { error: String(error) });
+    await ctx.reply("❌ Error loading dashboard", { parse_mode: "Markdown", reply_markup: mainMenuKb() });
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// 2. USERS
+// ══════════════════════════════════════════════════════════
+
 export async function adminUsersHandler(ctx: BotContext): Promise<void> {
-  const telegramId = ctx.from?.id;
-  if (!telegramId || !isAdmin(telegramId)) return;
+  if (!(await adminGuard(ctx))) return;
 
   try {
     const { users, total } = await adminService.getUsers(1, 10);
     const lines = users.map((u, i) => {
       const name = `${u.firstName} ${u.lastName ?? ""}`.trim();
-      const premium = u.isPremium ? "⭐" : "🆓";
-      return `${i + 1}. ${premium} *${name}* — 🆔 \`${u.id}\`\n   📝 ${u._count.messages} msgs · 🕐 ${formatDate(u.lastActiveAt)}`;
+      const tag = u.isPremium ? "⭐" : "🆓";
+      return `${i + 1}. ${tag} ${name} — ID: ${u.id}\n   Telegram: ${u.telegramId} · ${formatDate(u.lastActiveAt)}`;
     });
 
-    const text = [
-      `👥 *Users* (${total} total)`,
-      "",
-      ...lines.slice(0, 10),
-      "",
-      "To search: Send a username or name",
-    ].join("\n");
-
-    const kb = addNavRow(new InlineKeyboard());
-    users.slice(0, 10).forEach((u) => {
-      kb.text(`👤 ${u.firstName.slice(0, 15)}`, `admin:user:detail:${u.id}`);
-      kb.row();
-    });
-
-    await ctx.reply(text, {
-      parse_mode: "Markdown",
-      reply_markup: kb,
-    });
+    await ctx.reply(
+      [
+        `👥 *Users* (${total} total)`,
+        "",
+        ...lines.slice(0, 10),
+        "",
+        "To search: /admin search [Telegram ID]",
+        "or /admin search @[username]",
+      ].join("\n"),
+      { parse_mode: "Markdown", reply_markup: mainMenuKb() }
+    );
   } catch (error) {
-    log.error("Admin users error", { error: String(error) });
-    await ctx.reply("❌ Error fetching users", { parse_mode: "Markdown" });
+    log.error("Users error", { error: String(error) });
+    await ctx.reply("❌ Error fetching users", { parse_mode: "Markdown", reply_markup: mainMenuKb() });
   }
 }
 
-/**
- * User detail view
- */
-export async function adminUserDetailHandler(ctx: BotContext, userId: number): Promise<void> {
-  const telegramId = ctx.from?.id;
-  if (!telegramId || !isAdmin(telegramId)) return;
+export async function adminUserSearchHandler(ctx: BotContext): Promise<void> {
+  if (!(await adminGuard(ctx))) return;
 
+  const match = ctx.message?.text?.match(/\/admin\s+search\s+(.+)/i);
+  const query = match?.[1]?.trim();
+  if (!query) {
+    await ctx.reply("Usage: /admin search [Telegram ID] or /admin search @[username]", {
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
+  try {
+    if (/^\d+$/.test(query)) {
+      const user = await userManagementService.getUserByTelegramId(BigInt(Number(query)));
+      if (user) return await showUserDetail(ctx, user.id);
+    }
+
+    const username = query.replace(/^@/, "");
+    const usersResult = await userManagementService.searchUsers(username, 1, 1);
+    if (usersResult.users.length > 0) {
+      return await showUserDetail(ctx, usersResult.users[0]!.id);
+    }
+
+    await ctx.reply("❌ User not found", { parse_mode: "Markdown" });
+  } catch (error) {
+    log.error("User search error", { query, error: String(error) });
+    await ctx.reply("❌ Search failed", { parse_mode: "Markdown" });
+  }
+}
+
+export async function adminUserDetailHandler(ctx: BotContext, userId: number): Promise<void> {
+  if (!(await adminGuard(ctx))) return;
+  await showUserDetail(ctx, userId);
+}
+
+async function showUserDetail(ctx: BotContext, userId: number): Promise<void> {
   try {
     const user = await userManagementService.getUserDetail(userId);
     if (!user) {
@@ -146,339 +225,371 @@ export async function adminUserDetailHandler(ctx: BotContext, userId: number): P
       return;
     }
 
-    const plan = user.subscription?.planType ?? "free";
-    const planEmoji = user.isPremium ? "⭐" : "🆓";
     const name = `${user.firstName} ${user.lastName ?? ""}`.trim();
-    const date = formatDate(user.createdAt);
+    const plan = user.subscription?.planType ?? "free";
+    const joined = formatDate(user.createdAt);
     const lastActive = formatDate(user.lastActiveAt);
+    const lang = user.settings?.language ?? user.languageCode ?? "—";
+    const isBanned = user.dailyLimit === 0;
 
-    const text = [
-      `👤 *${name}*`,
-      "",
-      `🆔 ID: \`${user.id}\``,
-      `📱 Telegram: \`${user.telegramId}\``,
-      `🌐 Username: ${user.username ?? "—"}`,
-      `🌍 Lang: ${user.languageCode ?? "—"}`,
-      "",
-      `${planEmoji} *Plan:* ${plan}`,
-      `📊 Daily: ${user.requestsToday} / ${user.dailyLimit}`,
-      `📈 Total: ${user.totalRequests} requests`,
-      "",
-      `💬 ${user._count.conversations} conversations`,
-      `📝 ${user._count.messages} messages`,
-      `📊 ${user._count.usage} usage events`,
-      `📁 ${user._count.projects} projects`,
-      "",
-      `📅 Joined: ${date}`,
-      `🕐 Last active: ${lastActive}`,
-    ].join("\n");
-
-    await ctx.reply(text, {
-      parse_mode: "Markdown",
-      reply_markup: adminUserActionsKeyboard(user.id),
-    });
+    await ctx.reply(
+      [
+        `👤 *${name}*`,
+        "",
+        `Telegram ID: ${user.telegramId}`,
+        `Username: ${user.username ?? "—"}`,
+        `Language: ${lang}`,
+        `Plan: ${plan}`,
+        `Joined: ${joined}`,
+        `Last: ${lastActive}`,
+        `Daily: ${user.requestsToday} / ${user.dailyLimit}`,
+        isBanned ? "🚫 *BANNED*" : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      {
+        parse_mode: "Markdown",
+        reply_markup: userActionsKb(user.id, user.isPremium, isBanned),
+      }
+    );
   } catch (error) {
-    log.error("Admin user detail error", { userId, error: String(error) });
-    await ctx.reply("❌ Error fetching user details", { parse_mode: "Markdown" });
+    log.error("User detail error", { userId, error: String(error) });
+    await ctx.reply("❌ Error loading user", { parse_mode: "Markdown" });
   }
 }
 
-/**
- * Toggle user premium
- */
-export async function adminUserPremiumHandler(ctx: BotContext, userId: number): Promise<void> {
-  const telegramId = ctx.from?.id;
-  if (!telegramId || !isAdmin(telegramId)) return;
-
+export async function adminUserGivePremiumHandler(ctx: BotContext, userId: number): Promise<void> {
+  if (!(await adminGuard(ctx))) return;
   try {
-    await userManagementService.togglePremium(userId, telegramId);
-    await ctx.reply("✅ Premium toggled!", { parse_mode: "Markdown" });
-    await adminUserDetailHandler(ctx, userId);
+    await premiumManagementService.grantPremium(userId, "pro_monthly", ctx.from!.id);
+    await ctx.reply("✅ *Premium granted!*", { parse_mode: "Markdown" });
+    await showUserDetail(ctx, userId);
   } catch (error) {
-    log.error("Admin toggle premium error", { userId, error: String(error) });
-    await ctx.reply("❌ Error toggling premium", { parse_mode: "Markdown" });
+    log.error("Give premium error", { userId, error: String(error) });
+    await ctx.reply("❌ Error granting premium", { parse_mode: "Markdown" });
   }
 }
 
-/**
- * Reset user daily counter
- */
+export async function adminUserRemovePremiumHandler(ctx: BotContext, userId: number): Promise<void> {
+  if (!(await adminGuard(ctx))) return;
+  try {
+    await premiumManagementService.revokePremium(userId, ctx.from!.id);
+    await ctx.reply("✅ *Premium removed!*", { parse_mode: "Markdown" });
+    await showUserDetail(ctx, userId);
+  } catch (error) {
+    log.error("Remove premium error", { userId, error: String(error) });
+    await ctx.reply("❌ Error removing premium", { parse_mode: "Markdown" });
+  }
+}
+
+export async function adminUserBanHandler(ctx: BotContext, userId: number): Promise<void> {
+  if (!(await adminGuard(ctx))) return;
+  try {
+    await userManagementService.banUser(userId, ctx.from!.id);
+    await ctx.reply("🚫 *User banned!*", { parse_mode: "Markdown" });
+    await showUserDetail(ctx, userId);
+  } catch (error) {
+    log.error("Ban user error", { userId, error: String(error) });
+    await ctx.reply("❌ Error banning user", { parse_mode: "Markdown" });
+  }
+}
+
+export async function adminUserUnbanHandler(ctx: BotContext, userId: number): Promise<void> {
+  if (!(await adminGuard(ctx))) return;
+  try {
+    await userManagementService.unbanUser(userId, ctx.from!.id);
+    await ctx.reply("✅ *User unbanned!*", { parse_mode: "Markdown" });
+    await showUserDetail(ctx, userId);
+  } catch (error) {
+    log.error("Unban user error", { userId, error: String(error) });
+    await ctx.reply("❌ Error unbanning user", { parse_mode: "Markdown" });
+  }
+}
+
 export async function adminUserResetHandler(ctx: BotContext, userId: number): Promise<void> {
-  const telegramId = ctx.from?.id;
-  if (!telegramId || !isAdmin(telegramId)) return;
-
+  if (!(await adminGuard(ctx))) return;
   try {
-    await userManagementService.resetUserDaily(userId, telegramId);
-    await ctx.reply("✅ Daily counter reset!", { parse_mode: "Markdown" });
-    await adminUserDetailHandler(ctx, userId);
+    await userManagementService.resetUserDaily(userId, ctx.from!.id);
+    await ctx.reply("✅ *Daily counter reset!*", { parse_mode: "Markdown" });
+    await showUserDetail(ctx, userId);
   } catch (error) {
-    log.error("Admin reset daily error", { userId, error: String(error) });
+    log.error("Reset daily error", { userId, error: String(error) });
     await ctx.reply("❌ Error resetting daily counter", { parse_mode: "Markdown" });
   }
 }
 
-/**
- * Premium management overview
- */
-export async function adminPremiumHandler(ctx: BotContext): Promise<void> {
-  const telegramId = ctx.from?.id;
-  if (!telegramId || !isAdmin(telegramId)) return;
+// ══════════════════════════════════════════════════════════
+// 3. PAYMENTS
+// ══════════════════════════════════════════════════════════
+
+export async function adminPaymentsHandler(ctx: BotContext): Promise<void> {
+  if (!(await adminGuard(ctx))) return;
 
   try {
-    const stats = await premiumManagementService.getPremiumStats();
+    // Batch all Prisma queries in parallel
+    const [pendingCount, approvedCount, rejectedCount, revenueResult, pendingPayments] =
+      await Promise.all([
+        prisma.payment.count({ where: { status: "PENDING" } }),
+        prisma.payment.count({ where: { status: "SUCCESS" } }),
+        prisma.payment.count({ where: { status: "FAILED" } }),
+        prisma.payment.aggregate({
+          _sum: { amount: true },
+          where: { status: "SUCCESS" },
+        }),
+        prisma.payment.findMany({
+          where: { status: "PENDING" },
+          orderBy: { createdAt: "desc" },
+          take: 5,
+          include: { user: { select: { firstName: true, username: true } } },
+        }),
+      ]);
+
+    const revenue = (revenueResult._sum.amount ?? 0) / 100;
+
     const text = [
-      "⭐ *Premium Management*",
+      "💳 *Payments Overview*",
       "",
-      `Total premium: ${stats.totalPremium}`,
+      `⏳ Pending: ${pendingCount.toLocaleString()}`,
+      `✅ Approved: ${approvedCount.toLocaleString()}`,
+      `❌ Rejected: ${rejectedCount.toLocaleString()}`,
+      `💰 Revenue: $${revenue.toFixed(2)}`,
       "",
-      "*By Plan:*",
-      ...stats.byPlan.map((p) => `  • ${p.plan}: ${p.count}`),
-      "",
-      "*By Billing:*",
-      ...stats.byBilling.map((b) => `  • ${b.period}: ${b.count}`),
-      "",
-      `Paid subscriptions: ${stats.paidSubscriptions}`,
+      pendingPayments.length > 0 ? "*Recent Pending:*" : "*No pending payments*",
+      ...pendingPayments.map((p, i) => {
+        const userName = p.user ? `${p.user.firstName} ${p.user.username ?? ""}`.trim() : `User #${p.userId}`;
+        return `${i + 1}. ${userName} — ${p.plan} (${p.provider})\n   ID: ${p.id.slice(0, 8)}... · ${formatDate(p.createdAt)}`;
+      }),
     ].join("\n");
 
-    const kb = addNavRow(
-      new InlineKeyboard()
-        .text("📋 Premium Users", "admin:premium:users")
+    const kb = new InlineKeyboard();
+    pendingPayments.slice(0, 3).forEach((p) => {
+      const short = p.id.slice(0, 8);
+      kb.text(`💳 ${short}...`, `admin:payment:detail:${p.id}`);
+      kb.row();
+    });
+
+    await ctx.reply(text, {
+      parse_mode: "Markdown",
+      reply_markup: pendingPayments.length > 0 ? addNavRow(kb) : mainMenuKb(),
+    });
+  } catch (error) {
+    log.error("Payments error", { error: String(error) });
+    await ctx.reply("❌ Error loading payments", { parse_mode: "Markdown", reply_markup: mainMenuKb() });
+  }
+}
+
+export async function adminPaymentDetailHandler(ctx: BotContext, paymentId: string): Promise<void> {
+  if (!(await adminGuard(ctx))) return;
+
+  try {
+    const payment = await paymentService.getPayment(paymentId);
+    if (!payment) {
+      await ctx.reply("❌ Payment not found", { parse_mode: "Markdown" });
+      return;
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: payment.userId },
+      select: { firstName: true, username: true },
+    });
+    const userName = user ? `${user.firstName} ${user.username ?? ""}`.trim() : `User #${payment.userId}`;
+
+    await ctx.reply(
+      [
+        "💳 *Payment Detail*",
+        "",
+        `👤 User: ${userName}`,
+        `🆔 User ID: ${payment.userId}`,
+        `📋 Plan: ${payment.plan}`,
+        `💳 Method: ${payment.provider}`,
+        `💰 Amount: $${(payment.amount / 100).toFixed(2)}`,
+        `📌 Status: *${payment.status}*`,
+        `📅 Date: ${formatDate(payment.createdAt)}`,
+        payment.paidAt ? `✅ Paid at: ${formatDate(payment.paidAt)}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      {
+        parse_mode: "Markdown",
+        reply_markup: payment.status === "PENDING" ? paymentActionsKb(paymentId) : mainMenuKb(),
+      }
     );
-
-    await ctx.reply(text, {
-      parse_mode: "Markdown",
-      reply_markup: kb,
-    });
   } catch (error) {
-    log.error("Admin premium error", { error: String(error) });
-    await ctx.reply("❌ Error fetching premium stats", { parse_mode: "Markdown" });
+    log.error("Payment detail error", { paymentId, error: String(error) });
+    await ctx.reply("❌ Error loading payment", { parse_mode: "Markdown" });
   }
 }
 
-/**
- * Premium users list
- */
-export async function adminPremiumUsersHandler(ctx: BotContext): Promise<void> {
-  const telegramId = ctx.from?.id;
-  if (!telegramId || !isAdmin(telegramId)) return;
-
+export async function adminPaymentApproveHandler(ctx: BotContext, paymentId: string): Promise<void> {
+  if (!(await adminGuard(ctx))) return;
   try {
-    const { users, total } = await premiumManagementService.getPremiumUsers(1, 10);
-    const lines = users.map((u, i) => {
-      const name = `${u.firstName} ${u.lastName ?? ""}`.trim();
-      const plan = u.subscription?.planType ?? "free";
-      const expiry = u.subscription?.expiresAt
-        ? `exp: ${formatDate(u.subscription.expiresAt)}`
-        : "no expiry";
-      return `${i + 1}. *${name}* — ${plan} (${expiry})`;
-    });
-
-    const text = [
-      `⭐ *Premium Users* (${total} total)`,
-      "",
-      ...(lines.length > 0 ? lines : ["No premium users found."]),
-    ].join("\n");
-
-    await ctx.reply(text, {
-      parse_mode: "Markdown",
-      reply_markup: addNavRow(new InlineKeyboard()),
-    });
+    await paymentService.verifyPayment({ sessionId: paymentId });
+    await ctx.reply("✅ *Payment approved! Premium activated.*", { parse_mode: "Markdown" });
+    await adminPaymentDetailHandler(ctx, paymentId);
   } catch (error) {
-    log.error("Admin premium users error", { error: String(error) });
-    await ctx.reply("❌ Error fetching premium users", { parse_mode: "Markdown" });
+    log.error("Payment approve error", { paymentId, error: String(error) });
+    await ctx.reply("❌ Error approving payment", { parse_mode: "Markdown" });
   }
 }
 
-/**
- * Quick statistics
- */
-export async function adminStatsHandler(ctx: BotContext): Promise<void> {
-  const telegramId = ctx.from?.id;
-  if (!telegramId || !isAdmin(telegramId)) return;
-
+export async function adminPaymentRejectHandler(ctx: BotContext, paymentId: string): Promise<void> {
+  if (!(await adminGuard(ctx))) return;
   try {
-    const stats = await adminService.getStats();
-    const text = [
-      "📊 *Quick Statistics*",
-      "",
-      `👥 Total users: ${stats.totalUsers}`,
-      `🟢 Active today: ${stats.activeUsersToday}`,
-      `⭐ Premium: ${stats.premiumUsers}`,
-      "",
-      `📝 Total messages: ${stats.totalRequests}`,
-      `📊 Today: ${stats.requestsToday}`,
-      "",
-      "*Top Features Today:*",
-      stats.topFeatures.length > 0
-        ? stats.topFeatures.map((f) => `  • ${f.feature}: ${f.count}`).join("\n")
-        : "  • No data yet",
-    ].join("\n");
-
-    await ctx.reply(text, {
-      parse_mode: "Markdown",
-      reply_markup: adminMainKeyboard(),
-    });
+    await paymentService.cancelPayment(paymentId);
+    await ctx.reply("❌ *Payment rejected.*", { parse_mode: "Markdown" });
+    await adminPaymentDetailHandler(ctx, paymentId);
   } catch (error) {
-    log.error("Admin stats error", { error: String(error) });
-    await ctx.reply("❌ Error fetching stats", { parse_mode: "Markdown" });
+    log.error("Payment reject error", { paymentId, error: String(error) });
+    await ctx.reply("❌ Error rejecting payment", { parse_mode: "Markdown" });
   }
 }
 
-/**
- * Analytics overview
- */
-export async function adminAnalyticsHandler(ctx: BotContext): Promise<void> {
-  const telegramId = ctx.from?.id;
-  if (!telegramId || !isAdmin(telegramId)) return;
+// ══════════════════════════════════════════════════════════
+// 4. BROADCAST — uses ctx.api (no bot import to avoid circular deps)
+// ══════════════════════════════════════════════════════════
 
-  try {
-    const overview = await analyticsService.getOverview();
-    const text = [
-      "📋 *Analytics Dashboard*",
-      "",
-      "*Users:*",
-      `  Total: ${overview.users.total}`,
-      `  Active today: ${overview.users.activeToday}`,
-      `  Active (7d): ${overview.users.activeThisWeek}`,
-      `  New today: ${overview.users.newToday}`,
-      "",
-      "*Usage:*",
-      `  Total: ${overview.usage.total}`,
-      `  Today: ${overview.usage.today}`,
-      `  This week: ${overview.usage.thisWeek}`,
-      `  This month: ${overview.usage.thisMonth}`,
-      "",
-      "*Features Today:*",
-      `  💬 Messages: ${overview.features.messagesToday}`,
-      `  🎨 Images: ${overview.features.imagesToday}`,
-      `  🎬 Videos: ${overview.features.videosToday}`,
-      "",
-      "*Premium:*",
-      `  Total: ${overview.premium.totalPremium}`,
-      `  Conversion: ${(overview.conversion.rate * 100).toFixed(1)}%`,
-      "",
-      "*Tokens:*",
-      `  In: ${overview.tokens.tokensIn.toLocaleString()}`,
-      `  Out: ${overview.tokens.tokensOut.toLocaleString()}`,
-      "",
-      `📅 Generated: ${formatDate(new Date(overview.generatedAt))}`,
-    ].join("\n");
-
-    await ctx.reply(text, {
-      parse_mode: "Markdown",
-      reply_markup: adminMainKeyboard(),
-    });
-  } catch (error) {
-    log.error("Admin analytics error", { error: String(error) });
-    await ctx.reply("❌ Error fetching analytics", { parse_mode: "Markdown" });
-  }
-}
-
-/**
- * Broadcast message
- */
 export async function adminBroadcastHandler(ctx: BotContext): Promise<void> {
-  const telegramId = ctx.from?.id;
-  if (!telegramId || !isAdmin(telegramId)) return;
+  if (!(await adminGuard(ctx))) return;
 
-  const text = [
-    "📢 *Broadcast Message*",
-    "",
-    "Send the message you want to broadcast to all users.",
-    "",
-    "The message will be sent to every registered user via their last active conversation.",
-  ].join("\n");
+  await ctx.reply(
+    ["📢 *Broadcast*", "", "Choose broadcast type:"].join("\n"),
+    { parse_mode: "Markdown", reply_markup: broadcastTypeKb() }
+  );
+}
 
-  sessionManager.setTempData(ctx.session, "adminMode", "broadcast");
-  await ctx.reply(text, {
+export async function adminBroadcastTextHandler(ctx: BotContext): Promise<void> {
+  if (!(await adminGuard(ctx))) return;
+  sessionManager.setTempData(ctx.session, "adminMode", "broadcast_text");
+  await ctx.reply("📝 *Send the text message to broadcast:*\n\nIt will be sent to all registered users.", {
     parse_mode: "Markdown",
   });
 }
 
-/**
- * Handle broadcast message text
- */
-export async function adminBroadcastSendHandler(ctx: BotContext): Promise<void> {
-  const telegramId = ctx.from?.id;
+export async function adminBroadcastPhotoHandler(ctx: BotContext): Promise<void> {
+  if (!(await adminGuard(ctx))) return;
+  sessionManager.setTempData(ctx.session, "adminMode", "broadcast_photo");
+  await ctx.reply("🖼️ *Send the photo with caption to broadcast:*\n\nIt will be sent to all registered users.", {
+    parse_mode: "Markdown",
+  });
+}
+
+export async function adminBroadcastSendTextHandler(ctx: BotContext): Promise<void> {
+  if (!(await adminGuard(ctx))) return;
+
   const text = ctx.message?.text;
-  if (!telegramId || !isAdmin(telegramId) || !text) return;
+  if (!text) return;
+
+  let sent = 0;
+  let failed = 0;
 
   try {
-    const count = await adminService.broadcast(text);
-    await logAdminAction(telegramId, "broadcast", `Broadcast to ${count} users: ${text.slice(0, 100)}`);
+    const users = await prisma.user.findMany({ select: { telegramId: true } });
 
-    await ctx.reply(`✅ *Broadcast sent!*\\n\\nReached ${count} users.`, {
-      parse_mode: "Markdown",
-      reply_markup: adminMainKeyboard(),
-    });
+    for (const u of users) {
+      try {
+        await ctx.api.sendMessage(Number(u.telegramId), text, {
+          parse_mode: "Markdown",
+          link_preview_options: { is_disabled: true },
+        });
+        sent++;
+      } catch {
+        failed++;
+      }
+      if (sent % 20 === 0) await new Promise((r) => setTimeout(r, 1000));
+    }
+
+    await logAdminAction(ctx.from!.id, "broadcast_text", `Sent to ${sent}, failed ${failed}`);
+    await ctx.reply(
+      `✅ *Broadcast complete!*\n\n📨 Sent: ${sent}\n❌ Failed: ${failed}\n👥 Total: ${users.length}`,
+      { parse_mode: "Markdown", reply_markup: mainMenuKb() }
+    );
   } catch (error) {
-    log.error("Admin broadcast error", { error: String(error) });
-    await ctx.reply("❌ Error sending broadcast", { parse_mode: "Markdown" });
+    log.error("Broadcast error", { error: String(error) });
+    await ctx.reply("❌ Error sending broadcast", { parse_mode: "Markdown", reply_markup: mainMenuKb() });
   }
 
   sessionManager.clearTempData(ctx.session);
 }
 
-/**
- * System health
- */
-export async function adminHealthHandler(ctx: BotContext): Promise<void> {
-  const telegramId = ctx.from?.id;
-  if (!telegramId || !isAdmin(telegramId)) return;
+export async function adminBroadcastSendPhotoHandler(ctx: BotContext): Promise<void> {
+  if (!(await adminGuard(ctx))) return;
+
+  const photo = ctx.message?.photo;
+  const caption = ctx.message?.caption ?? "";
+  if (!photo || photo.length === 0) {
+    await ctx.reply("❌ Please send a photo.", { parse_mode: "Markdown" });
+    return;
+  }
+
+  const fileId = photo[photo.length - 1]!.file_id;
+  let sent = 0;
+  let failed = 0;
 
   try {
-    const health = await systemHealthService.getFullHealth();
-    const emoji = health.status === "healthy" ? "✅" : health.status === "degraded" ? "⚠️" : "❌";
+    const users = await prisma.user.findMany({ select: { telegramId: true } });
 
-    const checks = Object.entries(health.checks).map(([key, check]) => {
-      const icon = check.status === "healthy" ? "✅" : check.status === "degraded" ? "⚠️" : "❌";
-      return `${icon} *${key}*: ${check.message}`;
-    });
+    for (const u of users) {
+      try {
+        await ctx.api.sendPhoto(Number(u.telegramId), fileId, {
+          caption: caption || undefined,
+          parse_mode: "Markdown",
+        });
+        sent++;
+      } catch {
+        failed++;
+      }
+      if (sent % 20 === 0) await new Promise((r) => setTimeout(r, 1000));
+    }
 
-    const text = [
-      `${emoji} *System Health* — ${health.status.toUpperCase()}`,
-      "",
-      `⏱️ Uptime: ${Math.floor(health.uptime / 60)}m ${health.uptime % 60}s`,
-      `📅 Generated: ${formatDate(new Date(health.timestamp))}`,
-      "",
-      ...checks,
-    ].join("\n");
-
-    await ctx.reply(text, {
-      parse_mode: "Markdown",
-      reply_markup: adminMainKeyboard(),
-    });
+    await logAdminAction(ctx.from!.id, "broadcast_photo", `Sent to ${sent}, failed ${failed}`);
+    await ctx.reply(
+      `✅ *Photo broadcast complete!*\n\n📨 Sent: ${sent}\n❌ Failed: ${failed}\n👥 Total: ${users.length}`,
+      { parse_mode: "Markdown", reply_markup: mainMenuKb() }
+    );
   } catch (error) {
-    log.error("Admin health error", { error: String(error) });
-    await ctx.reply("❌ Error checking system health", { parse_mode: "Markdown" });
+    log.error("Photo broadcast error", { error: String(error) });
+    await ctx.reply("❌ Error sending photo broadcast", { parse_mode: "Markdown", reply_markup: mainMenuKb() });
   }
+
+  sessionManager.clearTempData(ctx.session);
 }
 
-/**
- * Admin logs
- */
-export async function adminLogsHandler(ctx: BotContext): Promise<void> {
-  const telegramId = ctx.from?.id;
-  if (!telegramId || !isAdmin(telegramId)) return;
+// ══════════════════════════════════════════════════════════
+// 5. SETTINGS — Maintenance Mode
+// ══════════════════════════════════════════════════════════
 
-  try {
-    const logs = await adminService.getLogs(1, 10);
-    const lines = logs.map(
-      (l) => `• *${l.action}* — 🕐 ${formatDate(l.createdAt)}\\n   ${l.details.slice(0, 100)}`
-    );
+export async function adminSettingsHandler(ctx: BotContext): Promise<void> {
+  if (!(await adminGuard(ctx))) return;
 
-    const text = [
-      "📜 *Recent Admin Actions*",
+  const mm = isMaintenanceMode() ? "🔴 *ON*" : "🟢 *OFF*";
+  await ctx.reply(
+    [
+      "⚙️ *Admin Settings*",
       "",
-      ...(lines.length > 0 ? lines : ["No actions logged yet."]),
-    ].join("\n");
+      `🟢 Maintenance Mode: ${mm}`,
+      "",
+      "When enabled, normal users cannot use AI features.",
+      "They will see: 🚧 The bot is under maintenance.",
+      "Admins still have full access.",
+    ].join("\n"),
+    { parse_mode: "Markdown", reply_markup: settingsKb() }
+  );
+}
 
-    await ctx.reply(text, {
-      parse_mode: "Markdown",
-      reply_markup: adminMainKeyboard(),
-    });
-  } catch (error) {
-    log.error("Admin logs error", { error: String(error) });
-    await ctx.reply("❌ Error fetching logs", { parse_mode: "Markdown" });
-  }
+export async function adminSettingsMaintenanceHandler(ctx: BotContext): Promise<void> {
+  if (!(await adminGuard(ctx))) return;
+
+  const newState = !isMaintenanceMode();
+  setMaintenanceMode(newState);
+
+  await logAdminAction(ctx.from!.id, "maintenance", `Maintenance mode: ${newState ? "ON" : "OFF"}`);
+
+  await ctx.reply(
+    newState
+      ? "🔴 *Maintenance mode ENABLED*\n\nNormal users cannot access AI features."
+      : "🟢 *Maintenance mode DISABLED*\n\nAll users can access AI features.",
+    { parse_mode: "Markdown" }
+  );
+
+  await adminSettingsHandler(ctx);
 }

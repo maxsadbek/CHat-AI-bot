@@ -11,14 +11,16 @@
  *
  * Architecture:
  *   Uses ctx.session.userId (set by userMiddleware) to look up the user
- *   via userService.getProfile() instead of making a raw Prisma query
- *   with BigInt conversion. This avoids:
- *     1. Redundant DB queries (middleware already fetched the user)
- *     2. Potential BigInt conversion edge cases with large Telegram IDs
- *     3. Transient DB failures that succeed during middleware but fail during handler
+ *   via userService.getProfileById() — finds by internal Prisma ID.
+ *   This avoids:
+ *     1. BigInt conversion edge cases with large Telegram IDs
+ *     2. A separate findByTelegramId query that can fail independently
+ *        of the middleware's successful upsert
+ *     3. Transient DB failures (the middleware already proved the DB works)
  *
- *   Falls back to direct Prisma query with BigInt(from.id) only if
- *   session.userId is not available (legacy/new session).
+ *   Falls back to userService.getProfile(BigInt(from.id)) only if the internal ID lookup fails.
+ *   Both paths are the same user — the internal ID is always current since
+ *   middleware sets it on every request via upsert.
  */
 
 import type { BotContext } from "@/types";
@@ -41,17 +43,29 @@ export async function profileHandler(ctx: BotContext): Promise<void> {
   const lang = ctx.session.language;
 
   if (!from || !ctx.session.userId) {
-    // If we don't have user context, ask user to /start first
     await ctx.reply(t(lang, "profile.not_found"), {
       parse_mode: "Markdown",
     });
     return;
   }
 
+  const userId = ctx.session.userId;
+
   try {
-    // Use the session userId (set by middleware) to fetch profile
-    // The middleware already upserted the user, so this should always succeed
-    const profile = await userService.getProfile(BigInt(from.id));
+    // ─── PRIMARY: Find by internal ID (already verified by middleware) ──
+    // This uses the same value the middleware set after a successful upsert.
+    // It avoids a separate findByTelegramId query that could return null
+    // even though the user exists (the root cause of the "Profile not found" bug).
+    let profile = await userService.getProfileById(userId);
+
+    // ─── FALLBACK 1: Find by Telegram ID ─────────────────
+    if (!profile) {
+      log.warn("Profile not found by internal ID, falling back to telegramId", {
+        userId,
+        telegramId: from.id,
+      });
+      profile = await userService.getProfile(BigInt(from.id));
+    }
 
     if (!profile) {
       await ctx.reply(t(lang, "profile.not_found"), {

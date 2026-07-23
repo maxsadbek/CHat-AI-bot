@@ -40,10 +40,19 @@ export class UserService {
   }
 
   /**
-   * Get full profile for a user
+   * Get full profile for a user by Telegram ID
    */
   async getProfile(telegramId: bigint) {
     return await userRepository.findByTelegramId(telegramId);
+  }
+
+  /**
+   * Get full profile for a user by internal Prisma ID.
+   * PREFERRED: use this when ctx.session.userId is available.
+   * Avoids BigInt conversion and uses the value already verified by middleware.
+   */
+  async getProfileById(userId: number) {
+    return await userRepository.findById(userId);
   }
 
   /**

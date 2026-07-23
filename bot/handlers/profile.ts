@@ -1,8 +1,9 @@
 import type { BotContext } from "@/types";
 import { BotStep } from "@/types";
 import { prisma } from "@/lib/prisma";
-import { profileKeyboard, backToMainKeyboard } from "@/bot/keyboards";
+import { profileKeyboard } from "@/bot/keyboards";
 import { formatDate } from "@/utils/helpers";
+import { t } from "@/bot/localization";
 
 /**
  * Profile handler
@@ -12,6 +13,8 @@ export async function profileHandler(ctx: BotContext): Promise<void> {
   ctx.session.step = BotStep.PROFILE;
 
   const from = ctx.from;
+  const lang = ctx.session.language;
+
   if (!from) return;
 
   try {
@@ -29,10 +32,9 @@ export async function profileHandler(ctx: BotContext): Promise<void> {
     });
 
     if (!user) {
-      await ctx.reply(
-        "❌ *Profile not found*\n\nPlease use /start to create your profile.",
-        { parse_mode: "Markdown" }
-      );
+      await ctx.reply(t(lang, "profile.not_found"), {
+        parse_mode: "Markdown",
+      });
       return;
     }
 
@@ -40,29 +42,49 @@ export async function profileHandler(ctx: BotContext): Promise<void> {
     const usagePercent = Math.round(
       (user.requestsToday / user.dailyLimit) * 100
     );
+    const progressBar =
+      "▓".repeat(Math.floor(usagePercent / 10)) +
+      "░".repeat(10 - Math.floor(usagePercent / 10));
 
     const profileText = [
       "━━━━━━━━━━━━━━━━━━━━━",
-      "👤 *Your Profile*",
+      t(lang, "profile.title"),
       "━━━━━━━━━━━━━━━━━━━━━\n",
-      `*Name:* ${user.firstName} ${user.lastName ?? ""}`.trim(),
-      `*Username:* ${user.username ? "@" + user.username : "—"}`,
-      `*Status:* ${premiumStatus}`,
-      `*Member Since:* ${formatDate(user.createdAt)}\n`,
+      t(lang, "profile.name", {
+        name: `${user.firstName} ${user.lastName ?? ""}`.trim(),
+      }),
+      t(lang, "profile.username", {
+        username: user.username ? `@${user.username}` : "—",
+      }),
+      t(lang, "profile.status", { status: premiumStatus }),
+      t(lang, "profile.member_since", { date: formatDate(user.createdAt) }),
+      "\n",
       "━━━━━━━━━━━━━━━━━━━━━",
-      "📊 *Usage Statistics*",
+      t(lang, "profile.stats_title"),
       "━━━━━━━━━━━━━━━━━━━━━\n",
-      `*Today:* ${user.requestsToday} / ${user.dailyLimit} requests`,
-      `*Total:* ${user.totalRequests} requests`,
-      `*Progress:* ${"▓".repeat(Math.floor(usagePercent / 10))}${"░".repeat(10 - Math.floor(usagePercent / 10))} ${usagePercent}%\n`,
+      t(lang, "profile.today", {
+        used: String(user.requestsToday),
+        limit: String(user.dailyLimit),
+      }),
+      t(lang, "profile.total", { total: String(user.totalRequests) }),
+      t(lang, "profile.progress", {
+        bar: progressBar,
+        percent: String(usagePercent),
+      }),
+      "\n",
       "━━━━━━━━━━━━━━━━━━━━━",
-      "💬 *Activity*",
+      t(lang, "profile.activity_title"),
       "━━━━━━━━━━━━━━━━━━━━━\n",
-      `*Conversations:* ${user._count.conversations}`,
-      `*Messages:* ${user._count.messages}`,
-      `*Last Active:* ${formatDate(user.lastActiveAt)}\n`,
+      t(lang, "profile.conversations", {
+        count: String(user._count.conversations),
+      }),
+      t(lang, "profile.messages", {
+        count: String(user._count.messages),
+      }),
+      t(lang, "profile.last_active", { date: formatDate(user.lastActiveAt) }),
+      "\n",
       "━━━━━━━━━━━━━━━━━━━━━\n",
-      `_Need more requests? Upgrade to Premium!_ 🚀`,
+      t(lang, "profile.upgrade"),
     ].join("\n");
 
     await ctx.reply(profileText, {
@@ -71,12 +93,9 @@ export async function profileHandler(ctx: BotContext): Promise<void> {
     });
   } catch (error) {
     console.error("Profile error:", error);
-    await ctx.reply(
-      "❌ *Error loading profile*\n\nPlease try again later.",
-      {
-        parse_mode: "Markdown",
-        reply_markup: backToMainKeyboard,
-      }
-    );
+    await ctx.reply(t(lang, "profile.error"), {
+      parse_mode: "Markdown",
+      reply_markup: profileKeyboard,
+    });
   }
 }

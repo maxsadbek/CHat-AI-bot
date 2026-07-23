@@ -1,5 +1,6 @@
 import type { SessionData } from "@/types";
 import { BotStep } from "@/types";
+import { DEFAULT_LANGUAGE } from "@/bot/localization";
 
 /**
  * Create a fresh initial session state.
@@ -14,6 +15,8 @@ export function createFreshSession(
     conversationId: null,
     messages: [],
     tempData: {},
+    language: DEFAULT_LANGUAGE,
+    languageSelected: false,
     selectedVideoPlatform: "all",
     selectedImagePlatform: "all",
     selectedSocialPlatform: "all",
@@ -26,13 +29,17 @@ export function createFreshSession(
 /**
  * Reset the session to a clean IDLE state.
  * This should be called on /start, /cancel, /menu, and entering main menu.
+ * Preserves userId, language, and languageSelected preference.
  */
 export function resetSession(
   session: SessionData,
   keepUserId: boolean = true
 ): void {
   const userId = keepUserId ? session.userId : null;
-  const fresh = createFreshSession({ userId });
+  // Preserve language preferences across session resets
+  const language = session.language;
+  const languageSelected = session.languageSelected;
+  const fresh = createFreshSession({ userId, language, languageSelected });
   Object.assign(session, fresh);
 }
 

@@ -1,8 +1,9 @@
-import type { BotContext, BusinessContentType } from "@/types";
+import type { BotContext } from "@/types";
 import { BotStep } from "@/types";
 import { businessAIService } from "@/services/ai/business";
-import { businessKeyboard, backToMainKeyboard } from "@/bot/keyboards";
+import { businessKeyboard } from "@/bot/keyboards";
 import { clearModeData } from "@/bot/session";
+import { t } from "@/bot/localization";
 
 /**
  * Business AI handler
@@ -14,23 +15,12 @@ export async function businessHandler(ctx: BotContext): Promise<void> {
   ctx.session.selectedBusinessType = "startup_idea";
   ctx.session.step = BotStep.BUSINESS;
 
-  await ctx.reply(
-    "💼 *Business AI Studio*\n\n" +
-      "Generate:\n" +
-      "• 💡 Startup Ideas\n" +
-      "• 📋 Business Plans\n" +
-      "• 📈 Marketing Strategies\n" +
-      "• 🏷️ Brand Names\n" +
-      "• 📝 Slogans\n" +
-      "• 🎨 Logo Prompts\n" +
-      "• 🎨 Color Palettes\n" +
-      "• 🌐 Landing Page Copy\n\n" +
-      "_Choose a type or describe your business need below:_",
-    {
-      parse_mode: "Markdown",
-      reply_markup: businessKeyboard,
-    }
-  );
+  const lang = ctx.session.language;
+
+  await ctx.reply(t(lang, "business.welcome"), {
+    parse_mode: "Markdown",
+    reply_markup: businessKeyboard,
+  });
 }
 
 /**
@@ -41,32 +31,33 @@ export async function businessGenerateHandler(ctx: BotContext): Promise<void> {
   const text = ctx.message?.text;
   if (!text) return;
 
+  const lang = ctx.session.language;
   const type = ctx.session.selectedBusinessType ?? "startup_idea";
 
   await ctx.replyWithChatAction("typing");
-  const startMsg = await ctx.reply("💼 *Generating your business content...*", {
+  const startMsg = await ctx.reply(t(lang, "business.generating"), {
     parse_mode: "Markdown",
   });
 
   try {
     const result = await businessAIService.generate(text, type);
 
-    const response = `💼 *${type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}*\n\n${result.content}`;
+    const typeTitle = type
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (c: string) => c.toUpperCase());
+    const response = `${t(lang, "business.result_title", { type: typeTitle })}\n\n${result.content}`;
 
-    await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id);
+    await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
     await ctx.reply(response, {
       parse_mode: "Markdown",
       reply_markup: businessKeyboard,
     });
   } catch (error) {
     console.error("Business AI error:", error);
-    await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id);
-    await ctx.reply(
-      "❌ *Error generating business content*\n\nPlease try again.",
-      {
-        parse_mode: "Markdown",
-        reply_markup: backToMainKeyboard,
-      }
-    );
+    await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
+    await ctx.reply(t(lang, "business.error"), {
+      parse_mode: "Markdown",
+      reply_markup: businessKeyboard,
+    });
   }
 }

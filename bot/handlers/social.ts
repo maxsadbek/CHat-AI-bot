@@ -1,8 +1,9 @@
-import type { BotContext, SocialPlatform } from "@/types";
+import type { BotContext } from "@/types";
 import { BotStep } from "@/types";
 import { socialAIService } from "@/services/ai/social";
-import { socialKeyboard, backToMainKeyboard } from "@/bot/keyboards";
+import { socialKeyboard } from "@/bot/keyboards";
 import { clearModeData } from "@/bot/session";
+import { t } from "@/bot/localization";
 
 /**
  * Social Media handler
@@ -14,21 +15,12 @@ export async function socialHandler(ctx: BotContext): Promise<void> {
   ctx.session.selectedSocialPlatform = "all";
   ctx.session.step = BotStep.SOCIAL_MEDIA;
 
-  await ctx.reply(
-    "📱 *Social Media Studio*\n\n" +
-      "Generate engaging content for:\n" +
-      "• Instagram 📸\n" +
-      "• TikTok 🎵\n" +
-      "• Telegram ✈️\n" +
-      "• Facebook 📘\n" +
-      "• LinkedIn 💼\n" +
-      "• YouTube 🎥\n\n" +
-      "_Choose a platform or describe your content idea below:_",
-    {
-      parse_mode: "Markdown",
-      reply_markup: socialKeyboard,
-    }
-  );
+  const lang = ctx.session.language;
+
+  await ctx.reply(t(lang, "social.welcome"), {
+    parse_mode: "Markdown",
+    reply_markup: socialKeyboard,
+  });
 }
 
 /**
@@ -39,10 +31,11 @@ export async function socialGenerateHandler(ctx: BotContext): Promise<void> {
   const text = ctx.message?.text;
   if (!text) return;
 
+  const lang = ctx.session.language;
   const platform = ctx.session.selectedSocialPlatform ?? "all";
 
   await ctx.replyWithChatAction("typing");
-  const startMsg = await ctx.reply("📱 *Generating your social media content...*", {
+  const startMsg = await ctx.reply(t(lang, "social.generating"), {
     parse_mode: "Markdown",
   });
 
@@ -52,27 +45,24 @@ export async function socialGenerateHandler(ctx: BotContext): Promise<void> {
       platform === "all" ? undefined : platform
     );
 
-    let response = "📱 *Generated Social Media Content*\n\n";
+    let response = t(lang, "social.result_title");
     for (const content of contents) {
       response += `*${content.platform}*\n`;
       response += `${content.caption}\n\n`;
       response += "━━━━━━━━━━━━━━━━━━━━━\n\n";
     }
 
-    await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id);
+    await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
     await ctx.reply(response, {
       parse_mode: "Markdown",
       reply_markup: socialKeyboard,
     });
   } catch (error) {
     console.error("Social Media AI error:", error);
-    await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id);
-    await ctx.reply(
-      "❌ *Error generating social media content*\n\nPlease try again.",
-      {
-        parse_mode: "Markdown",
-        reply_markup: backToMainKeyboard,
-      }
-    );
+    await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
+    await ctx.reply(t(lang, "social.error"), {
+      parse_mode: "Markdown",
+      reply_markup: socialKeyboard,
+    });
   }
 }

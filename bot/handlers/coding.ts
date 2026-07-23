@@ -1,8 +1,9 @@
-import type { BotContext, CodeLanguage } from "@/types";
+import type { BotContext } from "@/types";
 import { BotStep } from "@/types";
 import { codingAIService } from "@/services/ai/coding";
-import { codingKeyboard, backToMainKeyboard } from "@/bot/keyboards";
+import { codingKeyboard } from "@/bot/keyboards";
 import { clearModeData } from "@/bot/session";
+import { t } from "@/bot/localization";
 
 /**
  * Coding AI handler
@@ -14,25 +15,12 @@ export async function codingHandler(ctx: BotContext): Promise<void> {
   ctx.session.selectedCodeLanguage = "Next.js";
   ctx.session.step = BotStep.CODING;
 
-  await ctx.reply(
-    "💻 *Coding AI Studio*\n\n" +
-      "Generate, debug, and explain code in:\n" +
-      "• 🌐 HTML\n" +
-      "• 🎨 CSS\n" +
-      "• ⚛️ React\n" +
-      "• ▲ Next.js\n" +
-      "• 🎨 Tailwind\n" +
-      "• 🟢 Node.js\n" +
-      "• 🚀 Express\n" +
-      "• 📊 Prisma\n" +
-      "• 🗄️ SQL\n" +
-      "• 🔌 API\n\n" +
-      "_Choose a language or describe what you want to build:_",
-    {
-      parse_mode: "Markdown",
-      reply_markup: codingKeyboard,
-    }
-  );
+  const lang = ctx.session.language;
+
+  await ctx.reply(t(lang, "coding.welcome"), {
+    parse_mode: "Markdown",
+    reply_markup: codingKeyboard,
+  });
 }
 
 /**
@@ -43,32 +31,30 @@ export async function codingGenerateHandler(ctx: BotContext): Promise<void> {
   const text = ctx.message?.text;
   if (!text) return;
 
+  const lang = ctx.session.language;
   const language = ctx.session.selectedCodeLanguage ?? "Next.js";
 
   await ctx.replyWithChatAction("typing");
-  const startMsg = await ctx.reply("💻 *Generating your code...*", {
+  const startMsg = await ctx.reply(t(lang, "coding.generating"), {
     parse_mode: "Markdown",
   });
 
   try {
     const result = await codingAIService.generate(text, language);
 
-    const response = `💻 *${language} Code*\n\n${result.code}`;
+    const response = `${t(lang, "coding.result_title", { language })}\n\n${result.code}`;
 
-    await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id);
+    await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
     await ctx.reply(response, {
       parse_mode: "Markdown",
       reply_markup: codingKeyboard,
     });
   } catch (error) {
     console.error("Coding AI error:", error);
-    await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id);
-    await ctx.reply(
-      "❌ *Error generating code*\n\nPlease try again with a different description.",
-      {
-        parse_mode: "Markdown",
-        reply_markup: backToMainKeyboard,
-      }
-    );
+    await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
+    await ctx.reply(t(lang, "coding.error"), {
+      parse_mode: "Markdown",
+      reply_markup: codingKeyboard,
+    });
   }
 }

@@ -2,6 +2,8 @@ import type { BotContext } from "@/types";
 import { BotStep } from "@/types";
 import { openai } from "@/lib/openai";
 import { env } from "@/config";
+import { clearModeData } from "@/bot/session";
+import { t } from "@/bot/localization";
 import { backToMainKeyboard } from "@/bot/keyboards";
 
 /**
@@ -9,27 +11,16 @@ import { backToMainKeyboard } from "@/bot/keyboards";
  * Provides AI-powered text translation between languages
  */
 export async function translateHandler(ctx: BotContext): Promise<void> {
+  clearModeData(ctx.session);
   ctx.session.step = BotStep.TRANSLATE;
   ctx.session.tempData.pendingTranslation = "";
 
-  await ctx.reply(
-    "🌍 *AI Translator*\n\n" +
-      "Translate text between any languages.\n\n" +
-      "_Send me text to translate in this format:_\n\n" +
-      "```\n" +
-      "Translate to [language]:\n" +
-      "[your text here]\n" +
-      "```\n\n" +
-      "_Or just send text and I'll ask you the target language._\n\n" +
-      "Examples:\n" +
-      '• `Translate to Spanish: Hello, how are you?`\n' +
-      '• `Translate to Japanese: I love programming`\n' +
-      '• `Translate to French: What time is it?`',
-    {
-      parse_mode: "Markdown",
-      reply_markup: backToMainKeyboard,
-    }
-  );
+  const lang = ctx.session.language;
+
+  await ctx.reply(t(lang, "translate.welcome"), {
+    parse_mode: "Markdown",
+    reply_markup: backToMainKeyboard,
+  });
 }
 
 /**
@@ -38,6 +29,8 @@ export async function translateHandler(ctx: BotContext): Promise<void> {
 export async function translateProcessHandler(ctx: BotContext): Promise<void> {
   const text = ctx.message?.text;
   if (!text) return;
+
+  const lang = ctx.session.language;
 
   // Parse language and text
   const translateMatch = text.match(
@@ -51,12 +44,9 @@ export async function translateProcessHandler(ctx: BotContext): Promise<void> {
     targetLanguage = translateMatch[1] ?? "English";
     sourceText = translateMatch[2]?.trim() ?? text;
   } else {
-    await ctx.reply(
-      "🌍 *Target Language?*\n\n" +
-        "What language should I translate this to?\n" +
-        "Send the language name (e.g., Spanish, French, Japanese)",
-      { parse_mode: "Markdown" }
-    );
+    await ctx.reply(t(lang, "translate.ask_language"), {
+      parse_mode: "Markdown",
+    });
     // Store text for later
     ctx.session.tempData.pendingTranslation = text;
     return;
@@ -85,25 +75,23 @@ export async function translateProcessHandler(ctx: BotContext): Promise<void> {
     const translated = completion.choices[0]?.message?.content;
     if (!translated) throw new Error("No translation");
 
-    const response = [
-      "🌍 *Translation*\n",
-      `*From:* ${sourceText}\n`,
-      `*To (${targetLanguage}):* ${translated}`,
-    ].join("\n");
-
-    await ctx.reply(response, {
-      parse_mode: "Markdown",
-      reply_markup: backToMainKeyboard,
-    });
-  } catch (error) {
-    console.error("Translate error:", error);
     await ctx.reply(
-      "❌ *Error translating text*\n\nPlease try again.",
+      t(lang, "translate.result", {
+        source: sourceText,
+        language: targetLanguage,
+        translated,
+      }),
       {
         parse_mode: "Markdown",
         reply_markup: backToMainKeyboard,
       }
     );
+  } catch (error) {
+    console.error("Translate error:", error);
+    await ctx.reply(t(lang, "translate.error"), {
+      parse_mode: "Markdown",
+      reply_markup: backToMainKeyboard,
+    });
   }
 }
 
@@ -113,6 +101,8 @@ export async function translateProcessHandler(ctx: BotContext): Promise<void> {
 export async function translateLanguageHandler(ctx: BotContext): Promise<void> {
   const text = ctx.message?.text;
   const pendingText = ctx.session.tempData.pendingTranslation;
+  const lang = ctx.session.language;
+
   if (!text || !pendingText) {
     await translateHandler(ctx);
     return;
@@ -141,27 +131,24 @@ export async function translateLanguageHandler(ctx: BotContext): Promise<void> {
     const translated = completion.choices[0]?.message?.content;
     if (!translated) throw new Error("No translation");
 
-    const response = [
-      "🌍 *Translation*\n",
-      `*From:* ${pendingText}\n`,
-      `*To (${text}):* ${translated}`,
-    ].join("\n");
-
     // Clear pending translation after successful processing
     ctx.session.tempData.pendingTranslation = "";
 
-    await ctx.reply(response, {
-      parse_mode: "Markdown",
-      reply_markup: backToMainKeyboard,
-    });
-  } catch (error) {
-    console.error("Translate error:", error);
     await ctx.reply(
-      "❌ *Error translating text*\n\nPlease try again.",
+      t(lang, "translate.result", {
+        source: pendingText,
+        language: text,
+        translated,
+      }),
       {
         parse_mode: "Markdown",
         reply_markup: backToMainKeyboard,
       }
     );
+  } catch (error) {
+    console.error("Translate error:", error);
+    await ctx.reply(t(lang, "translate.error"), {
+      parse_mode: "Markdown",
+    });
   }
 }

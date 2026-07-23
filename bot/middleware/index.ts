@@ -5,6 +5,7 @@ import { rateLimiter } from "@/utils/rate-limit";
 import { prisma } from "@/lib/prisma";
 import { env } from "@/config";
 import { createFreshSession } from "@/bot/session";
+import { t, resolveLanguage } from "@/bot/localization";
 
 /**
  * Initialize session data for new users
@@ -27,14 +28,13 @@ export async function rateLimitMiddleware(
     return;
   }
 
-  const { allowed, remaining } = rateLimiter.check(`user:${userId}`);
+  const lang = ctx.session?.language ?? "en";
+  const { allowed } = rateLimiter.check(`user:${userId}`);
 
   if (!allowed) {
-    await ctx.reply(
-      "⚠️ *Rate Limit Reached*\\n\\nPlease wait a moment before sending another request.\\n\\n" +
-        "This helps us maintain quality service for everyone.",
-      { parse_mode: "Markdown" }
-    );
+    await ctx.reply(t(lang, "errors.rate_limit"), {
+      parse_mode: "Markdown",
+    });
     return;
   }
 
@@ -45,6 +45,7 @@ export async function rateLimitMiddleware(
  * User tracking middleware
  * Creates/updates user in database and tracks activity
  * Stores the Prisma user ID in session for downstream handlers
+ * Also loads user's language preference into session
  * Retries once on failure to handle transient DB issues
  */
 export async function userMiddleware(
@@ -85,6 +86,23 @@ export async function userMiddleware(
       // Store the Prisma user ID in session for downstream handlers
       ctx.session.userId = user.id;
       lastError = null;
+
+      // Load user's language preference from DB settings
+      try {
+        const settings = await prisma.userSettings.findUnique({
+          where: { userId: user.id },
+        });
+        if (settings?.language) {
+          ctx.session.language = resolveLanguage(
+            settings.language as any,
+            null
+          );
+          ctx.session.languageSelected = true;
+        }
+      } catch {
+        // Non-critical, continue with default language
+      }
+
       break;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -121,6 +139,8 @@ export async function checkDailyLimit(
     return;
   }
 
+  const lang = ctx.session?.language ?? "en";
+
   try {
     const user = await prisma.user.findUnique({
       where: { telegramId: BigInt(from.id) },
@@ -130,10 +150,10 @@ export async function checkDailyLimit(
       const isAdmin = env.ADMIN_IDS.includes(from.id);
       if (!isAdmin) {
         await ctx.reply(
-          "⚠️ *Daily Limit Reached*\\n\\n" +
-            `You've used ${user.requestsToday}/${user.dailyLimit} requests today.\\n\\n` +
-            "Your limit resets at midnight UTC.\\n\\n" +
-            "Upgrade to Premium for higher limits! 🚀",
+          t(lang, "errors.daily_limit", {
+            used: String(user.requestsToday),
+            limit: String(user.dailyLimit),
+          }),
           { parse_mode: "Markdown" }
         );
         return;

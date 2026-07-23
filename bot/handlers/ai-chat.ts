@@ -1,9 +1,10 @@
 import type { BotContext } from "@/types";
 import { BotStep } from "@/types";
 import { aiChatService } from "@/services/ai/chat";
-import { chatKeyboard, backToMainKeyboard } from "@/bot/keyboards";
+import { chatKeyboard } from "@/bot/keyboards";
 import { splitMessage } from "@/utils/markdown";
 import { prisma } from "@/lib/prisma";
+import { t } from "@/bot/localization";
 
 /**
  * AI Chat handler
@@ -13,13 +14,14 @@ export async function aiChatHandler(ctx: BotContext): Promise<void> {
   const text = ctx.message?.text;
   if (!text) return;
 
+  const lang = ctx.session.language;
+
   // Ensure user exists in DB (userMiddleware should have already created them)
   const userId = ctx.session.userId;
   if (!userId) {
-    await ctx.reply(
-      "❌ *Error*\n\nCould not identify your account. Please use /start first.",
-      { parse_mode: "Markdown" }
-    );
+    await ctx.reply(t(lang, "chat.error_no_user"), {
+      parse_mode: "Markdown",
+    });
     return;
   }
 
@@ -92,19 +94,18 @@ export async function aiChatHandler(ctx: BotContext): Promise<void> {
     for (const chunk of chunks) {
       await ctx.reply(chunk, {
         parse_mode: "Markdown",
-        reply_markup: chunks.indexOf(chunk) === chunks.length - 1 ? chatKeyboard : undefined,
+        reply_markup:
+          chunks.indexOf(chunk) === chunks.length - 1
+            ? chatKeyboard
+            : undefined,
       });
     }
   } catch (error) {
     console.error("AI Chat error:", error);
-    await ctx.reply(
-      "❌ *Error*\n\nSorry, I encountered an error. Please try again.\n\n" +
-        "Make sure your OpenAI API key is configured correctly.",
-      {
-        parse_mode: "Markdown",
-        reply_markup: backToMainKeyboard,
-      }
-    );
+    await ctx.reply(t(lang, "chat.error_generic"), {
+      parse_mode: "Markdown",
+      reply_markup: chatKeyboard,
+    });
   }
 }
 
@@ -114,16 +115,14 @@ export async function aiChatHandler(ctx: BotContext): Promise<void> {
 export async function newChatHandler(ctx: BotContext): Promise<void> {
   ctx.session.conversationId = null;
   ctx.session.messages = [];
+  ctx.session.step = BotStep.AI_CHAT;
 
-  await ctx.reply(
-    "🔄 *New Chat Started*\n\n" +
-      "I've cleared our conversation history.\n" +
-      "Send me a message to start fresh! 💬",
-    {
-      parse_mode: "Markdown",
-      reply_markup: chatKeyboard,
-    }
-  );
+  const lang = ctx.session.language;
+
+  await ctx.reply(t(lang, "chat.new_chat"), {
+    parse_mode: "Markdown",
+    reply_markup: chatKeyboard,
+  });
 }
 
 /**
@@ -131,11 +130,12 @@ export async function newChatHandler(ctx: BotContext): Promise<void> {
  */
 export async function chatHistoryHandler(ctx: BotContext): Promise<void> {
   const userId = ctx.session.userId;
+  const lang = ctx.session.language;
+
   if (!userId) {
-    await ctx.reply(
-      "❌ *Error*\n\nCould not identify your account.",
-      { parse_mode: "Markdown" }
-    );
+    await ctx.reply(t(lang, "chat.error_no_user"), {
+      parse_mode: "Markdown",
+    });
     return;
   }
 
@@ -153,10 +153,10 @@ export async function chatHistoryHandler(ctx: BotContext): Promise<void> {
   });
 
   if (conversations.length === 0) {
-    await ctx.reply(
-      "📋 *No conversations yet*\n\nStart chatting and your history will appear here!",
-      { parse_mode: "Markdown", reply_markup: chatKeyboard }
-    );
+    await ctx.reply(t(lang, "chat.no_history"), {
+      parse_mode: "Markdown",
+      reply_markup: chatKeyboard,
+    });
     return;
   }
 
@@ -166,13 +166,16 @@ export async function chatHistoryHandler(ctx: BotContext): Promise<void> {
         conv: { title: string; _count: { messages: number }; updatedAt: Date },
         i: number
       ) =>
-        `${i + 1}. ${conv.title}\n` +
-        `   💬 ${conv._count.messages} messages\n` +
-        `   🕐 ${conv.updatedAt.toLocaleDateString()}`
+        t(lang, "chat.history_entry", {
+          index: String(i + 1),
+          title: conv.title,
+          count: String(conv._count.messages),
+          date: conv.updatedAt.toLocaleDateString(),
+        })
     )
     .join("\n\n");
 
-  await ctx.reply(`📋 *Chat History*\n\n${historyText}`, {
+  await ctx.reply(`${t(lang, "chat.history_title")}\n\n${historyText}`, {
     parse_mode: "Markdown",
     reply_markup: chatKeyboard,
   });

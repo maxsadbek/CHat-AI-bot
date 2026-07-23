@@ -1,14 +1,16 @@
 import type { BotContext } from "@/types";
 import { BotStep } from "@/types";
-import { mainMenuKeyboard } from "@/bot/keyboards";
+import { mainMenuKeyboard, languageKeyboard } from "@/bot/keyboards";
 import { formatDate } from "@/utils/helpers";
 import { config } from "@/config";
 import { resetSession } from "@/bot/session";
+import { t } from "@/bot/localization";
 
 /**
  * /start command handler
- * Shows a premium welcome message with animated emojis and inline keyboard
+ * Shows a premium welcome message with animated emojis and inline keyboard.
  * ALWAYS fully resets the user session before showing the main menu.
+ * If user hasn't selected a language yet, shows language selection first.
  */
 export async function startHandler(ctx: BotContext): Promise<void> {
   const firstName = ctx.from?.first_name ?? "there";
@@ -16,26 +18,31 @@ export async function startHandler(ctx: BotContext): Promise<void> {
 
   // ─── Full session reset ───────────────────────────
   // Clear any stale mode data, conversation state, tempData
-  // Keep userId intact so downstream handlers can identify the user
+  // Keep userId and language preferences intact
   resetSession(ctx.session, true);
+
+  // ─── Language Selection for New Users ────────────
+  // If user hasn't selected a language yet, show language picker first
+  if (!ctx.session.languageSelected) {
+    ctx.session.step = BotStep.LANGUAGE;
+    await ctx.reply(t(ctx.session.language, "language.select"), {
+      parse_mode: "Markdown",
+      reply_markup: languageKeyboard(),
+    });
+    return;
+  }
+
+  const lang = ctx.session.language;
 
   // Welcome message with premium formatting
   const welcomeMessage = [
-    `✨ *Welcome to AI Creator Studio!* ✨\n`,
-    `Hey ${firstName}! 👋\n`,
-    `Your all-in-one AI platform for:\n\n` +
-      `🤖 *AI Chat* — Smart conversations\n` +
-      `🎬 *Video AI* — Cinematic prompts\n` +
-      `🎨 *Image AI* — Stunning visuals\n` +
-      `📱 *Social Media* — Viral content\n` +
-      `💻 *Coding* — Production code\n` +
-      `💼 *Business* — Growth strategies\n` +
-      `🌍 *Translate* — Global reach\n`,
+    `${t(lang, "welcome.title")}\n`,
+    `${t(lang, "welcome.greeting", { name: firstName })}\n`,
+    `${t(lang, "welcome.description")}\n`,
     `━━━━━━━━━━━━━━━━━━━━━\n`,
-    `🚀 *Ready to create something amazing?*\n`,
-    `Choose a feature below 👇`,
+    `${t(lang, "welcome.cta")}`,
     `\n━━━━━━━━━━━━━━━━━━━━━`,
-    `\n📅 ${formatDate(now)}`,
+    `\n${t(lang, "welcome.date", { date: formatDate(now) })}`,
   ].join("\n");
 
   // Send welcome message with photo (if available) or text only

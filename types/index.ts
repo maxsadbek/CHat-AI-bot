@@ -1,4 +1,5 @@
 import type { Context, SessionFlavor } from "grammy";
+import type { SupportedLanguage } from "@/bot/localization";
 
 // ─── Session ────────────────────────────────────────────
 
@@ -11,6 +12,10 @@ export interface SessionData {
     content: string;
   }>;
   tempData: Record<string, string>;
+  /** User's selected language for UI */
+  language: SupportedLanguage;
+  /** Whether user has completed language selection */
+  languageSelected: boolean;
   /** Currently selected video platform for isolated mode */
   selectedVideoPlatform: VideoPlatform | "all";
   /** Currently selected image platform for isolated mode */
@@ -38,6 +43,8 @@ export enum BotStep {
   TRANSLATE = "translate",
   PROFILE = "profile",
   HELP = "help",
+  LANGUAGE = "language",
+  SETTINGS = "settings",
 }
 
 // ─── AI Service Types ────────────────────────────────────

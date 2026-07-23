@@ -1,4 +1,6 @@
 import { InlineKeyboard } from "grammy";
+import type { SupportedLanguage } from "@/bot/localization";
+import { LANGUAGE_FLAGS } from "@/bot/localization";
 
 /**
  * Main menu keyboard shown on /start
@@ -15,7 +17,7 @@ export const mainMenuKeyboard = new InlineKeyboard()
   .text("💼 Business", "feature:business")
   .row()
   .text("🌍 Translate", "feature:translate")
-  .text("⚙️ Profile", "feature:profile")
+  .text("⚙️ Settings", "feature:settings")
   .row()
   .text("❓ Help", "feature:help");
 
@@ -130,6 +132,25 @@ export const backToMainKeyboard = new InlineKeyboard().text(
   "🏠 Main Menu",
   "menu:main"
 );
+
+/**
+ * Language selection keyboard
+ */
+export function languageKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text(`${LANGUAGE_FLAGS.uz} O'zbekcha`, "lang:uz")
+    .text(`${LANGUAGE_FLAGS.en} English`, "lang:en")
+    .row()
+    .text(`${LANGUAGE_FLAGS.ru} Русский`, "lang:ru");
+}
+
+/**
+ * Settings keyboard
+ */
+export const settingsKeyboard = new InlineKeyboard()
+  .text("🌍 Change Language", "settings:language")
+  .row()
+  .text("🏠 Main Menu", "menu:main");
 
 /**
  * Confirmation keyboard

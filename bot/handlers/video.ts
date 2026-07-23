@@ -1,9 +1,10 @@
-import type { BotContext, VideoPlatform } from "@/types";
+import type { BotContext } from "@/types";
 import { BotStep } from "@/types";
 import { videoAIService } from "@/services/ai/video";
-import { videoKeyboard, backToMainKeyboard } from "@/bot/keyboards";
+import { videoKeyboard } from "@/bot/keyboards";
 import { prisma } from "@/lib/prisma";
 import { clearModeData } from "@/bot/session";
+import { t } from "@/bot/localization";
 
 /**
  * Video AI handler
@@ -16,20 +17,12 @@ export async function videoHandler(ctx: BotContext): Promise<void> {
   ctx.session.selectedVideoPlatform = "all";
   ctx.session.step = BotStep.VIDEO_PROMPT;
 
-  await ctx.reply(
-    "🎬 *Video AI Studio*\n\n" +
-      "Generate professional prompts for:\n" +
-      "• Hailuo AI\n" +
-      "• Kling AI\n" +
-      "• Google Veo\n" +
-      "• Runway\n" +
-      "• PixVerse\n\n" +
-      "_Choose a platform or describe your video idea below:_",
-    {
-      parse_mode: "Markdown",
-      reply_markup: videoKeyboard,
-    }
-  );
+  const lang = ctx.session.language;
+
+  await ctx.reply(t(lang, "video.welcome"), {
+    parse_mode: "Markdown",
+    reply_markup: videoKeyboard,
+  });
 }
 
 /**
@@ -41,10 +34,11 @@ export async function videoGenerateHandler(ctx: BotContext): Promise<void> {
   const text = ctx.message?.text;
   if (!text) return;
 
+  const lang = ctx.session.language;
   const platform = ctx.session.selectedVideoPlatform ?? "all";
 
   await ctx.replyWithChatAction("typing");
-  const startMsg = await ctx.reply("🎬 *Generating your video prompts...*", {
+  const startMsg = await ctx.reply(t(lang, "video.generating"), {
     parse_mode: "Markdown",
   });
 
@@ -54,7 +48,7 @@ export async function videoGenerateHandler(ctx: BotContext): Promise<void> {
       platform === "all" ? undefined : platform
     );
 
-    let response = "🎬 *Generated Video Prompts*\n\n";
+    let response = t(lang, "video.result_title");
     for (const prompt of prompts) {
       response += `*${prompt.platform}*\n`;
       response += `${prompt.fullPrompt}\n\n`;
@@ -79,7 +73,9 @@ export async function videoGenerateHandler(ctx: BotContext): Promise<void> {
             feature: "video",
           },
         });
-      } catch {}
+      } catch {
+        // Non-critical
+      }
 
       // Update user request count
       try {
@@ -90,17 +86,16 @@ export async function videoGenerateHandler(ctx: BotContext): Promise<void> {
             totalRequests: { increment: 1 },
           },
         });
-      } catch {}
+      } catch {
+        // Non-critical
+      }
     }
   } catch (error) {
     console.error("Video AI error:", error);
-    await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id);
-    await ctx.reply(
-      "❌ *Error generating video prompts*\n\nPlease try again with a different description.",
-      {
-        parse_mode: "Markdown",
-        reply_markup: backToMainKeyboard,
-      }
-    );
+    await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
+    await ctx.reply(t(lang, "video.error"), {
+      parse_mode: "Markdown",
+      reply_markup: videoKeyboard,
+    });
   }
 }

@@ -4,10 +4,19 @@ import { socialAIService } from "@/services/ai/social";
 import { socialKeyboard } from "@/bot/keyboards";
 import { clearModeData } from "@/bot/session";
 import { t } from "@/bot/localization";
+import { logger } from "@/bot/core/logger";
+import { usageService } from "@/services/usage";
+import { providerRegistry } from "@/services/ai/providers";
+import {
+  createConversation,
+  saveMessagesToDb,
+} from "@/bot/handlers/history";
+
+const log = logger.child("handler-social");
 
 /**
  * Social Media handler
- * Generates platform-optimized social media content
+ * Generates platform-optimized social media content.
  * Clears stale mode data and sets step to SOCIAL_MEDIA.
  */
 export async function socialHandler(ctx: BotContext): Promise<void> {
@@ -25,7 +34,7 @@ export async function socialHandler(ctx: BotContext): Promise<void> {
 
 /**
  * Handle social media content generation
- * Uses the currently selected platform stored in session (selectedSocialPlatform).
+ * Creates conversation history, saves to DB, and tracks usage like other features.
  */
 export async function socialGenerateHandler(ctx: BotContext): Promise<void> {
   const text = ctx.message?.text;
@@ -33,6 +42,22 @@ export async function socialGenerateHandler(ctx: BotContext): Promise<void> {
 
   const lang = ctx.session.language;
   const platform = ctx.session.selectedSocialPlatform ?? "all";
+  const userId = ctx.session.userId;
+
+  if (!userId) return;
+
+  // Create conversation if not exists — consistent with other features
+  if (!ctx.session.conversationId) {
+    const platformLabel = platform === "all" ? "All Platforms" : platform;
+    const title = `Social (${platformLabel}): ${text.slice(0, 70)}`;
+    const created = await createConversation(ctx, title, "social");
+    if (!created) {
+      await ctx.reply(t(lang, "social.limit_reached"), {
+        parse_mode: "Markdown",
+      });
+      return;
+    }
+  }
 
   await ctx.replyWithChatAction("typing");
   const startMsg = await ctx.reply(t(lang, "social.generating"), {
@@ -54,13 +79,27 @@ export async function socialGenerateHandler(ctx: BotContext): Promise<void> {
       response += "━━━━━━━━━━━━━━━━━━━━━\n\n";
     }
 
+    // Store in session (consistent with other features)
+    ctx.session.messages.push({ role: "user", content: text });
+    ctx.session.messages.push({ role: "assistant", content: response });
+
+    // Save to database (consistent with other features)
+    await saveMessagesToDb(ctx, "social");
+
+    // Track usage (consistent with other features)
+    const selectedModel = ctx.session.selectedModel;
+    const providerName = selectedModel
+      ? providerRegistry.getModel(selectedModel)?.provider
+      : undefined;
+    usageService.track(userId, "social", 0, 0, providerName, selectedModel);
+
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
     await ctx.reply(response, {
       parse_mode: "Markdown",
       reply_markup: socialKeyboard,
     });
   } catch (error) {
-    console.error("Social Media AI error:", error);
+    log.error("Social Media AI error", { userId, error: String(error) });
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
     await ctx.reply(t(lang, "social.error"), {
       parse_mode: "Markdown",

@@ -111,9 +111,8 @@ import {
   settingsClearHandler,
   settingsPrivacyHandler,
   settingsAboutHandler,
-} from "@/bot/handlers/settings";
-import {
-  adminHandler,
+} from "@/bot/handlers/settings";import { isAdmin } from "@/services/admin/admin-guard";
+import { adminHandler,
   adminDashboardHandler,
   adminUsersHandler,
   adminUserSearchHandler,
@@ -224,7 +223,6 @@ async function handleFeatureSwitch(ctx: BotContext, feature: string): Promise<vo
   // Check maintenance mode — block non-admins
   if (isMaintenanceMode()) {
     const tid = ctx.from?.id;
-    const { isAdmin } = await import("@/services/admin/admin-guard");
     if (tid && !isAdmin(tid)) {
       await ctx.reply("🚧 *The bot is currently under maintenance. Please try again later.*", {
         parse_mode: "Markdown",
@@ -257,20 +255,34 @@ export function createBot(): Bot<BotContext> {
 
   // ─── 2. Global Middleware ──────────────────────────
   registerMiddleware(bot);
+
+  // Warn about session storage in serverless environments
+  // grammY's default in-memory session does NOT persist across
+  // serverless function invocations. For production deployments
+  // on Vercel/Netlify, implement a database-backed storage adapter.
+  if (env.isProd) {
+    log.warn("Using in-memory session storage — sessions will reset on cold starts. For production serverless deployments, add a persistent session adapter (e.g., Prisma/Redis).");
+  }
+
   log.info("Bot initializing...", { model: env.OPENAI_MODEL });
 
   // ════════════════════════════════════════════════════════
   // 3. COMMANDS
   // ════════════════════════════════════════════════════════
 
-  // Admin search — registered BEFORE admin command so /admin search works
-  bot.hears(/^\/admin\s+search/i, async (ctx) => {
-    await adminUserSearchHandler(ctx);
-  });
-
   // System commands
   bot.command("start", startHandler);
-  bot.command("admin", adminHandler);
+  bot.command("admin", async (ctx) => {
+    // Parse arguments for search (/admin search [query])
+    const text = ctx.message?.text ?? "";
+    const searchMatch = text.match(/^\/admin\s+search\s+(.+)/i);
+    if (searchMatch) {
+      // adminUserSearchHandler re-parses the text — no need to reassign
+      await adminUserSearchHandler(ctx);
+      return;
+    }
+    await adminHandler(ctx);
+  });
 
   bot.command("menu", async (ctx) => {
     resetSession(ctx.session, true);
@@ -882,7 +894,6 @@ export function createBot(): Bot<BotContext> {
         // This prevents the confusing "your message was sent to AI Chat" behavior
         if (isMaintenanceMode()) {
           const tid = ctx.from?.id;
-          const { isAdmin } = await import("@/services/admin/admin-guard");
           if (tid && !isAdmin(tid)) {
             await ctx.reply("🚧 *The bot is currently under maintenance. Please try again later.*", {
               parse_mode: "Markdown",
@@ -899,11 +910,18 @@ export function createBot(): Bot<BotContext> {
     }
   });
 
-  // ─── Photo Messages (for admin broadcast) ────────
+  // ─── Photo Messages (admin broadcast only) ────────
   bot.on("message:photo", async (ctx) => {
+    // Only process photos when admin broadcast mode is active AND user is admin
     if (ctx.session.tempData?.adminMode === "broadcast_photo") {
-      await adminBroadcastSendPhotoHandler(ctx);
+      const tid = ctx.from?.id;
+      if (tid && isAdmin(tid)) {
+        await adminBroadcastSendPhotoHandler(ctx);
+        return;
+      }
     }
+    // Non-admin photos in non-broadcast mode are silently ignored
+    // to prevent accidental processing of user-uploaded photos
   });
 
   return bot;

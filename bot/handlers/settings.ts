@@ -69,9 +69,9 @@ export async function settingsModelProviderHandler(ctx: BotContext, provider: st
 
 /**
  * Handle model selection and save to session
+ * NOTE: answerCallbackQuery is already called by the router — do NOT call it here again.
  */
 export async function settingsModelSelectHandler(ctx: BotContext, modelId: string): Promise<void> {
-  await ctx.answerCallbackQuery();
   const lang = ctx.session.language;
   sessionManager.setModel(ctx.session, modelId);
 

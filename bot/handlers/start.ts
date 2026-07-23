@@ -3,24 +3,47 @@ import { BotStep } from "@/types";
 import { mainMenuKeyboard, languageKeyboard } from "@/bot/keyboards";
 import { formatDate } from "@/utils/helpers";
 import { resetSession } from "@/bot/session";
-import { t } from "@/bot/localization";
+import { t, SUPPORTED_LANGUAGES, resolveLanguage } from "@/bot/localization";
+import type { SupportedLanguage } from "@/bot/localization";
+import { userSettingsRepository } from "@/repositories/settings";
 
 /**
  * /start command handler
- * Resets session, keeps user account, opens Main Menu only.
- * Never auto-opens Chat, Image, or any other feature.
- * If user hasn't selected a language yet, shows language selection first.
+ *
+ * Flow:
+ *   NEW USER:   /start → language selection → (handled by callback) → welcome → main menu
+ *   EXISTING:   /start → main menu only
+ *
+ * Rules:
+ *   - Only one /start handler (no duplicates)
+ *   - Check if user exists before creating profile (middleware handles this)
+ *   - Never create duplicate profiles (middleware uses upsert)
+ *   - Never show Welcome to existing users
+ *   - Language selection appears only once (middleware loads from DB)
+ *   - All future /start commands open only the Main Menu
  */
 export async function startHandler(ctx: BotContext): Promise<void> {
-  const firstName = ctx.from?.first_name ?? "there";
-  const now = new Date();
-
-  // ─── Full session reset ───────────────────────────
+  // ─── Session reset ────────────────────────────────
   // Reset temporary state, close active mode, keep userId and language
   resetSession(ctx.session, true);
   ctx.session.step = BotStep.IDLE;
 
-  // ─── Language Selection for New Users ────────────
+  // ─── Safety fallback: try to load language from DB if middleware missed it ──
+  // This happens only if userMiddleware failed to set languageSelected
+  // (which should not occur after the fix, but protects against edge cases).
+  if (!ctx.session.languageSelected && ctx.session.userId) {
+    try {
+      const settings = await userSettingsRepository.findByUserId(ctx.session.userId);
+      if (settings?.language && SUPPORTED_LANGUAGES.includes(settings.language as SupportedLanguage)) {
+        ctx.session.language = resolveLanguage(settings.language as SupportedLanguage, null);
+        ctx.session.languageSelected = true;
+      }
+    } catch {
+      // Non-critical — will show language selection as last resort
+    }
+  }
+
+  // ─── Language Selection (new users only) ─────────
   if (!ctx.session.languageSelected) {
     ctx.session.step = BotStep.LANGUAGE;
     await ctx.reply(t(ctx.session.language, "language.select"), {
@@ -30,34 +53,10 @@ export async function startHandler(ctx: BotContext): Promise<void> {
     return;
   }
 
+  // ─── Existing users — Main Menu only ─────────────
   const lang = ctx.session.language;
-
-  // Welcome message (same design, preserved branding)
-  const welcomeMessage = [
-    `${t(lang, "welcome.title")}\n`,
-    `${t(lang, "welcome.greeting", { name: firstName })}\n`,
-    `${t(lang, "welcome.description")}\n`,
-    `━━━━━━━━━━━━━━━━━━━━━\n`,
-    `${t(lang, "welcome.cta")}`,
-    `\n━━━━━━━━━━━━━━━━━━━━━`,
-    `\n${t(lang, "welcome.date", { date: formatDate(now) })}`,
-  ].join("\n");
-
-  // Send welcome with photo (preserving existing branding)
-  try {
-    await ctx.replyWithPhoto(
-      "https://img.freepik.com/free-vector/artificial-intelligence-robot-technology-background_1017-33446.jpg",
-      {
-        caption: welcomeMessage,
-        parse_mode: "Markdown",
-        reply_markup: mainMenuKeyboard,
-      }
-    );
-  } catch {
-    await ctx.reply(welcomeMessage, {
-      parse_mode: "Markdown",
-      reply_markup: mainMenuKeyboard,
-      link_preview_options: { is_disabled: true },
-    });
-  }
+  await ctx.reply(t(lang, "menu.main"), {
+    parse_mode: "Markdown",
+    reply_markup: mainMenuKeyboard,
+  });
 }

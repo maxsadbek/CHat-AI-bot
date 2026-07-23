@@ -7,37 +7,17 @@ import type { BotContext } from "@/types";
 import { BotStep } from "@/types";
 import { t, SUPPORTED_LANGUAGES } from "@/bot/localization";
 import type { SupportedLanguage } from "@/bot/localization";
-import { languageKeyboard, mainMenuKeyboard } from "@/bot/keyboards";
+import { mainMenuKeyboard } from "@/bot/keyboards";
 import { prisma } from "@/lib/prisma";
-
-/**
- * Show language selection screen
- * Used on first /start and from settings
- */
-export async function languageSelectionHandler(
-  ctx: BotContext,
-  fromSettings: boolean = false
-): Promise<void> {
-  ctx.session.step = BotStep.LANGUAGE;
-
-  const lang = ctx.session.language;
-
-  if (fromSettings) {
-    await ctx.reply(t(lang, "settings.change_language"), {
-      parse_mode: "Markdown",
-      reply_markup: languageKeyboard(),
-    });
-  } else {
-    await ctx.reply(t(lang, "language.select"), {
-      parse_mode: "Markdown",
-      reply_markup: languageKeyboard(),
-    });
-  }
-}
+import { formatDate } from "@/utils/helpers";
 
 /**
  * Handle language selection callback
- * Saves the selected language to session and database
+ * Called when user picks a language from the /start language prompt.
+ * Saves language to DB, shows welcome, then opens Main Menu.
+ *
+ * New user flow:
+ *   /start → language selection → handleLanguageSelection → Welcome → Main Menu
  */
 export async function handleLanguageSelection(ctx: BotContext): Promise<void> {
   const callbackData = ctx.callbackQuery?.data;
@@ -70,15 +50,42 @@ export async function handleLanguageSelection(ctx: BotContext): Promise<void> {
 
   await ctx.answerCallbackQuery();
 
-  // Show confirmation and main menu
-  const greeting = t(selectedLang, "language.selected");
-  const mainMenu = t(selectedLang, "menu.main");
+  // Delete the language selection message
+  try {
+    await ctx.deleteMessage();
+  } catch {
+    // Ignore if message can't be deleted
+  }
 
-  await ctx.editMessageText(
-    `${greeting}\n\n${mainMenu}`,
-    {
+  // ─── Language confirmation + Welcome (shown once, right after language selection) ──
+  const firstName = ctx.from?.first_name ?? "there";
+  const now = new Date();
+  const welcomeMessage = [
+    `${t(selectedLang, "language.selected")}\n`,
+    "",
+    `${t(selectedLang, "welcome.title")}\n`,
+    `${t(selectedLang, "welcome.greeting", { name: firstName })}\n`,
+    `${t(selectedLang, "welcome.description")}\n`,
+    `━━━━━━━━━━━━━━━━━━━━━\n`,
+    `${t(selectedLang, "welcome.cta")}`,
+    `\n━━━━━━━━━━━━━━━━━━━━━`,
+    `\n${t(selectedLang, "welcome.date", { date: formatDate(now) })}`,
+  ].join("\n");
+
+  try {
+    await ctx.replyWithPhoto(
+      "https://img.freepik.com/free-vector/artificial-intelligence-robot-technology-background_1017-33446.jpg",
+      {
+        caption: welcomeMessage,
+        parse_mode: "Markdown",
+        reply_markup: mainMenuKeyboard,
+      }
+    );
+  } catch {
+    await ctx.reply(welcomeMessage, {
       parse_mode: "Markdown",
       reply_markup: mainMenuKeyboard,
-    }
-  );
+      link_preview_options: { is_disabled: true },
+    });
+  }
 }

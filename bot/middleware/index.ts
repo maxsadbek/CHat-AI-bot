@@ -5,6 +5,7 @@ import { rateLimiter } from "@/utils/rate-limit";
 import { env } from "@/config";
 import { createFreshSession } from "@/bot/session";
 import { t, resolveLanguage } from "@/bot/localization";
+import type { SupportedLanguage } from "@/bot/localization";
 import { userService } from "@/services/user";
 import { logger } from "@/bot/core/logger";
 
@@ -72,21 +73,16 @@ export async function userMiddleware(
     // Store the Prisma user ID in session
     ctx.session.userId = user.id;
 
-    // Load user's language preference from DB settings
-    try {
-      const profile = await userService.getProfile(BigInt(from.id));
-      if (
-        profile?.settings?.language &&
-        profile.settings.language !== ctx.session.language
-      ) {
-        ctx.session.language = resolveLanguage(
-          profile.settings.language as any,
-          null
-        );
-        ctx.session.languageSelected = true;
-      }
-    } catch {
-      // Non-critical, continue with default language
+    // Load user's language preference from the upsert result (no separate query)
+    // This eliminates the race condition where a second query could fail after
+    // findOrCreate succeeds, causing existing users to see language selection again.
+    const dbSettings = (user as any).settings as { language?: string } | null;
+    if (dbSettings?.language) {
+      ctx.session.language = resolveLanguage(
+        dbSettings.language as SupportedLanguage,
+        null
+      );
+      ctx.session.languageSelected = true;
     }
 
     log.debug("User tracked", {

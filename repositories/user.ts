@@ -61,6 +61,9 @@ export class UserRepository {
             totalRequests: 0,
             dailyLimit: data.dailyLimit ?? 50,
           },
+          include: {
+            settings: true,
+          },
         });
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));

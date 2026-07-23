@@ -61,6 +61,11 @@ export async function userMiddleware(
     return;
   }
 
+  // Try to find or create user in DB.
+  // If DB fails, attempt ONE retry.
+  // Critical: preserve the existing session userId on failure so that
+  // users who already completed /start never see "use /start first"
+  // due to transient DB issues.
   try {
     const user = await userService.findOrCreate(from);
 
@@ -89,10 +94,30 @@ export async function userMiddleware(
       telegramId: from.id,
     });
   } catch (error) {
-    log.error("Failed to upsert user", {
+    log.error("Failed to upsert user on first attempt", {
       telegramId: from.id,
       error: String(error),
     });
+
+    // Retry once — transient DB issues should resolve
+    try {
+      const user = await userService.findOrCreate(from);
+      ctx.session.userId = user.id;
+      log.info("User resolved on retry", {
+        userId: user.id,
+        telegramId: from.id,
+      });
+    } catch (retryError) {
+      log.error("Failed to upsert user on retry — preserving existing userId", {
+        telegramId: from.id,
+        existingUserId: ctx.session.userId,
+        error: String(retryError),
+      });
+      // DO NOT modify ctx.session.userId — preserve the value from the
+      // previous successful middleware run. This ensures users who
+      // completed /start never see "use /start first" due to transient
+      // DB issues. The next middleware run will retry successfully.
+    }
   }
 
   await next();

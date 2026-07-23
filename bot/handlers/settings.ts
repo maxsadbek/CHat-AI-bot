@@ -73,8 +73,6 @@ export async function settingsModelProviderHandler(ctx: BotContext, provider: st
 export async function settingsModelSelectHandler(ctx: BotContext, modelId: string): Promise<void> {
   await ctx.answerCallbackQuery();
   const lang = ctx.session.language;
-  ctx.session.selectedModel = modelId;
-
   sessionManager.setModel(ctx.session, modelId);
 
   await ctx.editMessageText(t(lang, "settings.model_changed", { model: modelId }), {

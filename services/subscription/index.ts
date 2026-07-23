@@ -1,40 +1,48 @@
 /**
  * Subscription Service
  * Payment-ready architecture for managing user subscriptions.
- * Handles plan validation, upgrades, and payment integration points.
+ * Supports: Free, Pro Monthly, Pro Yearly, Lifetime plans.
  */
 
 import { subscriptionRepository } from "@/repositories/subscription";
 import { userRepository } from "@/repositories/user";
 import {
   SUBSCRIPTION_PLANS,
-  getDailyLimit,
-  canUpgrade,
   getActivePlans,
+  getPlan,
+  getTierFromPlan,
+  calculateExpiry,
+  getDailyLimit,
   type PlanId,
   type SubscriptionPlan,
+  type BillingPeriod,
 } from "@/config/plans";
+
 import { logger } from "@/bot/core/logger";
 
 const log = logger.child("subscription-service");
 
 export class SubscriptionService {
   /**
-   * Get user's current plan info
+   * Get user's current plan info with full details
    */
   async getUserPlan(userId: number): Promise<{
     plan: SubscriptionPlan;
     isExpired: boolean;
     daysRemaining: number | null;
+    isLifetime: boolean;
   }> {
     const sub = await subscriptionRepository.findByUserId(userId);
     const user = await userRepository.findById(userId);
 
-    const planId: PlanId = user?.isPremium ? "premium" : "free";
-    const plan = SUBSCRIPTION_PLANS[planId];
+    // Determine the plan
+    const planType = (sub?.planType ?? "free") as PlanId;
+    const plan = SUBSCRIPTION_PLANS[planType] ?? SUBSCRIPTION_PLANS.free;
 
+    // Check expiry
     if (!sub || !sub.expiresAt) {
-      return { plan, isExpired: false, daysRemaining: null };
+      const isLifetime = planType === "lifetime";
+      return { plan, isExpired: false, daysRemaining: null, isLifetime };
     }
 
     const now = new Date();
@@ -43,44 +51,39 @@ export class SubscriptionService {
       ? 0
       : Math.ceil((sub.expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
-    return { plan, isExpired, daysRemaining };
+    return {
+      plan,
+      isExpired,
+      daysRemaining: isExpired ? 0 : daysRemaining,
+      isLifetime: planType === "lifetime",
+    };
   }
 
   /**
    * Upgrade user to a new plan
-   * @param userId - Internal user ID
-   * @param planId - Target plan
-   * @param paymentId - Payment provider transaction ID (optional for free plans)
    */
-  async upgrade(userId: number, planId: PlanId, paymentId?: string) {
+  async upgrade(
+    userId: number,
+    planId: PlanId,
+    paymentId?: string,
+    paymentProvider?: string
+  ) {
     const plan = SUBSCRIPTION_PLANS[planId];
-    if (!plan) {
-      throw new Error(`Plan "${planId}" not found`);
-    }
+    if (!plan) throw new Error(`Plan "${planId}" not found`);
+    if (!plan.isActive) throw new Error(`Plan "${planId}" is not available`);
 
-    if (!plan.isActive) {
-      throw new Error(`Plan "${planId}" is not yet available`);
-    }
+    const tier = getTierFromPlan(planId);
+    const expiresAt = calculateExpiry(plan.billingPeriod);
 
-    // For paid plans, require payment ID
-    if (plan.price.monthly > 0 && !paymentId) {
-      // Payment integration point:
-      // Here you would create a payment session with Stripe/Telegram Stars/etc.
-      log.info("Payment required for upgrade", { userId, planId });
-      // For now, allow upgrade without payment for development
-    }
-
-    // Calculate subscription dates
-    const now = new Date();
-    const expiresAt = new Date(now);
-    expiresAt.setMonth(expiresAt.getMonth() + 1); // Monthly by default
-
-    // Save subscription
+    // Save subscription to DB
     await subscriptionRepository.upsert(userId, {
-      tier: planId,
+      tier,
+      planType: planId,
+      billingPeriod: plan.billingPeriod,
       dailyLimit: plan.limits.requestsPerDay,
       expiresAt,
       paymentId: paymentId ?? null,
+      paymentProvider: paymentProvider ?? null,
     });
 
     // Update user record
@@ -89,19 +92,23 @@ export class SubscriptionService {
       dailyLimit: plan.limits.requestsPerDay,
     });
 
-    log.info(`User ${userId} upgraded to ${planId}`, { paymentId });
+    log.info(`User ${userId} upgraded to ${planId}`, { paymentId, paymentProvider });
   }
 
   /**
-   * Downgrade user to free plan
+   * Downgrade user back to Free plan
    */
   async downgrade(userId: number) {
     const freePlan = SUBSCRIPTION_PLANS.free;
 
     await subscriptionRepository.upsert(userId, {
       tier: "free",
+      planType: "free",
+      billingPeriod: "none",
       dailyLimit: freePlan.limits.requestsPerDay,
       expiresAt: null,
+      paymentId: null,
+      paymentProvider: null,
     });
 
     await userRepository.update(userId, {
@@ -113,13 +120,6 @@ export class SubscriptionService {
   }
 
   /**
-   * Check if user can upgrade to a plan
-   */
-  canUpgrade(currentTier: PlanId, targetTier: PlanId): boolean {
-    return canUpgrade(currentTier, targetTier);
-  }
-
-  /**
    * Get all available plans
    */
   getAvailablePlans(): SubscriptionPlan[] {
@@ -127,44 +127,84 @@ export class SubscriptionService {
   }
 
   /**
-   * Get plan details
+   * Get a specific plan's details
    */
   getPlan(planId: PlanId): SubscriptionPlan | undefined {
-    return SUBSCRIPTION_PLANS[planId];
+    return getPlan(planId);
   }
 
   /**
-   * Payment integration placeholder
-   * Future: Integrate with Stripe, Telegram Stars, or other payment providers
+   * Check if a plan is the user's current plan or better
+   */
+  async hasAccessToFeature(
+    userId: number,
+    featureFlag: keyof SubscriptionPlan
+  ): Promise<boolean> {
+    const { plan } = await this.getUserPlan(userId);
+    const value = plan[featureFlag];
+    if (typeof value === "boolean") return value;
+    return false;
+  }
+
+  /**
+   * Payment integration — create a checkout session.
+   * Placeholder — ready for paymentRegistry integration.
    */
   async createPaymentSession(
     userId: number,
     planId: PlanId
-  ): Promise<{ url: string; sessionId: string }> {
-    // Payment integration point
-    // Example with Stripe:
-    // const session = await stripe.checkout.sessions.create({ ... });
-    // return { url: session.url, sessionId: session.id };
+  ): Promise<{ url?: string; sessionId: string }> {
+    const plan = SUBSCRIPTION_PLANS[planId];
+    if (!plan || !plan.isActive) {
+      throw new Error(`Plan ${planId} is not available`);
+    }
 
-    log.info("Payment session requested", { userId, planId });
+    log.info("Payment session requested", { userId, planId, amount: plan.price.amount });
 
-    // Placeholder — replace with actual payment provider
+    // TODO: Use paymentRegistry when payment providers are configured
+    // import { paymentRegistry } from "@/services/payment";
+    // const provider = paymentRegistry.getDefaultProvider();
+    // return provider.createPayment({ ... });
+
     return {
-      url: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/payment/${planId}`,
+      url: undefined,
       sessionId: `placeholder_${userId}_${planId}_${Date.now()}`,
     };
   }
 
   /**
-   * Verify and activate subscription after payment
+   * Activate subscription after successful payment
    */
   async activateAfterPayment(
     userId: number,
     planId: PlanId,
-    paymentId: string
+    paymentId: string,
+    paymentProvider?: string
   ) {
-    log.info("Activating subscription after payment", { userId, planId, paymentId });
-    await this.upgrade(userId, planId, paymentId);
+    log.info("Activating subscription after payment", {
+      userId, planId, paymentId, paymentProvider,
+    });
+    await this.upgrade(userId, planId, paymentId, paymentProvider);
+  }
+
+
+
+  /**
+   * Check if a subscription has expired and downgrade if needed
+   */
+  async checkAndHandleExpiry(userId: number): Promise<boolean> {
+    try {
+      const { isExpired, plan } = await this.getUserPlan(userId);
+      if (isExpired && plan.id !== "free") {
+        await this.downgrade(userId);
+        log.info(`User ${userId} auto-downgraded due to expiry`);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      log.error("Error checking subscription expiry", { userId, error: String(error) });
+      return false;
+    }
   }
 }
 

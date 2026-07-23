@@ -1,94 +1,79 @@
+/**
+ * AI Chat Handler
+ * ChatGPT-like conversation experience with memory, history, and resume.
+ * Uses shared history module for conversation management.
+ */
+
 import type { BotContext } from "@/types";
 import { BotStep } from "@/types";
 import { aiChatService } from "@/services/ai/chat";
+import { providerRegistry } from "@/services/ai/providers";
 import { chatKeyboard } from "@/bot/keyboards";
 import { splitMessage } from "@/utils/markdown";
-import { prisma } from "@/lib/prisma";
 import { t } from "@/bot/localization";
+import { logger } from "@/bot/core/logger";
+import { usageService } from "@/services/usage";
+import {
+  createConversation,
+  saveMessagesToDb,
+  showHistory,
+  resumeConversation,
+} from "@/bot/handlers/history";
+
+const log = logger.child("handler-ai-chat");
 
 /**
- * AI Chat handler
- * Provides ChatGPT-like conversation experience with memory
+ * AI Chat handler — handles incoming text messages in AI_CHAT mode
  */
 export async function aiChatHandler(ctx: BotContext): Promise<void> {
   const text = ctx.message?.text;
   if (!text) return;
 
   const lang = ctx.session.language;
-
-  // Ensure user exists in DB (userMiddleware should have already created them)
   const userId = ctx.session.userId;
   if (!userId) {
-    await ctx.reply(t(lang, "chat.error_no_user"), {
-      parse_mode: "Markdown",
-    });
+    await ctx.reply(t(lang, "chat.error_no_user"), { parse_mode: "Markdown" });
     return;
   }
 
   // Create conversation if not exists
   if (!ctx.session.conversationId) {
-    const conversation = await prisma.conversation.create({
-      data: {
-        title: text.slice(0, 100),
-        feature: "chat",
-        userId,
-      },
-    });
-    ctx.session.conversationId = conversation.id;
+    const created = await createConversation(ctx, text.slice(0, 100), "chat");
+    if (!created) {
+      await ctx.reply(t(lang, "chat.limit_reached"), { parse_mode: "Markdown" });
+      return;
+    }
   }
 
   // Show typing indicator
   await ctx.replyWithChatAction("typing");
 
   try {
-    // Get AI response (uses user's selected model from Settings)
     const selectedModel = ctx.session.selectedModel;
     const response = await aiChatService.chat(ctx.session.messages, text, selectedModel);
 
-    // Store user message in session
+    // Store messages in session
     ctx.session.messages.push({ role: "user", content: text });
-    ctx.session.messages.push({
-      role: "assistant",
-      content: response.content,
-    });
+    ctx.session.messages.push({ role: "assistant", content: response.content });
 
     // Save to database
-    await prisma.message.createMany({
-      data: [
-        {
-          conversationId: ctx.session.conversationId!,
-          userId,
-          role: "user",
-          content: text,
-        },
-        {
-          conversationId: ctx.session.conversationId!,
-          userId,
-          role: "assistant",
-          content: response.content,
-          tokensUsed: response.usage?.totalTokens ?? 0,
-        },
-      ],
+    await saveMessagesToDb(ctx, "chat", {
+      in: response.usage?.promptTokens,
+      out: response.usage?.completionTokens,
     });
 
-    // Track usage
-    await prisma.usage.create({
-      data: {
-        userId,
-        feature: "chat",
-        tokensIn: response.usage?.promptTokens ?? 0,
-        tokensOut: response.usage?.completionTokens ?? 0,
-      },
-    });
-
-    // Update user request count
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        requestsToday: { increment: 1 },
-        totalRequests: { increment: 1 },
-      },
-    });
+    // Track usage with provider/model info (non-blocking)
+    const providerName = selectedModel
+      ? providerRegistry.getModel(selectedModel)?.provider
+      : undefined;
+    usageService.track(
+      userId,
+      "chat",
+      response.usage?.promptTokens,
+      response.usage?.completionTokens,
+      providerName,
+      selectedModel
+    );
 
     // Split and send long responses
     const chunks = splitMessage(response.content);
@@ -96,13 +81,11 @@ export async function aiChatHandler(ctx: BotContext): Promise<void> {
       await ctx.reply(chunk, {
         parse_mode: "Markdown",
         reply_markup:
-          chunks.indexOf(chunk) === chunks.length - 1
-            ? chatKeyboard
-            : undefined,
+          chunks.indexOf(chunk) === chunks.length - 1 ? chatKeyboard : undefined,
       });
     }
   } catch (error) {
-    console.error("AI Chat error:", error);
+    log.error("AI Chat error", { userId, error: String(error) });
     await ctx.reply(t(lang, "chat.error_generic"), {
       parse_mode: "Markdown",
       reply_markup: chatKeyboard,
@@ -114,11 +97,20 @@ export async function aiChatHandler(ctx: BotContext): Promise<void> {
  * Start a new chat conversation
  */
 export async function newChatHandler(ctx: BotContext): Promise<void> {
-  ctx.session.conversationId = null;
+  const lang = ctx.session.language;
+  const userId = ctx.session.userId;
+
+  // Check limit before allowing new chat
+  if (userId) {
+    const created = await createConversation(ctx, "New Conversation", "chat");
+    if (!created) {
+      await ctx.reply(t(lang, "chat.limit_reached"), { parse_mode: "Markdown" });
+      return;
+    }
+  }
+
   ctx.session.messages = [];
   ctx.session.step = BotStep.AI_CHAT;
-
-  const lang = ctx.session.language;
 
   await ctx.reply(t(lang, "chat.new_chat"), {
     parse_mode: "Markdown",
@@ -130,53 +122,30 @@ export async function newChatHandler(ctx: BotContext): Promise<void> {
  * Show chat history
  */
 export async function chatHistoryHandler(ctx: BotContext): Promise<void> {
-  const userId = ctx.session.userId;
+  await showHistory(ctx, "chat");
+}
+
+/**
+ * Resume a chat conversation
+ */
+export async function resumeChatHandler(ctx: BotContext): Promise<void> {
   const lang = ctx.session.language;
 
-  if (!userId) {
-    await ctx.reply(t(lang, "chat.error_no_user"), {
-      parse_mode: "Markdown",
-    });
+  const data = ctx.callbackQuery?.data;
+  if (!data) return;
+
+  const match = data.match(/^resume:chat:(.+)/);
+  if (!match) return;
+
+  const conversationId = match[1]!;
+  const resumed = await resumeConversation(ctx, conversationId);
+
+  if (!resumed) {
+    await ctx.reply(t(lang, "chat.error_generic"), { parse_mode: "Markdown" });
     return;
   }
 
-  const conversations = await prisma.conversation.findMany({
-    where: {
-      userId,
-      feature: "chat",
-      isActive: true,
-    },
-    orderBy: { updatedAt: "desc" },
-    take: 10,
-    include: {
-      _count: { select: { messages: true } },
-    },
-  });
-
-  if (conversations.length === 0) {
-    await ctx.reply(t(lang, "chat.no_history"), {
-      parse_mode: "Markdown",
-      reply_markup: chatKeyboard,
-    });
-    return;
-  }
-
-  const historyText = conversations
-    .map(
-      (
-        conv: { title: string; _count: { messages: number }; updatedAt: Date },
-        i: number
-      ) =>
-        t(lang, "chat.history_entry", {
-          index: String(i + 1),
-          title: conv.title,
-          count: String(conv._count.messages),
-          date: conv.updatedAt.toLocaleDateString(),
-        })
-    )
-    .join("\n\n");
-
-  await ctx.reply(`${t(lang, "chat.history_title")}\n\n${historyText}`, {
+  await ctx.reply(t(lang, "chat.resumed"), {
     parse_mode: "Markdown",
     reply_markup: chatKeyboard,
   });

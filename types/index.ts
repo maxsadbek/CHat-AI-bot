@@ -28,6 +28,10 @@ export interface SessionData {
   selectedCodeLanguage: CodeLanguage;
   /** Currently selected AI model (e.g., "gpt-4o", "gemini-2.0-flash", "claude-sonnet-4-20250514") */
   selectedModel: string;
+  /** Currently active project ID (null = no project selected) */
+  currentProjectId: string | null;
+  /** Temporary project name being set */
+  pendingProjectName: string;
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;
@@ -47,6 +51,10 @@ export enum BotStep {
   HELP = "help",
   LANGUAGE = "language",
   SETTINGS = "settings",
+  PROJECTS = "projects",
+  PROJECT_CREATE = "project_create",
+  PROJECT_RENAME = "project_rename",
+  PROJECT_NOTE_CREATE = "project_note_create",
 }
 
 // ─── AI Service Types ────────────────────────────────────
@@ -158,6 +166,38 @@ export type CodeLanguage =
   | "Debug"
   | "Explain";
 
+// ─── Project Types ──────────────────────────────────────
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  emoji: string;
+  color: string | null;
+  conversationCount: number;
+  fileCount: number;
+  noteCount: number;
+  lastUpdated: Date;
+}
+
+export interface ProjectFileInfo {
+  id: string;
+  fileName: string;
+  fileType: string;
+  fileUrl: string | null;
+  content: string | null;
+  size: number | null;
+  createdAt: Date;
+}
+
+export interface ProjectNoteInfo {
+  id: string;
+  title: string;
+  content: string;
+  isPinned: boolean;
+  updatedAt: Date;
+}
+
 // ─── User Types ──────────────────────────────────────────
 
 export interface UserProfile {
@@ -177,6 +217,76 @@ export interface UserProfile {
 
 export type SubscriptionTier = "free" | "premium";
 
+// ─── Analytics Types ────────────────────────────────────
+
+export interface AnalyticsOverview {
+  users: {
+    total: number;
+    activeToday: number;
+    activeThisWeek: number;
+    activeThisMonth: number;
+    newToday: number;
+  };
+  usage: {
+    total: number;
+    today: number;
+    thisWeek: number;
+    thisMonth: number;
+  };
+  features: {
+    messagesToday: number;
+    imagesToday: number;
+    videosToday: number;
+    topFeatures: Array<{ feature: string; count: number }>;
+  };
+  tokens: {
+    tokensIn: number;
+    tokensOut: number;
+  };
+  premium: {
+    totalPremium: number;
+    byPlan: Array<{ plan: string; count: number }>;
+    byBilling: Array<{ period: string; count: number }>;
+  };
+  conversion: {
+    free: number;
+    premium: number;
+    rate: number;
+  };
+  dailyTrend: Array<{ date: string; count: number; users: number }>;
+  generatedAt: string;
+}
+
+export interface ProviderAnalytics {
+  period: { from: string; to: string };
+  byProvider: Array<{ provider: string; count: number }>;
+  byModel: Array<{ model: string; count: number }>;
+}
+
+export interface UserGrowthPoint {
+  date: string;
+  newUsers: number;
+  newPremium: number;
+}
+
+export interface DailyUsagePoint {
+  date: string;
+  count: number;
+  users: number;
+}
+
+export interface HourlyDistribution {
+  hour: number;
+  count: number;
+  label: string;
+}
+
+export interface RetentionStats {
+  totalActive: number;
+  returned: number;
+  retentionRate: number;
+}
+
 // ─── Admin Types ─────────────────────────────────────────
 
 export interface AdminStats {
@@ -194,6 +304,65 @@ export interface AdminLog {
   adminId: number;
   details: string;
   createdAt: Date;
+}
+
+// ─── Admin System Types ──────────────────────────────────
+
+export interface SystemHealth {
+  status: "healthy" | "degraded" | "unhealthy";
+  timestamp: string;
+  uptime: number;
+  version: string;
+  checks: {
+    database: ComponentHealth;
+    openai: ComponentHealth;
+    gemini: ComponentHealth;
+    claude: ComponentHealth;
+    deepseek: ComponentHealth;
+    telegram: ComponentHealth;
+    paymentProviders: ComponentHealth;
+    memory: ComponentHealth;
+  };
+}
+
+export interface ComponentHealth {
+  status: "healthy" | "degraded" | "unhealthy";
+  message: string;
+  latency?: number;
+}
+
+export interface AdminUserDetail {
+  id: number;
+  telegramId: bigint;
+  firstName: string;
+  lastName: string | null;
+  username: string | null;
+  isPremium: boolean;
+  requestsToday: number;
+  totalRequests: number;
+  dailyLimit: number;
+  languageCode: string | null;
+  createdAt: Date;
+  lastActiveAt: Date;
+  planType: string;
+  conversationCount: number;
+  messageCount: number;
+  usageCount: number;
+  projectCount: number;
+}
+
+export interface AdminAction {
+  action: string;
+  adminId: number;
+  details: string;
+  timestamp: Date;
+}
+
+export interface PremiumManageResult {
+  success: boolean;
+  userId: number;
+  planId?: string;
+  newExpiry?: Date;
 }
 
 // ─── Utility Types ───────────────────────────────────────

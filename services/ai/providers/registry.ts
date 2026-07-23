@@ -13,6 +13,7 @@ import { logger } from "@/bot/core/logger";
 import { OpenAIProviderImpl } from "./openai";
 import { GeminiProviderImpl } from "./gemini";
 import { ClaudeProviderImpl } from "./claude";
+import { DeepSeekProviderImpl } from "./deepseek";
 import { ALL_MODELS, findModel, getSelectableModels } from "./models";
 import type { AIProvider, ProviderModel } from "./interface";
 
@@ -24,6 +25,7 @@ const log = logger.child("provider-registry");
 let _openaiProvider: OpenAIProviderImpl | null = null;
 let _geminiProvider: GeminiProviderImpl | null = null;
 let _claudeProvider: ClaudeProviderImpl | null = null;
+let _deepseekProvider: DeepSeekProviderImpl | null = null;
 
 function getOpenAI(): OpenAIProviderImpl {
   if (!_openaiProvider) {
@@ -49,6 +51,14 @@ function getClaude(): ClaudeProviderImpl {
   return _claudeProvider;
 }
 
+function getDeepSeek(): DeepSeekProviderImpl {
+  if (!_deepseekProvider) {
+    _deepseekProvider = new DeepSeekProviderImpl();
+    log.info("DeepSeek provider initialized");
+  }
+  return _deepseekProvider;
+}
+
 // ─── Provider Map ────────────────────────────────────
 // Maps provider IDs to provider instances
 
@@ -56,6 +66,7 @@ const PROVIDER_MAP: Record<string, () => AIProvider> = {
   openai: getOpenAI,
   gemini: getGemini,
   claude: getClaude,
+  deepseek: getDeepSeek,
 };
 
 // ─── Provider Registry ───────────────────────────────

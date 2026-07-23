@@ -30,6 +30,9 @@ model User {
   usage         Usage[]
   subscription  Subscription?
   settings      UserSettings?
+  projects      Project[]
+  projectFiles  ProjectFile[]
+  projectNotes  ProjectNote[]
 
   @@index([telegramId])
   @@index([createdAt])
@@ -41,16 +44,20 @@ model User {
 model Conversation {
   id        String   @id @default(uuid())
   userId    Int
+  projectId String?                                 // Optional — scopes conversation to a project
   title     String   @default("New Conversation")
   feature   String   @default("chat")
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project  Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   messages Message[]
 
   @@index([userId])
+  @@index([projectId])
+  @@index([feature])
   @@index([createdAt])
   @@map("conversations")
 }
@@ -81,6 +88,8 @@ model Usage {
   id        String   @id @default(uuid())
   userId    Int
   feature   String   // "chat" | "video" | "image" | "social" | "business" | "coding" | "translate"
+  provider  String?  // "openai" | "gemini" | "claude" | "deepseek"
+  model     String?  // "gpt-4o" | "gemini-2.0-flash" | etc.
   tokensIn  Int      @default(0)
   tokensOut Int      @default(0)
   createdAt DateTime @default(now())
@@ -89,6 +98,7 @@ model Usage {
 
   @@index([userId])
   @@index([feature])
+  @@index([provider])
   @@index([createdAt])
   @@map("usage")
 }
@@ -98,16 +108,22 @@ model Usage {
 model Subscription {
   id            String   @id @default(uuid())
   userId        Int      @unique
-  tier          String   @default("free") // "free" | "premium"
+  tier          String   @default("free")      // "free" | "pro"
+  planType      String   @default("free")      // "free" | "pro_monthly" | "pro_yearly" | "lifetime"
+  billingPeriod String   @default("none")      // "none" | "monthly" | "yearly" | "lifetime"
   dailyLimit    Int      @default(50)
   startsAt      DateTime @default(now())
   expiresAt     DateTime?
   paymentId     String?
+  paymentProvider String? // "telegram_stars" | "stripe" | etc.
+  autoRenew     Boolean  @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([planType])
+  @@index([expiresAt])
   @@map("subscriptions")
 }
 
@@ -125,6 +141,71 @@ model UserSettings {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_settings")
+}
+
+// ─── Project ───────────────────────────────────────────
+
+model Project {
+  id          String   @id @default(uuid())
+  userId      Int
+  name        String
+  description String?
+  emoji       String   @default("📁")
+  color       String?                              // Visual accent color (hex)
+  isArchived  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+  files         ProjectFile[]
+  notes         ProjectNote[]
+
+  @@index([userId])
+  @@index([userId, isArchived])
+  @@index([updatedAt])
+  @@map("projects")
+}
+
+// ─── Project File ─────────────────────────────────────
+
+model ProjectFile {
+  id        String   @id @default(uuid())
+  projectId String
+  userId    Int
+  fileName  String
+  fileType  String                                 // "image" | "video" | "document" | "code" | "note" | "other"
+  fileUrl   String?                                // External URL or file path
+  content   String?                                // Text content (for code snippets, notes)
+  size      Int?                                   // File size in bytes
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([fileType])
+  @@map("project_files")
+}
+
+// ─── Project Note ─────────────────────────────────────
+
+model ProjectNote {
+  id        String   @id @default(uuid())
+  projectId String
+  userId    Int
+  title     String   @default("Untitled Note")
+  content   String   @default("")
+  isPinned  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([isPinned])
+  @@map("project_notes")
 }
 
 // ─── Admin Log ─────────────────────────────────────────

@@ -1,3 +1,15 @@
+/**
+ * Modern Profile Page
+ *
+ * Displays user data from the database:
+ *   • Username            • Telegram ID
+ *   • Language            • Current AI Model
+ *   • Current Plan        • Daily Usage (progress bar)
+ *   • Join Date
+ *
+ * Buttons: ⚙️ Settings  |  ⭐ Premium  |  🏠 Home
+ */
+
 import type { BotContext } from "@/types";
 import { BotStep } from "@/types";
 import { prisma } from "@/lib/prisma";
@@ -7,11 +19,8 @@ import { t } from "@/bot/localization";
 import { LANGUAGE_NAMES } from "@/bot/localization";
 import { providerRegistry } from "@/services/ai/providers";
 
-/**
- * Profile handler
- * Displays a premium profile screen with user info,
- * usage stats, subscription details, and action buttons.
- */
+const DIVIDER = "━━━━━━━━━━━━━━━━━━━━━";
+
 export async function profileHandler(ctx: BotContext): Promise<void> {
   ctx.session.step = BotStep.PROFILE;
 
@@ -42,62 +51,66 @@ export async function profileHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
-    const premiumStatus = user.isPremium ? "⭐ Premium" : "🆓 Free";
-    const userLanguage = user.settings?.language ?? ctx.session.language ?? "en";
-    const languageName = LANGUAGE_NAMES[userLanguage as keyof typeof LANGUAGE_NAMES] ?? "English";
-    const currentModel = providerRegistry.getModelName(ctx.session.selectedModel ?? "gpt-4o");
+    // ─── Extract and resolve data ─────────────────────
+    const displayName = `${user.firstName} ${user.lastName ?? ""}`.trim();
+    const telegramUsername = user.username ? `@${user.username}` : "—";
+    const telegramId = String(from.id);
 
-    const usagePercent = Math.min(
-      Math.round((user.requestsToday / user.dailyLimit) * 100),
-      100
-    );
+    const userLangCode = user.settings?.language ?? ctx.session.language ?? "en";
+    const languageName =
+      LANGUAGE_NAMES[userLangCode as keyof typeof LANGUAGE_NAMES] ?? "English";
+
+    const selectedModelId = ctx.session.selectedModel ?? "gpt-4o";
+    const modelName = providerRegistry.getModelName(selectedModelId);
+
+    const planLabel = user.isPremium ? "⭐ Premium" : "🆓 Free";
+    const joinedDate = formatDate(user.createdAt);
+
+    // ─── Usage stats ──────────────────────────────────
+    const used = user.requestsToday;
+    const limit = user.dailyLimit;
+    const usagePercent = Math.min(Math.round((used / limit) * 100), 100);
     const filledBars = Math.min(Math.floor(usagePercent / 10), 10);
-    const progressBar =
-      "▓".repeat(filledBars) + "░".repeat(10 - filledBars);
+    const progressBar = "▓".repeat(filledBars) + "░".repeat(10 - filledBars);
 
-    const profileText = [
+    // ─── Build profile message ────────────────────────
+    const profileLines = [
+      // Header
       t(lang, "profile.title"),
       "",
-      `${t(lang, "profile.name", {
-        name: `${user.firstName} ${user.lastName ?? ""}`.trim(),
-      })}`,
-      `${t(lang, "profile.username", {
-        username: user.username ? `@${user.username}` : "—",
-      })}`,
-      `${t(lang, "profile.id", { id: String(from.id) })}`,
+      // Identity section
+      `👤 **${displayName}**`,
+      `📱 ${telegramUsername}`,
+      `${t(lang, "profile.id", { id: telegramId })}`,
+      "",
+      // Preferences section
       `${t(lang, "profile.language", { language: languageName })}`,
-      `${t(lang, "profile.model", { model: currentModel })}`,
-      `${t(lang, "profile.subscription", { status: premiumStatus })}`,
-      `${t(lang, "profile.member_since", { date: formatDate(user.createdAt) })}`,
+      `${t(lang, "profile.model", { model: modelName })}`,
+      `${t(lang, "profile.subscription", { status: planLabel })}`,
+      `${t(lang, "profile.member_since", { date: joinedDate })}`,
       "",
-      "━━━━━━━━━━━━━━━━━━━━━",
+      // Usage section
+      DIVIDER,
       t(lang, "profile.stats_title"),
-      "━━━━━━━━━━━━━━━━━━━━━",
+      DIVIDER,
       "",
-      `${t(lang, "profile.today", {
-        used: String(user.requestsToday),
-        limit: String(user.dailyLimit),
-      })}`,
+      `${t(lang, "profile.today", { used: String(used), limit: String(limit) })}`,
+      `${t(lang, "profile.progress", { bar: progressBar, percent: String(usagePercent) })}`,
       `${t(lang, "profile.total", { total: String(user.totalRequests) })}`,
-      `${t(lang, "profile.progress", {
-        bar: progressBar,
-        percent: String(usagePercent),
-      })}`,
       "",
-      "━━━━━━━━━━━━━━━━━━━━━",
+      DIVIDER,
       t(lang, "profile.activity_title"),
-      "━━━━━━━━━━━━━━━━━━━━━",
+      DIVIDER,
       "",
-      `${t(lang, "profile.conversations", {
-        count: String(user._count.conversations),
-      })}`,
-      `${t(lang, "profile.messages", {
-        count: String(user._count.messages),
-      })}`,
+      `${t(lang, "profile.conversations", { count: String(user._count.conversations) })}`,
+      `${t(lang, "profile.messages", { count: String(user._count.messages) })}`,
       `${t(lang, "profile.last_active", { date: formatDate(user.lastActiveAt) })}`,
       "",
+      // Upgrade CTA
       t(lang, "profile.upgrade"),
-    ].join("\n");
+    ];
+
+    const profileText = profileLines.join("\n");
 
     await ctx.reply(profileText, {
       parse_mode: "Markdown",

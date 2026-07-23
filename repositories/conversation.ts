@@ -4,11 +4,29 @@ import { logger } from "@/bot/core/logger";
 const log = logger.child("conversation-repo");
 
 export class ConversationRepository {
-  async create(data: { userId: number; title: string; feature: string }) {
+  async create(data: { userId: number; title: string; feature: string; projectId?: string }) {
     try {
       return await prisma.conversation.create({ data });
     } catch (error) {
       log.error("Error creating conversation", { error: String(error) });
+      throw error;
+    }
+  }
+
+  async findByProject(projectId: string, feature?: string) {
+    try {
+      return await prisma.conversation.findMany({
+        where: {
+          projectId,
+          isActive: true,
+          ...(feature ? { feature } : {}),
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 20,
+        include: { _count: { select: { messages: true } } },
+      });
+    } catch (error) {
+      log.error("Error finding conversations by project", { projectId, error: String(error) });
       throw error;
     }
   }

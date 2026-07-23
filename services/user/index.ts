@@ -111,7 +111,9 @@ export class UserService {
 
     // Update subscription
     await subscriptionRepository.upsert(userId, {
-      tier: planId,
+      tier: plan.id === "free" ? "free" : "pro",
+      planType: plan.id,
+      billingPeriod: plan.billingPeriod,
       dailyLimit: plan.limits.requestsPerDay,
       paymentId: paymentId ?? null,
     });

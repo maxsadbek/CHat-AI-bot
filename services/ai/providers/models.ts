@@ -151,12 +151,32 @@ export const CLAUDE_MODELS: ProviderModel[] = [
   },
 ];
 
+// ─── DeepSeek Models ──────────────────────────────────
+// DeepSeek uses an OpenAI-compatible API endpoint.
+
+export const DEEPSEEK_MODELS: ProviderModel[] = [
+  {
+    id: "deepseek-chat",
+    name: "DeepSeek Chat",
+    provider: "deepseek",
+    default: true,
+    capabilities: {
+      streaming: true,
+      vision: false,
+      functionCalling: true,
+      maxContextTokens: 128000,
+      maxOutputTokens: 4096,
+    },
+  },
+];
+
 // ─── All Models Flat List ─────────────────────────────
 
 export const ALL_MODELS: ProviderModel[] = [
   ...OPENAI_MODELS,
   ...GEMINI_MODELS,
   ...CLAUDE_MODELS,
+  ...DEEPSEEK_MODELS,
 ];
 
 /**

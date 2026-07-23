@@ -40,13 +40,21 @@
     "error_no_user": "❌ *Error*\n\nCould not identify your account. Please use /start first.",
     "error_generic": "❌ *Error*\n\nSorry, I encountered an error. Please try again.\n\nMake sure your OpenAI API key is configured correctly.",
     "clear_done": "🧹 *Chat cleared!*\n\nAll messages in this conversation have been removed.",
-    "clear_confirm": "🧹 *Clear this conversation?*\n\nThis will delete all messages permanently."
+    "clear_confirm": "🧹 *Clear this conversation?*\n\nThis will delete all messages permanently.",
+    "resumed": "💬 *Conversation resumed*\n\nYou can continue where you left off.",
+    "limit_reached": "⚠️ *Conversation limit reached*\n\nYou have reached the maximum of 10 saved conversations for AI Chat.\n\nPlease delete an old conversation or upgrade to Premium for unlimited conversations."
   },
   "video": {
     "welcome": "🎬 *Video AI Studio*\n\nGenerate professional prompts for:\n• Hailuo AI\n• Kling AI\n• Google Veo\n• Runway\n• PixVerse\n\n_Choose a platform or describe your video idea below:_",
     "generating": "🎬 *Generating your video prompts...*",
     "result_title": "━━━━━━━━━━━━━━━━━━━━━\n🎬 *Video Prompt Ready*\n━━━━━━━━━━━━━━━━━━━━━\n\n",
     "platform_selected": "🎬 *Video AI* - {platform}\n\nDescribe your video idea:",
+    "history_title": "📋 *Video Prompt History*",
+    "no_history": "📋 *No video prompts yet*\n\nYour generated video prompts will appear here.",
+    "history_entry": "{index}. {title}\n   🕐 {date}",
+    "resumed": "🎬 *Video prompt reopened*\n\nYou can view the previous prompts again.",
+    "regenerated": "🔄 *Video prompts regenerated!*\n\nNew prompts generated from your original description.",
+    "limit_reached": "⚠️ *Conversation limit reached*\n\nYou have reached the maximum of 10 saved video prompt sessions.\n\nPlease delete an old one or upgrade to Premium for unlimited.",
     "error": "❌ *Error generating video prompts*\n\nPlease try again with a different description."
   },
   "image": {
@@ -54,6 +62,11 @@
     "generating": "🎨 *Generating your image prompts...*",
     "result_title": "━━━━━━━━━━━━━━━━━━━━━\n🎨 *Image Prompt Ready*\n━━━━━━━━━━━━━━━━━━━━━\n\n",
     "platform_selected": "🎨 *Image AI* - {platform}\n\nDescribe your image:",
+    "history_title": "📋 *Image Prompt History*",
+    "no_history": "📋 *No image prompts yet*\n\nYour generated image prompts will appear here.",
+    "history_entry": "{index}. {title}\n   🕐 {date}",
+    "resumed": "🎨 *Image prompt reopened*\n\nYou can view the previous prompts again.",
+    "limit_reached": "⚠️ *Conversation limit reached*\n\nYou have reached the maximum of 10 saved image prompt sessions.\n\nPlease delete an old one or upgrade to Premium for unlimited.",
     "error": "❌ *Error generating image prompts*\n\nPlease try again with a different description."
   },
   "social": {
@@ -68,6 +81,11 @@
     "generating": "💼 *Generating your business content...*",
     "result_title": "━━━━━━━━━━━━━━━━━━━━━\n💼 *{type}*\n━━━━━━━━━━━━━━━━━━━━━\n\n",
     "type_selected": "💼 *Business* - {type}\n\nDescribe your business need:",
+    "history_title": "📋 *Business History*",
+    "no_history": "📋 *No business conversations yet*\n\nYour generated business content will appear here.",
+    "history_entry": "{index}. {title}\n   🕐 {date}",
+    "resumed": "💼 *Business conversation resumed*\n\nYou can continue where you left off.",
+    "limit_reached": "⚠️ *Conversation limit reached*\n\nYou have reached the maximum of 10 saved conversations for Business.\n\nPlease delete an old conversation or upgrade to Premium for unlimited.",
     "error": "❌ *Error generating business content*\n\nPlease try again."
   },
   "coding": {
@@ -75,12 +93,22 @@
     "generating": "💻 *Generating your code...*",
     "result_title": "━━━━━━━━━━━━━━━━━━━━━\n💻 *{language} Code*\n━━━━━━━━━━━━━━━━━━━━━\n\n",
     "language_selected": "💻 *Coding* - {language}\n\nDescribe what you want to build:",
+    "history_title": "📋 *Coding History*",
+    "no_history": "📋 *No coding conversations yet*\n\nYour generated code will appear here.",
+    "history_entry": "{index}. {title}\n   🕐 {date}",
+    "resumed": "💻 *Coding conversation resumed*\n\nYou can continue where you left off.",
+    "limit_reached": "⚠️ *Conversation limit reached*\n\nYou have reached the maximum of 10 saved conversations for Coding.\n\nPlease delete an old conversation or upgrade to Premium for unlimited.",
     "error": "❌ *Error generating code*\n\nPlease try again with a different description."
   },
   "translate": {
     "welcome": "🌍 *AI Translator*\n\nTranslate text between any languages.\n\n_Send me text to translate in this format:_\n\n```\nTranslate to [language]:\n[your text here]\n```\n\n_Or just send text and I'll ask you the target language._\n\nExamples:\n• `Translate to Spanish: Hello, how are you?`\n• `Translate to Japanese: I love programming`\n• `Translate to French: What time is it?`",
     "ask_language": "🌍 *Target Language?*\n\nWhat language should I translate this to?\nSend the language name (e.g., Spanish, French, Japanese)",
     "result": "━━━━━━━━━━━━━━━━━━━━━\n🌍 *Translation*\n━━━━━━━━━━━━━━━━━━━━━\n\n*From:* {source}\n*To ({language}):* {translated}",
+    "history_title": "📋 *Translation History*",
+    "no_history": "📋 *No translations yet*\n\nYour translations will appear here.",
+    "history_entry": "{index}. {title}\n   🕐 {date}",
+    "resumed": "🌍 *Translation resumed*\n\nYou can continue where you left off.",
+    "limit_reached": "⚠️ *Conversation limit reached*\n\nYou have reached the maximum of 10 saved translations.\n\nPlease delete an old one or upgrade to Premium for unlimited.",
     "error": "❌ *Error translating text*\n\nPlease try again."
   },
   "profile": {
@@ -136,6 +164,14 @@
   "premium": {
     "title": "━━━━━━━━━━━━━━━━━━━━━\n⭐ *Premium*\n━━━━━━━━━━━━━━━━━━━━━",
     "subtitle": "Unlock the full power of AI Creator Studio!",
+    "choose_plan": "📋 *Choose Your Plan*",
+    "current": "⭐ *Current:* {plan}",
+    "current_lifetime": "👑 *Lifetime:* {plan}",
+    "current_days": "⭐ *{plan}* — {days} days remaining",
+    "expired": "⚠️ *{plan}* — Expired. Renew to continue.",
+    "current_free": "🆓 You are on the Free plan.",
+    "upgrade_cta": "⬆️ Subscribe for {price}",
+    "upgrade_success": "🎉 *Welcome to {plan}!*\n\nYou now have unlimited access to all features.\nEnjoy! 🚀",
     "features": "✨ *Premium Features:*\n\n• 🚀 Higher daily request limits\n• 🤖 Access to advanced AI models\n• 🎯 Priority processing\n• 💬 Priority support\n• 📊 Advanced analytics\n• 🔓 Exclusive AI features",
     "coming_soon": "🚀 *Premium subscriptions coming soon!*\n\nStay tuned for updates.",
     "current": "⭐ *You are on:* {tier}",
@@ -155,6 +191,38 @@
     "rate_limit": "⚠️ *Rate Limit Reached*\n\nPlease wait a moment before sending another request.\n\nThis helps us maintain quality service for everyone.",
     "daily_limit": "⚠️ *Daily Limit Reached*\n\nYou've used {used}/{limit} requests today.\n\nYour limit resets at midnight UTC.\n\nUpgrade to Premium for higher limits! 🚀",
     "friendly": "🤖 *Oops!*\n\nI ran into a small hiccup.\nLet's try again!"
+  },
+  "projects": {
+    "title": "📁 *My Projects*",
+    "empty": "📁 *No projects yet*\n\nCreate your first project to organize your work!",
+    "select_prompt": "👇 Select a project or create a new one:",
+    "create_prompt": "📁 *Create New Project*\n\nSend me the project name:",
+    "name_too_long": "⚠️ Project name is too long. Maximum 100 characters.",
+    "created": "✅ *Project created:* {name}\n\nYour project is ready! You can now add conversations, files, and notes.",
+    "not_found": "❌ Project not found.",
+    "hub_stats": "💬 {chats} · 📄 {files} · 📝 {notes}",
+    "hub_prompt": "👇 Choose what you want to work on:",
+    "rename_prompt": "✏️ *Rename Project*\n\nSend me the new name:",
+    "renamed": "✅ Project renamed to *{name}*",
+    "delete_confirm": "🗑️ *Delete Project:* {name}\n\nAre you sure?",
+    "delete_warning": "⚠️ This will permanently delete all conversations, files, and notes in this project.",
+    "deleted": "🗑️ Project deleted successfully.",
+    "no_images": "🎨 No images in this project yet.\n\nUse Image AI while this project is selected to save images here.",
+    "no_videos": "🎬 No videos in this project yet.\n\nUse Video AI while this project is selected to save videos here.",
+    "no_files": "📄 No files in this project yet.",
+    "no_notes": "📝 No notes in this project yet.\n\nCreate your first note below:",
+    "no_history": "📋 No conversations in this project yet.",
+    "hub_images_title": "🎨 *Images in this Project*",
+    "hub_videos_title": "🎬 *Videos in this Project*",
+    "hub_files_title": "📄 *Files in this Project*",
+    "hub_notes_title": "📝 *Notes in this Project*",
+    "hub_history_title": "📋 *All History in this Project*",
+    "note_title_prompt": "📝 *New Note*\n\nSend me the note title:",
+    "note_content_prompt": "📝 *Add Content*\n\nSend me the note content:",
+    "note_created": "✅ Note created successfully!",
+    "note_not_found": "❌ Note not found.",
+    "note_pinned": "📌 Note pin toggled!",
+    "note_deleted": "🗑️ Note deleted."
   },
   "keyboards": {
     "main_menu": "🏠 Main Menu",

@@ -179,6 +179,34 @@ export class UserRepository {
   }
 
   /**
+   * Count users active since a given date
+   */
+  async countActiveSince(since: Date): Promise<number> {
+    try {
+      return await prisma.user.count({
+        where: { lastActiveAt: { gte: since } },
+      });
+    } catch (error) {
+      log.error("Error counting active users since", { since, error: String(error) });
+      throw error;
+    }
+  }
+
+  /**
+   * Count new users since a given date
+   */
+  async countNewSince(since: Date): Promise<number> {
+    try {
+      return await prisma.user.count({
+        where: { createdAt: { gte: since } },
+      });
+    } catch (error) {
+      log.error("Error counting new users since", { since, error: String(error) });
+      throw error;
+    }
+  }
+
+  /**
    * Get total user count
    */
   async countTotal(): Promise<number> {

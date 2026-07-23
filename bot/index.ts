@@ -13,18 +13,56 @@ import {
   aiChatHandler,
   newChatHandler,
   chatHistoryHandler,
+  resumeChatHandler,
 } from "@/bot/handlers/ai-chat";
-import { videoHandler, videoGenerateHandler } from "@/bot/handlers/video";
-import { imageHandler, imageGenerateHandler } from "@/bot/handlers/image";
+import { videoHandler, videoGenerateHandler, videoHistoryHandler, resumeVideoHandler, regenerateVideoHandler } from "@/bot/handlers/video";
+import { imageHandler, imageGenerateHandler, imageHistoryHandler, resumeImageHandler } from "@/bot/handlers/image";
 import { socialHandler, socialGenerateHandler } from "@/bot/handlers/social";
-import { businessHandler, businessGenerateHandler } from "@/bot/handlers/business";
-import { codingHandler, codingGenerateHandler } from "@/bot/handlers/coding";
+import {
+  businessHandler,
+  businessGenerateHandler,
+  businessHistoryHandler,
+  resumeBusinessHandler,
+} from "@/bot/handlers/business";
+import {
+  codingHandler,
+  codingGenerateHandler,
+  codingHistoryHandler,
+  resumeCodingHandler,
+} from "@/bot/handlers/coding";
 import {
   translateHandler,
   translateProcessHandler,
   translateLanguageHandler,
+  translateHistoryHandler,
+  resumeTranslateHandler,
 } from "@/bot/handlers/translate";
 import { profileHandler } from "@/bot/handlers/profile";
+import { premiumHandler, premiumPlanHandler, premiumUpgradeHandler } from "@/bot/handlers/premium";
+import {
+  projectsHandler,
+  projectCreateHandler,
+  projectCreateNameHandler,
+  projectOpenHandler,
+  projectRenameHandler,
+  projectRenameNameHandler,
+  projectDeleteHandler,
+  projectDeleteConfirmHandler,
+  projectDeleteCancelHandler,
+  projectHubChatHandler,
+  projectHubImagesHandler,
+  projectHubVideosHandler,
+  projectHubFilesHandler,
+  projectHubNotesHandler,
+  projectHubHistoryHandler,
+  projectNoteCreateHandler,
+  projectNoteTitleHandler,
+  projectNoteContentHandler,
+  projectNoteViewHandler,
+  projectNotePinHandler,
+  projectNoteDeleteHandler,
+  projectFileUploadHandler,
+} from "@/bot/handlers/projects";
 import { helpHandler, helpFeatureHandler, helpTipsHandler } from "@/bot/handlers/help";
 import {
   settingsHandler,
@@ -36,12 +74,28 @@ import {
   settingsPrivacyHandler,
   settingsAboutHandler,
 } from "@/bot/handlers/settings";
+import {
+  adminHandler,
+  adminUsersHandler,
+  adminUserDetailHandler,
+  adminUserPremiumHandler,
+  adminUserResetHandler,
+  adminPremiumHandler,
+  adminPremiumUsersHandler,
+  adminStatsHandler,
+  adminAnalyticsHandler,
+  adminBroadcastHandler,
+  adminBroadcastSendHandler,
+  adminHealthHandler,
+  adminLogsHandler,
+} from "@/bot/handlers/admin";
 import { handleLanguageSelection } from "@/bot/handlers/language";
 import {
   mainMenuKeyboard,
   chatKeyboard,
   settingsKeyboard,
   backToMainKeyboard,
+  homeCancelKeyboard,
   premiumKeyboard,
 } from "@/bot/keyboards";
 import { t } from "@/bot/localization";
@@ -89,23 +143,12 @@ async function switchToSettings(ctx: BotContext): Promise<void> {
   await settingsHandler(ctx);
 }
 
-async function switchToPremium(ctx: BotContext): Promise<void> {
-  const lang = ctx.session.language;
-  const premiumText = [
-    t(lang, "premium.title"),
-    "",
-    t(lang, "premium.subtitle"),
-    "",
-    t(lang, "premium.features"),
-    "",
-    "━━━━━━━━━━━━━━━━━━━━━",
-    t(lang, "premium.coming_soon"),
-  ].join("\n");
+async function switchToProjects(ctx: BotContext): Promise<void> {
+  await projectsHandler(ctx);
+}
 
-  await ctx.reply(premiumText, {
-    parse_mode: "Markdown",
-    reply_markup: premiumKeyboard,
-  });
+async function switchToPremium(ctx: BotContext): Promise<void> {
+  await premiumHandler(ctx);
 }
 
 // ─── Feature Switch Map ───────────────────────────────
@@ -119,6 +162,7 @@ const FEATURE_SWITCHES: Record<string, (ctx: BotContext) => Promise<void>> = {
   translate: switchToTranslate,
   profile: switchToProfile,
   settings: switchToSettings,
+  projects: switchToProjects,
   premium: switchToPremium,
   help: async (ctx) => {
     await helpHandler(ctx);
@@ -145,6 +189,8 @@ export function createBot(): Bot<BotContext> {
 
   // ─── Commands (minimal set) ───────────────────────
   bot.command("start", startHandler);
+  // Admin command (only for admin users)
+  bot.command("admin", adminHandler);
   bot.command("menu", async (ctx) => {
     resetSession(ctx.session, true);
     const lang = ctx.session.language;
@@ -158,6 +204,14 @@ export function createBot(): Bot<BotContext> {
     resetSession(ctx.session, true);
     const lang = ctx.session.language;
     await ctx.reply(t(lang, "cancel.done"), {
+      parse_mode: "Markdown",
+      reply_markup: mainMenuKeyboard,
+    });
+  });
+  bot.command("home", async (ctx) => {
+    resetSession(ctx.session, true);
+    const lang = ctx.session.language;
+    await ctx.reply(t(lang, "menu.main"), {
       parse_mode: "Markdown",
       reply_markup: mainMenuKeyboard,
     });
@@ -178,7 +232,46 @@ export function createBot(): Bot<BotContext> {
   // ─── Language Selection ───────────────────────────
   bot.callbackQuery(/^lang:(.+)/, handleLanguageSelection);
 
-  // ─── Menu Navigation ──────────────────────────────
+  // ─── Global Navigation ────────────────────────────
+  // Home — reset session, return to Main Menu
+  bot.callbackQuery("nav:home", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    resetSession(ctx.session, true);
+    const lang = ctx.session.language;
+    await ctx.editMessageText(t(lang, "menu.main"), {
+      parse_mode: "Markdown",
+      reply_markup: mainMenuKeyboard,
+    });
+  });
+
+  // Back — return to previous context
+  // If user is in a project hub, go back to project list instead of main menu
+  bot.callbackQuery("nav:back", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    if (ctx.session.step === BotStep.PROJECTS || ctx.session.currentProjectId) {
+      await projectsHandler(ctx);
+      return;
+    }
+    resetSession(ctx.session, true);
+    const lang = ctx.session.language;
+    await ctx.editMessageText(t(lang, "menu.main"), {
+      parse_mode: "Markdown",
+      reply_markup: mainMenuKeyboard,
+    });
+  });
+
+  // Cancel — cancel operation, reset, show Main Menu
+  bot.callbackQuery("nav:cancel", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    resetSession(ctx.session, true);
+    const lang = ctx.session.language;
+    await ctx.editMessageText(t(lang, "cancel.done"), {
+      parse_mode: "Markdown",
+      reply_markup: mainMenuKeyboard,
+    });
+  });
+
+  // Legacy menu:main callback (backward compatibility)
   bot.callbackQuery("menu:main", async (ctx) => {
     await ctx.answerCallbackQuery();
     resetSession(ctx.session, true);
@@ -192,6 +285,8 @@ export function createBot(): Bot<BotContext> {
   // ─── Chat Actions ─────────────────────────────────
   bot.callbackQuery("chat:new", newChatHandler);
   bot.callbackQuery("chat:history", chatHistoryHandler);
+  // Resume a specific chat conversation: resume:chat:<conversationId>
+  bot.callbackQuery(/^resume:chat:(.+)/, resumeChatHandler);
   bot.callbackQuery("chat:clear", async (ctx) => {
     await ctx.answerCallbackQuery();
     const lang = ctx.session.language;
@@ -279,14 +374,192 @@ export function createBot(): Bot<BotContext> {
     }
   });
 
+  // ─── Admin Panel ─────────────────────────────────
+  bot.callbackQuery("admin:panel", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await adminHandler(ctx);
+  });
+  bot.callbackQuery("admin:users", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await adminUsersHandler(ctx);
+  });
+  bot.callbackQuery(/^admin:user:detail:(\d+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await adminUserDetailHandler(ctx, parseInt(ctx.match[1]!, 10));
+  });
+  bot.callbackQuery(/^admin:user:premium:(\d+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await adminUserPremiumHandler(ctx, parseInt(ctx.match[1]!, 10));
+  });
+  bot.callbackQuery(/^admin:user:reset:(\d+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await adminUserResetHandler(ctx, parseInt(ctx.match[1]!, 10));
+  });
+  bot.callbackQuery("admin:premium", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await adminPremiumHandler(ctx);
+  });
+  bot.callbackQuery("admin:premium:users", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await adminPremiumUsersHandler(ctx);
+  });
+  bot.callbackQuery("admin:stats", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await adminStatsHandler(ctx);
+  });
+  bot.callbackQuery("admin:analytics", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await adminAnalyticsHandler(ctx);
+  });
+  bot.callbackQuery("admin:broadcast", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await adminBroadcastHandler(ctx);
+  });
+  bot.callbackQuery("admin:health", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await adminHealthHandler(ctx);
+  });
+  bot.callbackQuery("admin:logs", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await adminLogsHandler(ctx);
+  });
+
+  // ─── Image History ──────────────────────────────
+  bot.callbackQuery("image:history", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await imageHistoryHandler(ctx);
+  });
+  bot.callbackQuery(/^resume:image:(.+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await resumeImageHandler(ctx);
+  });
+
+  // ─── Video History ──────────────────────────────
+  bot.callbackQuery("video:history", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await videoHistoryHandler(ctx);
+  });
+  bot.callbackQuery(/^resume:video:(.+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await resumeVideoHandler(ctx);
+  });
+  bot.callbackQuery(/^video:regenerate:(.+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await regenerateVideoHandler(ctx);
+  });
+
+  // ─── Projects ────────────────────────────────────
+  // Open project list
+  bot.callbackQuery("project:list", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await projectsHandler(ctx);
+  });
+  // Create new project
+  bot.callbackQuery("project:create", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await projectCreateHandler(ctx);
+  });
+  // Open a specific project: project:open:<id>
+  bot.callbackQuery(/^project:open:(.+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await projectOpenHandler(ctx, ctx.match[1]!);
+  });
+  // Rename project
+  bot.callbackQuery("project:rename", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await projectRenameHandler(ctx);
+  });
+  // Delete project — confirmation
+  bot.callbackQuery("project:delete", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await projectDeleteHandler(ctx);
+  });
+  // Confirm project deletion
+  bot.callbackQuery(/^project:delete:confirm:(.+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await projectDeleteConfirmHandler(ctx, ctx.match[1]!);
+  });
+  // Cancel project deletion
+  bot.callbackQuery(/^project:delete:cancel:(.+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await projectDeleteCancelHandler(ctx, ctx.match[1]!);
+  });
+  // Project hub actions — Chat
+  bot.callbackQuery("project:hub:chat", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await projectHubChatHandler(ctx);
+  });
+  // Project hub actions — Images
+  bot.callbackQuery("project:hub:images", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await projectHubImagesHandler(ctx);
+  });
+  // Project hub actions — Videos
+  bot.callbackQuery("project:hub:videos", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await projectHubVideosHandler(ctx);
+  });
+  // Project hub actions — Files
+  bot.callbackQuery("project:hub:files", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await projectHubFilesHandler(ctx);
+  });
+  // Project hub actions — Notes
+  bot.callbackQuery("project:hub:notes", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await projectHubNotesHandler(ctx);
+  });
+  // Project hub actions — History
+  bot.callbackQuery("project:hub:history", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await projectHubHistoryHandler(ctx);
+  });
+  // Project hub actions — File upload (placeholder)
+  bot.callbackQuery("project:file:upload", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await projectFileUploadHandler(ctx);
+  });
+  // Notes CRUD — Create
+  bot.callbackQuery("project:note:create", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await projectNoteCreateHandler(ctx);
+  });
+  // Notes CRUD — View: project:note:view:<id>
+  bot.callbackQuery(/^project:note:view:(.+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await projectNoteViewHandler(ctx, ctx.match[1]!);
+  });
+  // Notes CRUD — Pin toggle: project:note:pin:<id>
+  bot.callbackQuery(/^project:note:pin:(.+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await projectNotePinHandler(ctx, ctx.match[1]!);
+  });
+  // Notes CRUD — Delete: project:note:delete:<id>
+  bot.callbackQuery(/^project:note:delete:(.+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await projectNoteDeleteHandler(ctx, ctx.match[1]!);
+  });
+
   // ─── Premium ──────────────────────────────────────
+  // Show details for a specific plan
+  bot.callbackQuery(/^premium:plan:(.+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await premiumPlanHandler(ctx, ctx.match[1]!);
+  });
+  // Subscribe to a plan (simulated payment)
+  bot.callbackQuery(/^premium:subscribe:(.+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await premiumUpgradeHandler(ctx, ctx.match[1]!);
+  });
+  // Back to premium plans
+  bot.callbackQuery("premium:back", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await premiumHandler(ctx);
+  });
+  // Legacy upgrade button (from profile page)
   bot.callbackQuery("premium:upgrade", async (ctx) => {
     await ctx.answerCallbackQuery();
-    const lang = ctx.session.language;
-    await ctx.editMessageText(t(lang, "premium.coming_soon"), {
-      parse_mode: "Markdown",
-      reply_markup: backToMainKeyboard,
-    });
+    await premiumHandler(ctx);
   });
 
   // ─── Result Actions (future-ready) ────────────────
@@ -295,6 +568,36 @@ export function createBot(): Bot<BotContext> {
   });
   bot.callbackQuery("result:regenerate", async (ctx) => {
     await ctx.answerCallbackQuery("🔄 Regenerating...");
+  });
+
+  // ─── Coding History ─────────────────────────────
+  bot.callbackQuery("coding:history", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await codingHistoryHandler(ctx);
+  });
+  bot.callbackQuery(/^resume:coding:(.+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await resumeCodingHandler(ctx);
+  });
+
+  // ─── Business History ───────────────────────────
+  bot.callbackQuery("business:history", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await businessHistoryHandler(ctx);
+  });
+  bot.callbackQuery(/^resume:business:(.+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await resumeBusinessHandler(ctx);
+  });
+
+  // ─── Translate History ──────────────────────────
+  bot.callbackQuery("translate:history", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await translateHistoryHandler(ctx);
+  });
+  bot.callbackQuery(/^resume:translate:(.+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await resumeTranslateHandler(ctx);
   });
 
   // ─── Video / Image / Social / Business / Coding Platform Selection ───
@@ -398,7 +701,25 @@ export function createBot(): Bot<BotContext> {
           await translateProcessHandler(ctx);
         }
         break;
+      case BotStep.PROJECT_CREATE:
+        await projectCreateNameHandler(ctx);
+        break;
+      case BotStep.PROJECT_RENAME:
+        await projectRenameNameHandler(ctx);
+        break;
+      case BotStep.PROJECT_NOTE_CREATE:
+        if (ctx.session.tempData.noteStep === "content") {
+          await projectNoteContentHandler(ctx);
+        } else {
+          await projectNoteTitleHandler(ctx);
+        }
+        break;
       default:
+        // Check for admin broadcast mode
+        if (ctx.session.tempData?.adminMode === "broadcast") {
+          await adminBroadcastSendHandler(ctx);
+          break;
+        }
         // IDLE or unrecognised — route to AI Chat
         clearModeData(ctx.session);
         sessionManager.setStep(ctx.session, BotStep.AI_CHAT);

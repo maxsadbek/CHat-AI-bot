@@ -1,28 +1,40 @@
 /**
  * Subscription Plans
- * Defines available subscription tiers, their limits, features, and pricing.
- * Payment-ready architecture — add payment provider integration here.
+ * Defines 4 tiers: Free, Pro Monthly, Pro Yearly, Lifetime.
+ * Each plan has explicit feature flags for unlimited access.
+ * Payment-ready — add payment provider integration here.
  */
 
-export type PlanId = "free" | "premium" | "enterprise";
+export type PlanId = "free" | "pro_monthly" | "pro_yearly" | "lifetime";
+
+export type BillingPeriod = "none" | "monthly" | "yearly" | "lifetime";
 
 export interface SubscriptionPlan {
   id: PlanId;
   name: string;
   emoji: string;
+  badge: string;
   description: string;
+  billingPeriod: BillingPeriod;
   price: {
-    monthly: number;   // USD cents (0 = free)
-    yearly: number;    // USD cents (0 = free)
+    amount: number;   // USD cents
+    label: string;    // Display label like "$9.99/mo"
   };
   limits: {
     requestsPerDay: number;
-    maxConversations: number;
-    maxMessageLength: number;
-    tokensPerRequest: number;
+    conversationsPerFeature: number;
   };
-  features: string[];
+  features: Array<{
+    key: string;
+    label: string;
+    included: boolean;
+    emoji: string;
+  }>;
+  modelTier: "basic" | "all";
+  priorityQueue: boolean;
+  unlimitedHistory: boolean;
   isActive: boolean;
+  sortOrder: number;
 }
 
 export const SUBSCRIPTION_PLANS: Record<PlanId, SubscriptionPlan> = {
@@ -30,95 +42,160 @@ export const SUBSCRIPTION_PLANS: Record<PlanId, SubscriptionPlan> = {
     id: "free",
     name: "Free",
     emoji: "🆓",
-    description: "Basic access to AI features",
-    price: { monthly: 0, yearly: 0 },
+    badge: "Free",
+    description: "Get started with basic AI features",
+    billingPeriod: "none",
+    price: { amount: 0, label: "Free" },
     limits: {
       requestsPerDay: 50,
-      maxConversations: 10,
-      maxMessageLength: 2000,
-      tokensPerRequest: 2048,
+      conversationsPerFeature: 10,
     },
     features: [
-      "AI Chat with memory",
-      "Image prompt generation",
-      "Video prompt generation",
-      "Basic coding assistance",
-      "Social media content",
-      "Business ideas",
-      "Text translation",
+      { key: "chat", label: "AI Chat", included: true, emoji: "🤖" },
+      { key: "image", label: "Image AI", included: true, emoji: "🎨" },
+      { key: "video", label: "Video AI", included: true, emoji: "🎬" },
+      { key: "coding", label: "Coding", included: true, emoji: "💻" },
+      { key: "social", label: "Social Media", included: true, emoji: "📱" },
+      { key: "business", label: "Business", included: true, emoji: "💼" },
+      { key: "translate", label: "Translate", included: true, emoji: "🌍" },
+      { key: "history", label: "Conversation History", included: true, emoji: "📋" },
+      { key: "models", label: "Latest AI Models", included: false, emoji: "🤖" },
+      { key: "priority", label: "Priority Queue", included: false, emoji: "⚡" },
     ],
+    modelTier: "basic",
+    priorityQueue: false,
+    unlimitedHistory: false,
     isActive: true,
+    sortOrder: 0,
   },
-  premium: {
-    id: "premium",
-    name: "Premium",
+  pro_monthly: {
+    id: "pro_monthly",
+    name: "Pro Monthly",
     emoji: "⭐",
+    badge: "Pro",
     description: "Unlimited access to all AI features",
-    price: { monthly: 999, yearly: 9999 }, // $9.99/mo, $99.99/yr
-    limits: {
-      requestsPerDay: 500,
-      maxConversations: 100,
-      maxMessageLength: 4096,
-      tokensPerRequest: 8192,
-    },
-    features: [
-      "Everything in Free",
-      "500 requests per day",
-      "Advanced AI models",
-      "Priority processing",
-      "Priority support",
-      "Advanced analytics",
-      "Exclusive AI features",
-      "No ads",
-    ],
-    isActive: true,
-  },
-  enterprise: {
-    id: "enterprise",
-    name: "Enterprise",
-    emoji: "🏢",
-    description: "Custom solutions for businesses",
-    price: { monthly: 0, yearly: 0 }, // Custom pricing
+    billingPeriod: "monthly",
+    price: { amount: 999, label: "$9.99/mo" },
     limits: {
       requestsPerDay: 999999,
-      maxConversations: 9999,
-      maxMessageLength: 8192,
-      tokensPerRequest: 16384,
+      conversationsPerFeature: 999999,
     },
     features: [
-      "Everything in Premium",
-      "Unlimited requests",
-      "Custom AI models",
-      "Dedicated support",
-      "Custom integrations",
-      "SLA guarantee",
-      "Team management",
-      "White-label option",
+      { key: "chat", label: "Unlimited AI Chat", included: true, emoji: "🤖" },
+      { key: "image", label: "Unlimited Image AI", included: true, emoji: "🎨" },
+      { key: "video", label: "Unlimited Video AI", included: true, emoji: "🎬" },
+      { key: "coding", label: "Unlimited Coding", included: true, emoji: "💻" },
+      { key: "social", label: "Unlimited Social Media", included: true, emoji: "📱" },
+      { key: "business", label: "Unlimited Business", included: true, emoji: "💼" },
+      { key: "translate", label: "Unlimited Translate", included: true, emoji: "🌍" },
+      { key: "history", label: "Unlimited History", included: true, emoji: "📋" },
+      { key: "models", label: "Latest AI Models", included: true, emoji: "🤖" },
+      { key: "priority", label: "Priority Queue", included: true, emoji: "⚡" },
     ],
-    isActive: false, // Coming soon
+    modelTier: "all",
+    priorityQueue: true,
+    unlimitedHistory: true,
+    isActive: true,
+    sortOrder: 1,
   },
-};
+  pro_yearly: {
+    id: "pro_yearly",
+    name: "Pro Yearly",
+    emoji: "🌟",
+    badge: "Best Value",
+    description: "All Pro features, save 17% annually",
+    billingPeriod: "yearly",
+    price: { amount: 9999, label: "$99.99/yr" },
+    limits: {
+      requestsPerDay: 999999,
+      conversationsPerFeature: 999999,
+    },
+    features: [
+      { key: "chat", label: "Unlimited AI Chat", included: true, emoji: "🤖" },
+      { key: "image", label: "Unlimited Image AI", included: true, emoji: "🎨" },
+      { key: "video", label: "Unlimited Video AI", included: true, emoji: "🎬" },
+      { key: "coding", label: "Unlimited Coding", included: true, emoji: "💻" },
+      { key: "social", label: "Unlimited Social Media", included: true, emoji: "📱" },
+      { key: "business", label: "Unlimited Business", included: true, emoji: "💼" },
+      { key: "translate", label: "Unlimited Translate", included: true, emoji: "🌍" },
+      { key: "history", label: "Unlimited History", included: true, emoji: "📋" },
+      { key: "models", label: "Latest AI Models", included: true, emoji: "🤖" },
+      { key: "priority", label: "Priority Queue", included: true, emoji: "⚡" },
+    ],
+    modelTier: "all",
+    priorityQueue: true,
+    unlimitedHistory: true,
+    isActive: true,
+    sortOrder: 2,
+  },
+  lifetime: {
+    id: "lifetime",
+    name: "Lifetime",
+    emoji: "👑",
+    badge: "Lifetime",
+    description: "Pay once, use forever — all Pro features",
+    billingPeriod: "lifetime",
+    price: { amount: 29999, label: "$299.99" },
+    limits: {
+      requestsPerDay: 999999,
+      conversationsPerFeature: 999999,
+    },
+    features: [
+      { key: "chat", label: "Unlimited AI Chat", included: true, emoji: "🤖" },
+      { key: "image", label: "Unlimited Image AI", included: true, emoji: "🎨" },
+      { key: "video", label: "Unlimited Video AI", included: true, emoji: "🎬" },
+      { key: "coding", label: "Unlimited Coding", included: true, emoji: "💻" },
+      { key: "social", label: "Unlimited Social Media", included: true, emoji: "📱" },
+      { key: "business", label: "Unlimited Business", included: true, emoji: "💼" },
+      { key: "translate", label: "Unlimited Translate", included: true, emoji: "🌍" },
+      { key: "history", label: "Unlimited History", included: true, emoji: "📋" },
+      { key: "models", label: "Latest AI Models", included: true, emoji: "🤖" },
+      { key: "priority", label: "Priority Queue", included: true, emoji: "⚡" },
+    ],
+    modelTier: "all",
+    priorityQueue: true,
+    unlimitedHistory: true,
+    isActive: true,
+    sortOrder: 3,
+  },
+} as const;
 
-/**
- * Get the daily limit for a given subscription tier
- */
-export function getDailyLimit(tier: PlanId = "free"): number {
-  return SUBSCRIPTION_PLANS[tier]?.limits.requestsPerDay ?? 50;
-}
-
-/**
- * Check if a user can upgrade to a target plan
- */
-export function canUpgrade(currentTier: PlanId, targetTier: PlanId): boolean {
-  const tiers: PlanId[] = ["free", "premium", "enterprise"];
-  const currentIdx = tiers.indexOf(currentTier);
-  const targetIdx = tiers.indexOf(targetTier);
-  return targetIdx > currentIdx && SUBSCRIPTION_PLANS[targetTier].isActive;
-}
-
-/**
- * All active plans (available for purchase)
- */
+/** Active plans sorted by price */
 export function getActivePlans(): SubscriptionPlan[] {
-  return Object.values(SUBSCRIPTION_PLANS).filter((p) => p.isActive);
+  return Object.values(SUBSCRIPTION_PLANS)
+    .filter((p) => p.isActive)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+/** Get a plan by ID */
+export function getPlan(planId: PlanId): SubscriptionPlan | undefined {
+  return SUBSCRIPTION_PLANS[planId];
+}
+
+/** Get human-readable tier from plan type */
+export function getTierFromPlan(planId: PlanId): string {
+  if (planId === "free") return "free";
+  return "pro";
+}
+
+/** Calculate expiry date based on billing period */
+export function calculateExpiry(billingPeriod: BillingPeriod): Date | null {
+  if (billingPeriod === "none" || billingPeriod === "lifetime") return null;
+  const now = new Date();
+  if (billingPeriod === "monthly") {
+    now.setMonth(now.getMonth() + 1);
+  } else if (billingPeriod === "yearly") {
+    now.setFullYear(now.getFullYear() + 1);
+  }
+  return now;
+}
+
+/** Check if a plan has unlimited requests */
+export function hasUnlimitedRequests(planId: PlanId): boolean {
+  return planId !== "free";
+}
+
+/** Get daily request limit for a plan */
+export function getDailyLimit(planId: PlanId = "free"): number {
+  return SUBSCRIPTION_PLANS[planId]?.limits.requestsPerDay ?? 50;
 }

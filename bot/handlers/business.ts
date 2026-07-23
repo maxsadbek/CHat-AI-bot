@@ -4,6 +4,15 @@ import { businessAIService } from "@/services/ai/business";
 import { businessKeyboard } from "@/bot/keyboards";
 import { clearModeData } from "@/bot/session";
 import { t } from "@/bot/localization";
+import { logger } from "@/bot/core/logger";
+import {
+  createConversation,
+  saveMessagesToDb,
+  showHistory,
+  resumeConversation,
+} from "@/bot/handlers/history";
+
+const log = logger.child("handler-business");
 
 /**
  * Business AI handler
@@ -33,6 +42,24 @@ export async function businessGenerateHandler(ctx: BotContext): Promise<void> {
 
   const lang = ctx.session.language;
   const type = ctx.session.selectedBusinessType ?? "startup_idea";
+  const userId = ctx.session.userId;
+
+  if (!userId) return;
+
+  // Create conversation if not exists
+  if (!ctx.session.conversationId) {
+    const created = await createConversation(
+      ctx,
+      `Business: ${text.slice(0, 90)}`,
+      "business"
+    );
+    if (!created) {
+      await ctx.reply(t(lang, "business.limit_reached"), {
+        parse_mode: "Markdown",
+      });
+      return;
+    }
+  }
 
   await ctx.replyWithChatAction("typing");
   const startMsg = await ctx.reply(t(lang, "business.generating"), {
@@ -40,7 +67,18 @@ export async function businessGenerateHandler(ctx: BotContext): Promise<void> {
   });
 
   try {
-    const result = await businessAIService.generate(text, type, ctx.session.selectedModel);
+    const result = await businessAIService.generate(
+      text,
+      type,
+      ctx.session.selectedModel
+    );
+
+    // Store in session
+    ctx.session.messages.push({ role: "user", content: text });
+    ctx.session.messages.push({ role: "assistant", content: result.content });
+
+    // Save to database
+    await saveMessagesToDb(ctx, "business");
 
     const typeTitle = type
       .replace(/_/g, " ")
@@ -53,11 +91,41 @@ export async function businessGenerateHandler(ctx: BotContext): Promise<void> {
       reply_markup: businessKeyboard,
     });
   } catch (error) {
-    console.error("Business AI error:", error);
+    log.error("Business AI error", { userId, error: String(error) });
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
     await ctx.reply(t(lang, "business.error"), {
       parse_mode: "Markdown",
       reply_markup: businessKeyboard,
     });
   }
+}
+
+/**
+ * Show business conversation history
+ */
+export async function businessHistoryHandler(ctx: BotContext): Promise<void> {
+  await showHistory(ctx, "business");
+}
+
+/**
+ * Resume a business conversation
+ */
+export async function resumeBusinessHandler(ctx: BotContext): Promise<void> {
+  const lang = ctx.session.language;
+  const data = ctx.callbackQuery?.data;
+  if (!data) return;
+
+  const conversationId = data.replace("resume:business:", "");
+  if (!conversationId) return;
+
+  const resumed = await resumeConversation(ctx, conversationId);
+  if (!resumed) {
+    await ctx.reply(t(lang, "business.error"), { parse_mode: "Markdown" });
+    return;
+  }
+
+  await ctx.reply(t(lang, "business.resumed"), {
+    parse_mode: "Markdown",
+    reply_markup: businessKeyboard,
+  });
 }

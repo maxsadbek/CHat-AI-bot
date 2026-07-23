@@ -22,6 +22,11 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default("claude-sonnet-4-20250514"),
 
+  // ─── DeepSeek API (OpenAI-compatible) ──────
+  DEEPSEEK_API_KEY: z.string().optional(),
+  DEEPSEEK_BASE_URL: z.string().url().default("https://api.deepseek.com/v1"),
+  DEEPSEEK_MODEL: z.string().default("deepseek-chat"),
+
   // Database
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
 

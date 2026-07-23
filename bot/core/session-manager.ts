@@ -28,6 +28,8 @@ export class SessionManager {
       selectedBusinessType: "startup_idea",
     selectedCodeLanguage: "Next.js",
     selectedModel: "gpt-4o",
+    currentProjectId: null,
+    pendingProjectName: "",
     ...overrides,
     };
   }
@@ -134,6 +136,28 @@ export class SessionManager {
    */
   clearTempData(session: SessionData): void {
     session.tempData = {};
+  }
+
+  /**
+   * Set current project context
+   */
+  setCurrentProject(session: SessionData, projectId: string | null): void {
+    session.currentProjectId = projectId;
+  }
+
+  /**
+   * Get current project context
+   */
+  getCurrentProject(session: SessionData): string | null {
+    return session.currentProjectId;
+  }
+
+  /**
+   * Clear project context
+   */
+  clearProjectContext(session: SessionData): void {
+    session.currentProjectId = null;
+    session.pendingProjectName = "";
   }
 }
 

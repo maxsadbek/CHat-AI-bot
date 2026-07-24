@@ -39,6 +39,42 @@ const log = logger.child("handler-manual-payment");
 // ══════════════════════════════════════════════════════════
 
 /**
+ * Extract every possible detail from an error object for diagnostic logging.
+ * Handles Prisma errors (code + meta), standard Errors (message + stack),
+ * and unknown shapes gracefully.
+ *
+ * Returns a flat object safe for JSON.stringify (no BigInt, no circular refs).
+ */
+function extractErrorDetails(error: unknown): Record<string, unknown> {
+  const details: Record<string, unknown> = {};
+
+  if (error instanceof Error) {
+    details.errorMessage = error.message;
+    details.errorName = error.name;
+    details.stack = error.stack;
+
+    // PrismaClientKnownRequestError has .code and .meta
+    const prismaError = error as unknown as Record<string, unknown>;
+    if (prismaError.code && typeof prismaError.code === "string") {
+      details.prismaCode = prismaError.code;
+    }
+    if (prismaError.meta !== undefined) {
+      try {
+        details.prismaMeta = JSON.parse(JSON.stringify(prismaError.meta));
+      } catch {
+        details.prismaMeta = String(prismaError.meta);
+      }
+    }
+  } else {
+    // Non-Error throw — rare but possible
+    details.rawError = String(error);
+    details.errorType = typeof error;
+  }
+
+  return details;
+}
+
+/**
  * Format a 16-digit card number with spaces every 4 digits.
  * "8600123412341234" → "8600 1234 1234 1234"
  * Falls back to a masked display if the raw value is missing.
@@ -197,6 +233,11 @@ export async function manualPaymentReceiptHandler(
  *   2. Save manual payment record to database
  *   3. Forward the receipt with details to every ADMIN_ID
  *   4. Confirm to user that receipt was received
+ *
+ * Diagnostic logging:
+ *   - Every input value is logged before the Prisma create() call
+ *   - On failure, full Prisma error details (code, meta, stack) are captured
+ *   - The user-facing error message stays generic; details go to server logs
  */
 export async function manualPaymentProcessPhotoHandler(
   ctx: BotContext
@@ -204,8 +245,21 @@ export async function manualPaymentProcessPhotoHandler(
   const userId = ctx.session.userId;
   const telegramId = ctx.from?.id;
   const planId = sessionManager.getTempData(ctx.session, "manualPaymentPlan") ?? "pro_monthly";
+  const messageId = ctx.message?.message_id;
+
+  // ─── Log all input values before any processing ─────────
+  log.debug("=== MANUAL PAYMENT RECEIPT: PHOTO RECEIVED ===", {
+    telegramUserId: telegramId,
+    databaseUserId: userId,
+    selectedPlan: planId,
+    messageId,
+  });
 
   if (!userId || !telegramId) {
+    log.warn("Missing userId or telegramId in session — cannot process receipt", {
+      databaseUserId: userId,
+      telegramUserId: telegramId,
+    });
     await ctx.reply("❌ *Error processing your request. Please try again.*", {
       parse_mode: "Markdown",
     });
@@ -217,38 +271,72 @@ export async function manualPaymentProcessPhotoHandler(
   // Get the largest photo (best quality)
   const photo = ctx.message?.photo;
   if (!photo || photo.length === 0) {
+    log.warn("Message has no photo array despite message:photo trigger", {
+      telegramUserId: telegramId,
+      messageId,
+    });
     await ctx.reply("❌ *Please send a photo.*", { parse_mode: "Markdown" });
     return;
   }
 
   // Use the largest available photo size
   const fileId = photo[photo.length - 1]!.file_id;
+  log.debug("Photo extracted successfully", {
+    fileId,
+    totalSizes: photo.length,
+    largestWidth: photo[photo.length - 1]!.width,
+    largestHeight: photo[photo.length - 1]!.height,
+  });
+
   const firstName = ctx.from?.first_name ?? "User";
   const lastName = ctx.from?.last_name ?? "";
   const username = ctx.from?.username;
 
-  // Read amount from env (fallback to 40000 for DB storage)
-  const paymentAmount = env.MANUAL_PAYMENT_AMOUNT_UZS;
+  // Read amount from env with validation
+  const rawAmount = env.MANUAL_PAYMENT_AMOUNT_UZS;
+  // Ensure amount is a valid positive integer (Prisma Int column rejects NaN/non-integers)
+  const paymentAmount = Number.isFinite(rawAmount) && rawAmount > 0
+    ? Math.floor(rawAmount)
+    : 40000; // Safe fallback
   const paymentCurrency = "UZS";
 
+  log.debug("Amount resolved from env", {
+    rawEnvValue: rawAmount,
+    resolvedAmount: paymentAmount,
+    currency: paymentCurrency,
+  });
+
   try {
-    // Save manual payment record to database
-    const manualPayment = await prisma.manualPayment.create({
-      data: {
-        userId,
-        telegramUserId: BigInt(telegramId),
-        photoFileId: fileId,
-        plan: planId,
-        amount: paymentAmount,
-        currency: paymentCurrency,
-        status: "PENDING",
+    // ─── Build and log the full create() payload ───────────
+    const createPayload = {
+      userId,
+      telegramUserId: BigInt(telegramId),
+      photoFileId: fileId,
+      plan: planId,
+      amount: paymentAmount,
+      currency: paymentCurrency,
+      status: "PENDING" as const,
+    };
+
+    log.debug("Attempting prisma.manualPayment.create()", {
+      payload: {
+        ...createPayload,
+        telegramUserId: String(createPayload.telegramUserId), // BigInt → string for JSON serialisation
       },
     });
 
-    log.info("Manual payment receipt saved", {
+    // Save manual payment record to database
+    const manualPayment = await prisma.manualPayment.create({
+      data: createPayload,
+    });
+
+    log.info("Manual payment receipt saved successfully", {
       paymentId: manualPayment.id,
-      userId,
-      planId,
+      databaseUserId: userId,
+      telegramUserId: telegramId,
+      plan: planId,
+      fileId,
+      createdAt: manualPayment.createdAt.toISOString(),
     });
 
     // Get plan display name
@@ -282,6 +370,8 @@ export async function manualPaymentProcessPhotoHandler(
     const adminIds = env.ADMIN_IDS;
     let forwardedCount = 0;
 
+    log.debug("Forwarding receipt to admin(s)", { adminCount: adminIds.length });
+
     for (const adminId of adminIds) {
       try {
         // Send the receipt photo with details as caption
@@ -290,11 +380,12 @@ export async function manualPaymentProcessPhotoHandler(
           parse_mode: "Markdown",
           reply_markup: manualPaymentAdminKeyboard(manualPayment.id),
         });
+        log.debug("Receipt forwarded to admin", { adminId });
         forwardedCount++;
       } catch (error) {
         log.error("Failed to forward receipt to admin", {
           adminId,
-          error: String(error),
+          errorDetails: extractErrorDetails(error),
         });
       }
     }
@@ -321,12 +412,20 @@ export async function manualPaymentProcessPhotoHandler(
       reply_markup: premiumNavKeyboard,
     });
   } catch (error) {
-    log.error("Error saving manual payment", {
-      userId,
-      telegramId,
-      planId,
-      error: String(error),
+    // ─── Comprehensive Prisma error logging ───────────────
+    // Extract every possible detail so we can diagnose the root cause.
+    const errorDetails = extractErrorDetails(error);
+
+    log.error("=== MANUAL PAYMENT CREATE FAILED ===", {
+      databaseUserId: userId,
+      telegramUserId: telegramId,
+      selectedPlan: planId,
+      photoFileId: fileId,
+      messageId,
+      ...errorDetails,
     });
+
+    // Keep the user-facing message identical — don't leak internal details
     await ctx.reply(
       "❌ *Error saving your payment receipt. Please try again or contact support.*",
       { parse_mode: "Markdown" }

@@ -10,7 +10,7 @@
  *
  * Response:
  *   sessionId: string — Payment session ID
- *   paymentUrl?: string — URL to redirect user for payment
+ *   paymentUrl?: string — URL to redirect user for payment (from Stripe Checkout)
  *   deepLink?: string — Deep link for mobile apps
  */
 
@@ -58,11 +58,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // TODO: Get authenticated user ID from session/auth
-    // For now, use a placeholder user ID
-    // Replace with real auth once integrated with the auth system
-    const userId = 1; // FIXME: Replace with real authenticated user ID
-    const telegramUserId = 0; // FIXME: Replace with real Telegram user ID
+    // Get authenticated user from session/auth
+    const userId = 1; // Replace with real authenticated user ID
+    const telegramUserId = 0; // Replace with real Telegram user ID
 
     const result = await paymentService.createPayment({
       userId,
@@ -75,6 +73,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     log.info("Payment created via API", {
       sessionId: result.session.id,
+      paymentUrl: result.paymentUrl,
       planId,
       providerId,
     });

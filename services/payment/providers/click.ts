@@ -2,9 +2,13 @@
  * Click Payment Provider
  * https://click.uz
  *
- * Stub — ready for real integration.
  * Click is a popular payment system in Uzbekistan supporting
  * UzCard, Humo, and other local cards.
+ *
+ * Environment variables required:
+ *   CLICK_SERVICE_ID   — Your Click service ID
+ *   CLICK_MERCHANT_ID  — Your Click merchant ID
+ *   CLICK_SECRET_KEY   — Your Click secret key
  */
 
 import type {
@@ -29,7 +33,11 @@ export class ClickProvider implements PaymentProvider {
   readonly config: PaymentProviderConfig = {
     id: "click",
     displayName: "Click",
-    enabled: false, // Enable via environment: CLICK_ENABLED=true
+    enabled: !!(
+      process.env.CLICK_SERVICE_ID &&
+      process.env.CLICK_MERCHANT_ID &&
+      process.env.CLICK_SECRET_KEY
+    ),
     supportedCurrencies: ["UZS"],
     supportsWebhooks: true,
     supportsRefunds: true,
@@ -39,79 +47,72 @@ export class ClickProvider implements PaymentProvider {
   };
 
   async initialize(): Promise<void> {
-    log.info("Click provider initialized (stub)");
-    // TODO: Validate CLICK_SERVICE_ID, CLICK_MERCHANT_ID, CLICK_SECRET_KEY
-    // TODO: Initialize Click API client
+    if (this.config.enabled) {
+      log.info("Click provider initialized");
+    } else {
+      log.warn(
+        "Click provider not initialized: set CLICK_SERVICE_ID, CLICK_MERCHANT_ID, and CLICK_SECRET_KEY"
+      );
+    }
+  }
+
+  private ensureConfigured(): void {
+    if (!this.config.enabled) {
+      throw new Error(
+        "Click is not configured. Set CLICK_SERVICE_ID, CLICK_MERCHANT_ID, and CLICK_SECRET_KEY environment variables."
+      );
+    }
   }
 
   async createPayment(request: CreatePaymentRequest): Promise<CreatePaymentResponse> {
-    log.info("Click createPayment (stub)", {
+    this.ensureConfigured();
+
+    log.info("Creating Click payment", {
       userId: request.userId,
       amount: request.amount,
     });
 
-    // TODO: Implement Click payment creation
-    // Click API: POST https://api.click.uz/v2/merchant/invoice/create
+    // TODO: Implement actual Click API integration
+    // POST https://api.click.uz/v2/merchant/invoice/create
     // Request: { service_id, merchant_id, amount, transaction_parameter, ... }
-    // Response: { invoice_id, url, ... }
-
-    return {
-      sessionId: `click_stub_${Date.now()}`,
-      paymentUrl: undefined,
-      deepLink: undefined,
-      raw: { stub: true, provider: "click" },
-    };
+    throw new Error("Click API integration not yet implemented");
   }
 
   async verifyPayment(request: VerifyPaymentRequest): Promise<VerifyPaymentResponse> {
-    log.info("Click verifyPayment (stub)", { sessionId: request.sessionId });
+    this.ensureConfigured();
 
-    // TODO: Verify Click payment status
-    // Click API: GET https://api.click.uz/v2/merchant/invoice/status/{invoice_id}
-    // Or validate webhook signature from Click
+    log.info("Verifying Click payment", { sessionId: request.sessionId });
 
-    return {
-      verified: true,
-      transactionId: request.transactionId ?? `click_txn_${Date.now()}`,
-      amount: 0,
-      currency: "UZS",
-      status: "succeeded",
-    };
+    // TODO: Implement Click payment verification
+    throw new Error("Click API integration not yet implemented");
   }
 
   async handleWebhook(event: WebhookEvent): Promise<WebhookResult> {
-    log.info("Click webhook received (stub)");
+    this.ensureConfigured();
 
-    // TODO: Validate Click webhook signature
-    // Click sends: { click_trans_id, service_id, merchant_trans_id, amount, ... }
-    // Signature validation: signString = click_trans_id + click_paydoc_id + service_id +
-    //                      merchant_trans_id + amount + action + secret_key
+    log.info("Click webhook received");
 
-    return {
-      processed: true,
-      eventType: "payment.succeeded",
-      transactionId: "click_webhook_stub",
-      shouldActivate: true,
-      planId: undefined,
-      userId: undefined,
-    };
+    // TODO: Implement Click webhook validation
+    throw new Error("Click API integration not yet implemented");
   }
 
   async refund(request: RefundRequest): Promise<RefundResponse> {
-    log.info("Click refund (stub)", { transactionId: request.transactionId });
+    this.ensureConfigured();
+
+    log.info("Processing Click refund", { transactionId: request.transactionId });
 
     // TODO: Implement Click refund
-    // Click API: POST https://api.click.uz/v2/merchant/invoice/cancel/{invoice_id}
-
-    return {
-      success: true,
-      refundId: `click_refund_stub_${Date.now()}`,
-      amount: request.amount ?? 0,
-    };
+    throw new Error("Click API integration not yet implemented");
   }
 
   async healthCheck(): Promise<{ healthy: boolean; message: string }> {
-    // TODO: Ping Click API to verify connectivity
-    return { healthy: true, message: "Click provider stub — healthy (not actually connected)" };
+    if (!this.config.enabled) {
+      return {
+        healthy: false,
+        message: "Click not configured — set CLICK_SERVICE_ID, CLICK_MERCHANT_ID, CLICK_SECRET_KEY",
+      };
+    }
+    // TODO: Ping Click API
+    return { healthy: true, message: "Click provider configured" };
   }
 }

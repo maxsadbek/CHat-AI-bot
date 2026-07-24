@@ -195,13 +195,26 @@ export class SystemHealthService {
   }
 
   private async checkPaymentProviders(): Promise<ComponentHealth> {
-    // Payment providers are all stubs — check if any are enabled
-    const hasPaymentConfig = false; // Will be true when payment providers are configured
+    const enabledProviders: string[] = [];
+
+    if (env.STRIPE_SECRET_KEY) enabledProviders.push("Stripe");
+    if (env.CLICK_SERVICE_ID && env.CLICK_MERCHANT_ID && env.CLICK_SECRET_KEY)
+      enabledProviders.push("Click");
+    if (env.PAYME_MERCHANT_ID && env.PAYME_SECRET_KEY)
+      enabledProviders.push("Payme");
+    if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_PROVIDER_TOKEN)
+      enabledProviders.push("Telegram Stars");
+
+    if (enabledProviders.length === 0) {
+      return {
+        status: "degraded",
+        message: "No payment providers configured. Set STRIPE_SECRET_KEY or other provider credentials.",
+      };
+    }
+
     return {
-      status: hasPaymentConfig ? "healthy" : "degraded",
-      message: hasPaymentConfig
-        ? "Payment providers configured"
-        : "No payment providers configured (stubs active)",
+      status: "healthy",
+      message: `Payment providers configured: ${enabledProviders.join(", ")}`,
     };
   }
 

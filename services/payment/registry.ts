@@ -97,8 +97,7 @@ class PaymentRegistry {
   getProvider(providerId: PaymentProviderId): PaymentProvider {
     const factory = PROVIDER_MAP[providerId];
     if (!factory) {
-      log.warn(`Unknown payment provider "${providerId}", falling back to Telegram Stars`);
-      return getTelegramStars();
+      throw new Error(`Unknown payment provider: "${providerId}"`);
     }
     return factory();
   }
@@ -168,16 +167,14 @@ class PaymentRegistry {
 
   /**
    * Get the preferred provider from a sorted list (first enabled wins).
-   * Falls back to Stripe stub which returns a mock payment URL.
-   * This ensures the "💳 Pay Now" button is always visible during development/stub mode.
-   * In production, configure at least one real payment provider via environment variables.
+   * Throws if no payment provider is configured.
    */
   getDefaultProvider(): PaymentProvider {
     const enabled = this.getEnabledProviders();
     if (enabled.length > 0) return enabled[0]!;
-    // Stripe stub returns a mock payment URL so the payment flow displays the "💳 Pay Now" button.
-    // TelegramStars and other UZ providers (Click/Payme) return undefined paymentUrl.
-    return getStripe();
+    throw new Error(
+      "No payment providers are configured. Set at least one provider's environment variables (e.g., STRIPE_SECRET_KEY)."
+    );
   }
 
   /**

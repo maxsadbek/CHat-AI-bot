@@ -2,10 +2,12 @@
  * Telegram Stars Payment Provider
  * https://core.telegram.org/bots/api#payments
  *
- * Stub — ready for real integration.
  * Telegram Stars lets users pay with Telegram Stars ⭐
  * via native Telegram invoice flow.
- * Best option for Telegram bots — no external redirect needed.
+ *
+ * Environment variables required:
+ *   TELEGRAM_BOT_TOKEN      — Your Telegram bot token
+ *   TELEGRAM_PROVIDER_TOKEN — Your Telegram payments provider token
  */
 
 import type {
@@ -33,12 +35,6 @@ const log = logger.child("payment:telegram-stars");
  * 3. User confirms payment inside Telegram (no external browser)
  * 4. Telegram sends pre_checkout_query → bot answers
  * 5. On success, Telegram sends message with successful_payment
- *
- * Stars exchange rate: 1 Star ≈ $0.012 (varies by region)
- * Pricing example:
- *   Pro Monthly  → 833 Stars  ($9.99 / $0.012)
- *   Pro Yearly   → 8,333 Stars ($99.99 / $0.012)
- *   Lifetime     → 25,000 Stars ($299.99 / $0.012)
  */
 
 export class TelegramStarsProvider implements PaymentProvider {
@@ -47,76 +43,68 @@ export class TelegramStarsProvider implements PaymentProvider {
   readonly config: PaymentProviderConfig = {
     id: "telegram_stars",
     displayName: "Telegram Stars",
-    enabled: false, // Enable via environment: TELEGRAM_STARS_ENABLED=true
-    supportedCurrencies: ["XTR"], // Telegram Stars special currency
-    supportsWebhooks: false,      // No webhook — handled via Telegram Bot API updates
-    supportsRefunds: false,       // Telegram does not support refunds natively
-    usesDeepLinks: true,          // Native Telegram UI handles payment
+    enabled: !!(
+      process.env.TELEGRAM_BOT_TOKEN &&
+      process.env.TELEGRAM_PROVIDER_TOKEN
+    ),
+    supportedCurrencies: ["XTR"],
+    supportsWebhooks: false,
+    supportsRefunds: false,
+    usesDeepLinks: true,
     configKeys: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_PROVIDER_TOKEN"],
     availability: ["Global"],
   };
 
   async initialize(): Promise<void> {
-    log.info("Telegram Stars provider initialized (stub)");
-    // TODO: Validate TELEGRAM_BOT_TOKEN, TELEGRAM_PROVIDER_TOKEN
+    if (this.config.enabled) {
+      log.info("Telegram Stars provider initialized");
+    } else {
+      log.warn(
+        "Telegram Stars provider not initialized: set TELEGRAM_BOT_TOKEN and TELEGRAM_PROVIDER_TOKEN"
+      );
+    }
+  }
+
+  private ensureConfigured(): void {
+    if (!this.config.enabled) {
+      throw new Error(
+        "Telegram Stars is not configured. Set TELEGRAM_BOT_TOKEN and TELEGRAM_PROVIDER_TOKEN environment variables."
+      );
+    }
   }
 
   async createPayment(request: CreatePaymentRequest): Promise<CreatePaymentResponse> {
-    log.info("Telegram Stars createPayment (stub)", {
+    this.ensureConfigured();
+
+    log.info("Creating Telegram Stars payment", {
       userId: request.userId,
       amount: request.amount,
+      telegramUserId: request.telegramUserId,
     });
 
-    // TODO: Implement Telegram invoice creation
+    // TODO: Implement Telegram invoice creation via Bot API
     // const stars = Math.ceil(request.amount / STARS_PER_USD_CENT);
     // Bot sends via Telegram Bot API:
-    //   sendInvoice(
-    //     chat_id: request.telegramUserId,
-    //     title: `AI Creator Studio ${plan.emoji} ${plan.name}`,
-    //     description: plan.description,
-    //     payload: JSON.stringify({ userId, planId }),
-    //     provider_token: "",
-    //     currency: "XTR",
-    //     prices: [{ label: plan.name, amount: stars }],
-    //   );
-    // Returns: { message_id, ... }
-
-    return {
-      sessionId: `tg_stars_stub_${Date.now()}`,
-      paymentUrl: undefined,
-      deepLink: undefined, // Telegram handles the UI natively
-      raw: { stub: true, provider: "telegram_stars", starsAmount: Math.ceil(request.amount / 1.2) },
-    };
+    //   sendInvoice(chat_id, title, description, payload, provider_token, "XTR", prices)
+    throw new Error("Telegram Stars API integration not yet implemented");
   }
 
   async verifyPayment(request: VerifyPaymentRequest): Promise<VerifyPaymentResponse> {
-    log.info("Telegram Stars verifyPayment (stub)", { sessionId: request.sessionId });
+    this.ensureConfigured();
 
-    // TODO: Verify Telegram Stars payment
+    log.info("Verifying Telegram Stars payment", { sessionId: request.sessionId });
+
+    // TODO: Implement Telegram Stars payment verification
     // Verification happens via message handler:
     //   bot.on("message", (ctx) => {
-    //     if (ctx.message?.successful_payment) {
-    //       const { payload } = ctx.message.successful_payment;
-    //       const { userId, planId } = JSON.parse(payload);
-    //       // Activate subscription
-    //     }
+    //     if (ctx.message?.successful_payment) { ... }
     //   });
-    // Also handle pre_checkout_query:
-    //   bot.on("pre_checkout_query", (ctx) => ctx.answerPreCheckoutQuery(true));
-
-    return {
-      verified: true,
-      transactionId: request.transactionId ?? `tg_stars_txn_${Date.now()}`,
-      amount: 0,
-      currency: "XTR",
-      status: "succeeded",
-    };
+    throw new Error("Telegram Stars API integration not yet implemented");
   }
 
   async handleWebhook(event: WebhookEvent): Promise<WebhookResult> {
     // Telegram Stars does not use external webhooks.
-    // Payment events arrive via Telegram Bot API updates
-    // and are handled by bot/index.ts message handlers.
+    // Payment events arrive via Telegram Bot API updates.
     log.info("Telegram Stars webhook called — not supported (handled via Bot API)");
     return {
       processed: false,
@@ -139,10 +127,12 @@ export class TelegramStarsProvider implements PaymentProvider {
   }
 
   async healthCheck(): Promise<{ healthy: boolean; message: string }> {
-    // TODO: Verify bot token can send invoices (call getMe or similar)
-    return {
-      healthy: true,
-      message: "Telegram Stars provider stub — healthy (not actually connected)",
-    };
+    if (!this.config.enabled) {
+      return {
+        healthy: false,
+        message: "Telegram Stars not configured — set TELEGRAM_BOT_TOKEN and TELEGRAM_PROVIDER_TOKEN",
+      };
+    }
+    return { healthy: true, message: "Telegram Stars provider configured" };
   }
 }

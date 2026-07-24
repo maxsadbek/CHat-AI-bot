@@ -47,6 +47,22 @@ const envSchema = z.object({
   // App
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
   NEXT_PUBLIC_APP_NAME: z.string().default("AI Creator Studio"),
+
+  // ─── Stripe ───────────────────────────
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+
+  // ─── Click (Uzbekistan) ────────────────
+  CLICK_SERVICE_ID: z.string().optional(),
+  CLICK_MERCHANT_ID: z.string().optional(),
+  CLICK_SECRET_KEY: z.string().optional(),
+
+  // ─── Payme (Uzbekistan) ────────────────
+  PAYME_MERCHANT_ID: z.string().optional(),
+  PAYME_SECRET_KEY: z.string().optional(),
+
+  // ─── Telegram Stars ────────────────────
+  TELEGRAM_PROVIDER_TOKEN: z.string().optional(),
 });
 
 function getEnv() {

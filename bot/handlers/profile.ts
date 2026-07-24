@@ -89,7 +89,7 @@ export async function profileHandler(ctx: BotContext): Promise<void> {
     const planLabel = isAdminUser
       ? "👑 Admin Unlimited"
       : isEffectivePremium
-        ? "⭐ Premium"
+        ? "💎 Premium"
         : "🆓 Free";
 
     const joinedDate = formatDate(profile.createdAt);
@@ -100,6 +100,19 @@ export async function profileHandler(ctx: BotContext): Promise<void> {
     const usagePercent = Math.min(Math.round((used / limit) * 100), 100);
     const filledBars = Math.min(Math.floor(usagePercent / 10), 10);
     const progressBar = "▓".repeat(filledBars) + "░".repeat(10 - filledBars);
+
+    // ─── Fetch plan details for premium users ─────────
+    let planDetail = "";
+    if (isEffectivePremium && !isAdminUser) {
+      const sub = profile.subscription;
+      const planName = sub?.planType?.replace("_", " ") ?? "Premium";
+      const renewText = sub?.expiresAt
+        ? `Renew: ${formatDate(sub.expiresAt)}`
+        : "Lifetime access";
+      planDetail = `\n💎 **${planName}**\n📅 ${renewText}`;
+    } else if (isAdminUser) {
+      planDetail = `\n👑 **Admin — Unlimited Access**`;
+    }
 
     // ─── Build profile message ────────────────────────
     const profileLines = [
@@ -117,6 +130,8 @@ export async function profileHandler(ctx: BotContext): Promise<void> {
       `${t(lang, "profile.subscription", { status: planLabel })}`,
       `${t(lang, "profile.member_since", { date: joinedDate })}`,
       "",
+      // Plan detail for premium/admin users
+      ...(planDetail ? [planDetail, ""] : []),
       // Usage section
       DIVIDER,
       t(lang, "profile.stats_title"),
@@ -135,7 +150,7 @@ export async function profileHandler(ctx: BotContext): Promise<void> {
       `${t(lang, "profile.last_active", { date: formatDate(profile.lastActiveAt) })}`,
       "",
       // Upgrade CTA only for non-premium non-admin users
-      isEffectivePremium ? "✨ Active Subscription" : t(lang, "profile.upgrade"),
+      isEffectivePremium ? "💎 Premium Active ✓" : t(lang, "profile.upgrade"),
     ];
 
     const profileText = profileLines.join("\n");

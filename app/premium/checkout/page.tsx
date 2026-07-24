@@ -7,52 +7,6 @@ import { GlassCard } from "@/components/ui/glass-card";
 import { Button } from "@/components/ui/button";
 import { Suspense } from "react";
 
-// ─── Payment Provider Config ─────────────────────────
-
-interface PaymentProvider {
-  id: string;
-  name: string;
-  emoji: string;
-  description: string;
-  supportedCurrencies: string[];
-  availability: string[];
-}
-
-const PROVIDERS: PaymentProvider[] = [
-  {
-    id: "stripe",
-    name: "Stripe",
-    emoji: "💳",
-    description: "Credit card, Apple Pay, Google Pay — Global",
-    supportedCurrencies: ["USD", "EUR", "GBP"],
-    availability: ["Global"],
-  },
-  {
-    id: "telegram_stars",
-    name: "Telegram Stars",
-    emoji: "⭐",
-    description: "Pay with Telegram Stars — Instant",
-    supportedCurrencies: ["XTR"],
-    availability: ["Global"],
-  },
-  {
-    id: "click",
-    name: "Click",
-    emoji: "🔵",
-    description: "UzCard, Humo — Uzbekistan",
-    supportedCurrencies: ["UZS"],
-    availability: ["UZ"],
-  },
-  {
-    id: "payme",
-    name: "Payme",
-    emoji: "🟢",
-    description: "Payme App — Uzbekistan",
-    supportedCurrencies: ["UZS"],
-    availability: ["UZ"],
-  },
-];
-
 // ─── Plan Config ─────────────────────────────────────
 
 interface Plan {
@@ -60,18 +14,20 @@ interface Plan {
   name: string;
   emoji: string;
   price: { amount: number; label: string };
+  description: string;
+  savings?: string;
 }
 
 const PLANS: Record<string, Plan> = {
-  free: { id: "free", name: "Free", emoji: "🆓", price: { amount: 0, label: "Free" } },
-  pro_monthly: { id: "pro_monthly", name: "Pro Monthly", emoji: "⭐", price: { amount: 999, label: "$9.99/mo" } },
-  pro_yearly: { id: "pro_yearly", name: "Pro Yearly", emoji: "🌟", price: { amount: 9999, label: "$99.99/yr" } },
-  lifetime: { id: "lifetime", name: "Lifetime", emoji: "👑", price: { amount: 29999, label: "$299.99" } },
+  free: { id: "free", name: "Free", emoji: "🆓", price: { amount: 0, label: "Free" }, description: "Basic AI features" },
+  pro_monthly: { id: "pro_monthly", name: "Pro Monthly", emoji: "⭐", price: { amount: 299, label: "$2.99/mo" }, description: "Unlimited AI access" },
+  pro_yearly: { id: "pro_yearly", name: "Pro Yearly", emoji: "🌟", price: { amount: 2499, label: "$24.99/yr" }, description: "Save over 30% — best value", savings: "🔥 Save $10.89/yr vs monthly" },
+  lifetime: { id: "lifetime", name: "Lifetime", emoji: "👑", price: { amount: 29999, label: "$299.99" }, description: "Pay once, use forever" },
 };
 
 // ─── Steps ───────────────────────────────────────────
 
-type CheckoutStep = "select-provider" | "confirm" | "processing" | "success" | "failed";
+type CheckoutStep = "review" | "processing" | "success" | "failed";
 
 // ─── Checkout Content (wrapped in Suspense) ──────────
 
@@ -81,11 +37,9 @@ function CheckoutContent() {
   const planId = searchParams.get("plan") ?? "";
 
   const [mounted, setMounted] = useState(false);
-  const [step, setStep] = useState<CheckoutStep>("select-provider");
-  const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
+  const [step, setStep] = useState<CheckoutStep>("review");
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -101,7 +55,7 @@ function CheckoutContent() {
           <h2 className="text-xl font-bold text-white mb-2">Invalid Plan</h2>
           <p className="text-gray-400 mb-6">The selected plan does not exist.</p>
           <Link href="/premium">
-            <Button variant="primary">← Back to Plans</Button>
+            <Button variant="primary" size="lg">← Back to Plans</Button>
           </Link>
         </GlassCard>
       </div>
@@ -110,14 +64,7 @@ function CheckoutContent() {
 
   if (!mounted || !plan) return null;
 
-  const handleSelectProvider = (providerId: string) => {
-    setSelectedProvider(providerId);
-    setStep("confirm");
-  };
-
-  const handleCreatePayment = async () => {
-    if (!selectedProvider || !plan) return;
-
+  const handleSecureCheckout = async () => {
     setStep("processing");
     setErrorMessage(null);
 
@@ -127,8 +74,8 @@ function CheckoutContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           planId: plan.id,
-          providerId: selectedProvider,
-          successUrl: `${window.location.origin}/premium/success?plan=${plan.id}&provider=${selectedProvider}`,
+          providerId: "stripe",
+          successUrl: `${window.location.origin}/premium/success?plan=${plan.id}&provider=stripe`,
           cancelUrl: `${window.location.origin}/premium/cancel?plan=${plan.id}`,
         }),
       });
@@ -141,11 +88,11 @@ function CheckoutContent() {
 
       setPaymentUrl(data.paymentUrl ?? null);
 
-      // If there's a payment URL, redirect the user
+      // Redirect to Stripe Checkout
       if (data.paymentUrl) {
         window.location.href = data.paymentUrl;
       } else {
-        // For deep links (Telegram Stars, etc.), show the session info
+        // Fallback for deep links
         setStep("success");
       }
     } catch (error) {
@@ -154,141 +101,98 @@ function CheckoutContent() {
     }
   };
 
-  const handleCopyDeepLink = () => {
-    if (paymentUrl) {
-      navigator.clipboard.writeText(paymentUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
-  const provider = PROVIDERS.find((p) => p.id === selectedProvider);
-
   // ─── Render ───────────────────────────────────────
 
   return (
     <main className="min-h-screen bg-primary">
-      <div className="mx-auto max-w-2xl px-4 py-16 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="mb-8 text-center">
-          <Link
-            href="/premium"
-            className="mb-6 inline-flex items-center gap-1 text-sm text-gray-400 hover:text-white transition-colors"
-          >
-            ← Back to Plans
-          </Link>
-          <h1 className="text-3xl font-bold text-white">
-            {plan.emoji} {plan.name}
-          </h1>
-          <p className="mt-2 text-lg text-gray-400">
-            {plan.price.label}
-          </p>
-        </div>
+      <div className="mx-auto max-w-lg px-4 py-16 sm:px-6 lg:px-8">
+        {/* Back link */}
+        <Link
+          href="/premium"
+          className="mb-8 inline-flex items-center gap-1 text-sm text-gray-400 hover:text-white transition-colors"
+        >
+          ← Back to Plans
+        </Link>
 
-        {/* Step Indicator */}
-        <div className="mb-8 flex items-center justify-center gap-2">
-          {["select-provider", "confirm", "processing"].map((s, i) => (
-            <div key={s} className="flex items-center gap-2">
-              <div
-                className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-all ${
-                  step === s || (step === "success" && i <= 2) || (step === "failed" && i <= 2)
-                    ? "bg-accent text-white"
-                    : "bg-white/10 text-gray-500"
-                }`}
-              >
-                {i + 1}
-              </div>
-              {i < 2 && (
-                <div
-                  className={`h-px w-8 transition-all ${
-                    (step !== "select-provider" && i === 0) || step === "processing" || step === "success"
-                      ? "bg-accent"
-                      : "bg-white/10"
-                  }`}
-                />
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Step: Select Provider */}
-        {step === "select-provider" && (
+        {/* Step: Review & Confirm */}
+        {step === "review" && (
           <div className="animate-in">
-            <h2 className="mb-6 text-xl font-semibold text-white">
-              Choose Payment Method
-            </h2>
-            <div className="space-y-4">
-              {PROVIDERS.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => handleSelectProvider(p.id)}
-                  className={`w-full rounded-xl border p-4 text-left transition-all duration-300 ${
-                    selectedProvider === p.id
-                      ? "border-accent bg-accent/5 ring-1 ring-accent"
-                      : "border-white/5 bg-surface-card/50 hover:border-accent/20 hover:bg-white/5"
-                  }`}
-                >
-                  <div className="flex items-center gap-4">
-                    <span className="text-2xl">{p.emoji}</span>
-                    <div className="flex-1">
-                      <div className="font-semibold text-white">{p.name}</div>
-                      <div className="text-sm text-gray-400">{p.description}</div>
-                    </div>
-                    <div className="flex gap-1">
-                      {p.supportedCurrencies.map((c) => (
-                        <span
-                          key={c}
-                          className="rounded-md bg-white/5 px-2 py-1 text-xs text-gray-500"
-                        >
-                          {c}
-                        </span>
-                      ))}
+            {/* Order Summary */}
+            <GlassCard className="p-6 mb-6">
+              <h2 className="text-lg font-semibold text-white mb-6">Order Summary</h2>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between pb-4 border-b border-white/5">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">{plan.emoji}</span>
+                    <div>
+                      <div className="font-semibold text-white">{plan.name}</div>
+                      <div className="text-sm text-gray-400">{plan.description}</div>
                     </div>
                   </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Step: Confirm */}
-        {step === "confirm" && provider && (
-          <div className="animate-in">
-            <GlassCard className="p-6 mb-6">
-              <h2 className="mb-4 text-xl font-semibold text-white">Confirm Payment</h2>
-
-              <div className="space-y-3 mb-6">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Plan</span>
-                  <span className="text-white font-semibold">{plan.emoji} {plan.name}</span>
+                  <span className="text-xl font-bold text-white">{plan.price.label}</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Payment Method</span>
-                  <span className="text-white font-semibold">{provider.emoji} {provider.name}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Price</span>
-                  <span className="text-accent-400 font-bold text-lg">{plan.price.label}</span>
-                </div>
-              </div>
 
-              <div className="flex gap-3">
-                <Button
-                  variant="secondary"
-                  onClick={() => setStep("select-provider")}
-                  className="flex-1"
-                >
-                  Change
-                </Button>
-                <Button
-                  variant="primary"
-                  onClick={handleCreatePayment}
-                  className="flex-1"
-                >
-                  Pay {plan.price.label}
-                </Button>
+                {plan.savings && (
+                  <div className="flex items-center gap-2 text-sm text-green-400 bg-green-500/5 rounded-lg px-3 py-2">
+                    <span>🔥</span>
+                    <span>{plan.savings}</span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-400">Subtotal</span>
+                  <span className="text-white font-medium">{plan.price.label}</span>
+                </div>
+
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-400">Tax</span>
+                  <span className="text-gray-400">Calculated at checkout</span>
+                </div>
+
+                <div className="flex items-center justify-between pt-4 border-t border-white/10">
+                  <span className="font-semibold text-white">Total</span>
+                  <span className="text-2xl font-bold text-white">{plan.price.label}</span>
+                </div>
               </div>
             </GlassCard>
+
+            {/* Secure Checkout Notice */}
+            <GlassCard className="p-6 mb-6 border-accent/10 bg-accent/[0.02]">
+              <div className="flex items-start gap-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent/10">
+                  <span className="text-lg">🔒</span>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-white mb-1">Secure Payment Powered by Stripe</h3>
+                  <p className="text-sm text-gray-400 leading-relaxed">
+                    Your payment information is encrypted and never stored by Kayzel Creator.
+                    All transactions are processed securely through Stripe.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 flex items-center gap-4 text-xs text-gray-500">
+                <span>🔐 SSL Encrypted</span>
+                <span>✓ PCI Compliant</span>
+                <span>💳 Cards · Apple Pay · Google Pay</span>
+              </div>
+            </GlassCard>
+
+            {/* CTA */}
+            <button
+              onClick={handleSecureCheckout}
+              className="group/btn relative w-full inline-flex items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-accent to-secondary px-8 py-4 text-lg font-bold text-white transition-all duration-300 hover:shadow-xl hover:shadow-accent/25 hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <span className="absolute inset-0 rounded-xl bg-white/10 opacity-0 group-hover/btn:opacity-100 transition-opacity" />
+              <span className="relative flex items-center gap-3">
+                <span>🚀</span>
+                <span>Subscribe Securely — {plan.price.label}</span>
+              </span>
+            </button>
+
+            <p className="mt-4 text-center text-xs text-gray-500">
+              🔒 Your payment is protected by Stripe. You can cancel anytime.
+            </p>
           </div>
         )}
 
@@ -299,9 +203,9 @@ function CheckoutContent() {
               <div className="mb-6">
                 <div className="mx-auto h-16 w-16 animate-spin rounded-full border-4 border-accent/30 border-t-accent" />
               </div>
-              <h2 className="text-xl font-bold text-white mb-2">Creating Payment...</h2>
+              <h2 className="text-xl font-bold text-white mb-2">Redirecting to Secure Checkout...</h2>
               <p className="text-gray-400">
-                Please wait while we create your payment session with {provider?.name}.
+                Please wait while we redirect you to our secure payment page.
               </p>
               {errorMessage && (
                 <p className="mt-4 text-red-400 text-sm">{errorMessage}</p>
@@ -310,14 +214,14 @@ function CheckoutContent() {
           </div>
         )}
 
-        {/* Step: Success */}
+        {/* Step: Success (fallback — usually Stripe handles this) */}
         {step === "success" && (
           <div className="animate-in text-center">
             <GlassCard className="p-8">
               <div className="mb-6 inline-flex h-20 w-20 items-center justify-center rounded-full bg-green-500/10">
                 <span className="text-4xl">✅</span>
               </div>
-              <h2 className="text-2xl font-bold text-white mb-2">Payment Created!</h2>
+              <h2 className="text-2xl font-bold text-white mb-2">Payment Session Created</h2>
               <p className="text-gray-400 mb-6">
                 Your payment session has been created. Complete the payment to activate
                 your {plan.name} subscription.
@@ -325,22 +229,16 @@ function CheckoutContent() {
               {paymentUrl && (
                 <div className="mb-6">
                   <p className="text-sm text-gray-500 mb-2">Payment Link:</p>
-                  <div className="flex items-center gap-2 rounded-lg bg-white/5 p-3">
-                    <code className="flex-1 truncate text-sm text-accent-300">
+                  <div className="rounded-lg bg-white/5 p-3">
+                    <code className="text-sm text-accent-300 break-all">
                       {paymentUrl}
                     </code>
-                    <button
-                      onClick={handleCopyDeepLink}
-                      className="shrink-0 rounded-md bg-accent/10 px-3 py-1.5 text-sm text-accent-400 hover:bg-accent/20 transition-colors"
-                    >
-                      {copied ? "Copied!" : "Copy"}
-                    </button>
                   </div>
                 </div>
               )}
               <div className="flex gap-3 justify-center">
-                <Link href={`/premium/success?plan=${plan.id}&provider=${selectedProvider}`}>
-                  <Button variant="primary">I've Paid</Button>
+                <Link href={`/premium/success?plan=${plan.id}&provider=stripe`}>
+                  <Button variant="primary">I&apos;ve Completed Payment</Button>
                 </Link>
                 <Link href="/premium">
                   <Button variant="secondary">Back to Plans</Button>
@@ -357,16 +255,16 @@ function CheckoutContent() {
               <div className="mb-6 inline-flex h-20 w-20 items-center justify-center rounded-full bg-red-500/10">
                 <span className="text-4xl">❌</span>
               </div>
-              <h2 className="text-2xl font-bold text-white mb-2">Payment Failed</h2>
+              <h2 className="text-2xl font-bold text-white mb-2">Checkout Failed</h2>
               <p className="text-gray-400 mb-2">
-                We couldn't create your payment session.
+                We couldn&apos;t process your request.
               </p>
               {errorMessage && (
                 <p className="text-red-400 text-sm mb-6">{errorMessage}</p>
               )}
               <div className="flex gap-3 justify-center">
-                <Button variant="primary" onClick={() => { setStep("select-provider"); setErrorMessage(null); }}>
-                  Try Again
+                <Button variant="primary" onClick={() => { setStep("review"); setErrorMessage(null); }}>
+                  🔄 Try Again
                 </Button>
                 <Link href="/premium">
                   <Button variant="secondary">Back to Plans</Button>

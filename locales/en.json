@@ -162,20 +162,20 @@
     "back": "⬅️ *Back*"
   },
   "premium": {
-    "title": "━━━━━━━━━━━━━━━━━━━━━\n⭐ *Premium*\n━━━━━━━━━━━━━━━━━━━━━",
-    "subtitle": "Unlock the full power of AI Creator Studio!",
-    "choose_plan": "📋 *Choose Your Plan*",
-    "current": "⭐ *Current:* {plan}",
+    "title": "━━━━━━━━━━━━━━━━━━━━━\n💎 *Premium*\n━━━━━━━━━━━━━━━━━━━━━",
+    "subtitle": "Unlock unlimited AI access for a fraction of the cost.",
+    "choose_plan": "🚀 *Choose Your Plan*",
+    "current": "💎 *Current:* {plan}",
     "current_lifetime": "👑 *Lifetime:* {plan}",
-    "current_days": "⭐ *{plan}* — {days} days remaining",
+    "current_days": "💎 *{plan}* — {days} days remaining",
     "expired": "⚠️ *{plan}* — Expired. Renew to continue.",
-    "current_free": "🆓 You are on the Free plan.",
-    "upgrade_cta": "⬆️ Subscribe for {price}",
+    "current_free": "🆓 You are on the Free plan — upgrade to unlock unlimited access.",
+    "upgrade_cta": "Subscribe for {price}",
     "upgrade_success": "🎉 *Welcome to {plan}!*\n\nYou now have unlimited access to all features.\nEnjoy! 🚀",
-    "features": "✨ *Premium Features:*\n\n• 🚀 Higher daily request limits\n• 🤖 Access to advanced AI models\n• 🎯 Priority processing\n• 💬 Priority support\n• 📊 Advanced analytics\n• 🔓 Exclusive AI features",
+    "features": "✨ *Premium Features:*\n\n• 🚀 Unlimited AI Chat and Image Generation\n• 🤖 Access to latest AI models (GPT-4o, Claude, Gemini)\n• 🎯 Priority processing — faster responses\n• 📊 Unlimited history and conversations\n• 🆕 New features first\n• 🔒 Secure payment — powered by Stripe",
     "coming_soon": "🚀 *Premium subscriptions coming soon!*\n\nStay tuned for updates.",
-    "current": "⭐ *You are on:* {tier}",
-    "upgrade": "⬆️ *Upgrade to Premium*"
+    "current": "💎 *Current plan:* {tier}",
+    "upgrade": "🚀 *Upgrade to Pro*"
   },
   "result": {
     "copy": "📋 *Copy*",

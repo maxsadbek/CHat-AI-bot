@@ -1,7 +1,8 @@
 /**
  * Premium Handler
- * Displays subscription plans with feature comparison.
+ * Displays subscription plans with professional SaaS-style messaging.
  * Handles plan selection, upgrade flow, and current plan info.
+ * Design inspired by ChatGPT, Claude, and Notion AI premium flows.
  */
 
 import type { BotContext } from "@/types";
@@ -26,6 +27,7 @@ const DIVIDER = "━━━━━━━━━━━━━━━━━━━━━
 
 /**
  * Show the premium hub — current plan + plan options
+ * Professional SaaS-style display with modern emojis and clean formatting.
  */
 export async function premiumHandler(ctx: BotContext): Promise<void> {
   const lang = ctx.session.language;
@@ -42,18 +44,20 @@ export async function premiumHandler(ctx: BotContext): Promise<void> {
 
   const isUserAdmin = isAdmin(telegramId);
 
-  // Admin users never see payment requirement
+  // ─── Admin: show admin status — never see payment/upgrade ───
   if (isUserAdmin) {
     const adminMessage = [
-      t(lang, "premium.title"),
+      `💎 *Admin Access — Unlimited*`,
       "",
-      "👑 *Admin Status:* Active",
-      "♾️ *Daily Limit:* Unlimited (999,999 requests/day)",
-      "🔓 *Access:* Full access to all AI features",
-      "⏳ *Expires:* Never",
+      `━━━━━━━━━━━━━━━━━━━━━`,
+      `👑  **Status:**  Active — Full Access`,
+      `♾️  **Limit:**   Unlimited requests`,
+      `🔓  **Access:**  All AI features unlocked`,
+      `⏳  **Expires:** Never`,
+      `━━━━━━━━━━━━━━━━━━━━━`,
       "",
-      DIVIDER,
-      "✨ *Admin Account Active*",
+      `✨ You have full admin privileges.`,
+      `   All features are available without restrictions.`,
     ].join("\n");
 
     await ctx.reply(adminMessage, {
@@ -69,33 +73,37 @@ export async function premiumHandler(ctx: BotContext): Promise<void> {
 
     const isPremiumUser = plan.id !== "free" && !isExpired;
 
-    const planEmoji = plan.emoji;
-    const planName = plan.name;
-
-    const currentPlanLine = isLifetime
-      ? t(lang, "premium.current_lifetime", { plan: `${planEmoji} ${planName}` })
-      : isExpired
-        ? t(lang, "premium.expired", { plan: `${planEmoji} ${planName}` })
-        : daysRemaining !== null
-          ? t(lang, "premium.current_days", {
-              plan: `${planEmoji} ${planName}`,
-              days: String(daysRemaining),
-            })
-          : t(lang, "premium.current", { plan: `${planEmoji} ${planName}` });
-
-    // Premium users see subscription information instead of purchase options
+    // ─── Premium User: show subscription information ───
     if (isPremiumUser) {
+      const sub = await subscriptionService.getSubscription(userId);
+      const renewDate = sub?.expiresAt
+        ? sub.expiresAt.toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          })
+        : "Lifetime";
+
+      const statusBadge = isExpired ? "❌ Expired" : "✅ Active";
+      const planEmoji = plan.emoji;
+
+      // Show subscription management with clean status display
       const message = [
-        t(lang, "premium.title"),
+        `💎 *Premium Active*`,
         "",
-        currentPlanLine,
+        `━━━━━━━━━━━━━━━━━━━━━`,
+        `${planEmoji}  **Plan:**      ${plan.name}`,
+        `📅  **Renew:**     ${renewDate}`,
+        `📊  **Status:**    ${statusBadge}`,
+        `━━━━━━━━━━━━━━━━━━━━━`,
         "",
-        DIVIDER,
-        `✨ *Active Features:*`,
-        ...plan.features.filter((f) => f.included).map((f) => `✅ ${f.emoji} ${f.label}`),
+        `✨ *Unlocked Features:*`,
+        ...plan.features
+          .filter((f) => f.included)
+          .map((f) => `  • ${f.emoji} ${f.label}`),
         "",
-        DIVIDER,
-        "🎉 Thank you for subscribing!",
+        `━━━━━━━━━━━━━━━━━━━━━`,
+        `🎉 Thank you for being a Premium member!`,
       ].join("\n");
 
       await ctx.reply(message, {
@@ -105,25 +113,56 @@ export async function premiumHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
-    // Non-premium users see plan options
+    // ─── Free User: show plan comparison with upgrade CTA ───
+    const currentPlanLine = isLifetime
+      ? t(lang, "premium.current_lifetime", { plan: `${plan.emoji} ${plan.name}` })
+      : isExpired
+        ? t(lang, "premium.expired", { plan: `${plan.emoji} ${plan.name}` })
+        : daysRemaining !== null
+          ? t(lang, "premium.current_days", {
+              plan: `${plan.emoji} ${plan.name}`,
+              days: String(daysRemaining),
+            })
+          : t(lang, "premium.current", { plan: `${plan.emoji} ${plan.name}` });
+
     const paidPlans = getActivePlans().filter((p) => p.id !== "free");
-    const planSummaries = paidPlans
+
+    // Build professional plan comparison cards
+    const planCards = paidPlans
       .map((p) => {
-        const badge = p.badge !== p.name ? ` [${p.badge}]` : "";
-        return `${p.emoji} *${p.name}*${badge}\n${p.description}\n💰 ${p.price.label}`;
+        const badge = p.badge !== p.name ? ` \`${p.badge}\`` : "";
+        const featureHighlights = p.features
+          .filter((f) => f.included)
+          .slice(0, 5) // Show top 5 features as highlights
+          .map((f) => `  ✓ ${f.emoji} ${f.label}`)
+          .join("\n");
+
+        return [
+          `┌─────────────────────────────────┐`,
+          `${p.emoji}  *${p.name}*${badge}`,
+          `${p.price.label}`,
+          `${p.description}`,
+          `│`,
+          `${featureHighlights}`,
+          `└─────────────────────────────────┘`,
+        ].join("\n");
       })
       .join("\n\n");
 
     const message = [
-      t(lang, "premium.title"),
+      `✨ *Upgrade to Pro*`,
       "",
-      currentPlanLine,
+      `━━━━━━━━━━━━━━━━━━━━━`,
+      `${currentPlanLine}`,
+      `━━━━━━━━━━━━━━━━━━━━━`,
       "",
-      DIVIDER,
-      t(lang, "premium.choose_plan"),
-      DIVIDER,
+      `🚀 *Choose your plan and unlock unlimited AI access:*`,
       "",
-      planSummaries,
+      planCards,
+      "",
+      `━━━━━━━━━━━━━━━━━━━━━`,
+      `💎 All plans include unlimited access to all AI features.`,
+      `🔒 Secure payment powered by Stripe. Cancel anytime.`,
     ].join("\n");
 
     await ctx.reply(message, {
@@ -140,7 +179,7 @@ export async function premiumHandler(ctx: BotContext): Promise<void> {
 }
 
 /**
- * Show details for a specific plan with upgrade option
+ * Show detailed plan information with feature breakdown
  */
 export async function premiumPlanHandler(
   ctx: BotContext,
@@ -163,34 +202,49 @@ export async function premiumPlanHandler(
 
   const featureLines = plan.features
     .filter((f) => f.included)
-    .map((f) => `${f.emoji} ${f.label}`);
+    .map((f) => `✅ ${f.emoji} ${f.label}`);
 
   const priceTag = plan.price.amount === 0
     ? "Free"
     : plan.price.label;
 
+  // Build plan header with savings badge for yearly
+  const savingsBadge = plan.id === "pro_yearly"
+    ? `🔥 *Save over 30%* — compared to monthly billing`
+    : "";
+
+  const bestValueBadge = plan.id === "pro_yearly"
+    ? `⭐ *Best Value* — Most popular choice`
+    : "";
+
   const message = [
-    `${DIVIDER}`,
-    `${plan.emoji} *${plan.name}*`,
-    `${DIVIDER}`,
+    `━━━━━━━━━━━━━━━━━━━━━`,
+    `${plan.emoji}  *${plan.name}*`,
+    `${savingsBadge}`,
+    `${bestValueBadge}`,
+    `━━━━━━━━━━━━━━━━━━━━━`,
     "",
-    `*${plan.description}*`,
+    `💎 *${plan.description}*`,
     "",
-    `💰 *Price:* ${priceTag}`,
-    `📆 *Billing:* ${plan.billingPeriod}`,
+    `💰 **${plan.price.label}**`,
+    `📆 ${plan.billingPeriod === "monthly" ? "Billed monthly" : plan.billingPeriod === "yearly" ? "Billed annually" : "One-time payment"}`,
     "",
-    `${DIVIDER}`,
-    `✨ *Features:*`,
-    `${DIVIDER}`,
+    `━━━━━━━━━━━━━━━━━━━━━`,
+    `✨ *Everything included:*`,
+    `━━━━━━━━━━━━━━━━━━━━━`,
     "",
-    ...featureLines.map((f) => `✅ ${f}`),
+    ...featureLines,
     "",
-    `${DIVIDER}`,
+    `━━━━━━━━━━━━━━━━━━━━━`,
     plan.price.amount === 0
       ? t(lang, "premium.current_free")
       : isUserAdmin || isPremiumUser
-        ? "✅ You already have active premium access!"
-        : t(lang, "premium.upgrade_cta", { price: priceTag }),
+        ? `✅ You already have active ${plan.name} access!`
+        : `🚀 ${t(lang, "premium.upgrade_cta", { price: priceTag })}`,
+    "",
+    plan.price.amount > 0 && !isUserAdmin && !isPremiumUser
+      ? `🔒 Secure payment — powered by Stripe`
+      : "",
   ].join("\n");
 
   await ctx.reply(message, {
@@ -201,6 +255,7 @@ export async function premiumPlanHandler(
 
 /**
  * Handle upgrade confirmation — creates payment session & provides payment link
+ * Shows a clean secure payment screen without exposing raw payment details.
  */
 export async function premiumUpgradeHandler(
   ctx: BotContext,
@@ -212,22 +267,28 @@ export async function premiumUpgradeHandler(
 
   if (!userId || !telegramId) return;
 
-  // Admin should never see payment requirement
+  // ─── Admin guard: never show payment ───
   if (isAdmin(telegramId)) {
-    await ctx.reply("👑 Admin accounts already have unlimited access to all features.", {
-      parse_mode: "Markdown",
-      reply_markup: premiumNavKeyboard,
-    });
+    await ctx.reply(
+      `👑 *Admin Account*\n\nYou already have unlimited access to all features. No payment needed.`,
+      {
+        parse_mode: "Markdown",
+        reply_markup: premiumNavKeyboard,
+      }
+    );
     return;
   }
 
-  // Check if user is already premium
+  // ─── Already premium guard ───
   const currentSub = await subscriptionService.getUserPlan(userId);
   if (currentSub.plan.id !== "free" && !currentSub.isExpired) {
-    await ctx.reply("⭐ You already have an active Premium subscription!", {
-      parse_mode: "Markdown",
-      reply_markup: premiumNavKeyboard,
-    });
+    await ctx.reply(
+      `💎 *Premium Active*\n\nYou already have an active ${currentSub.plan.name} subscription!\n\nEnjoy unlimited access to all AI features. 🚀`,
+      {
+        parse_mode: "Markdown",
+        reply_markup: premiumNavKeyboard,
+      }
+    );
     return;
   }
 
@@ -251,22 +312,33 @@ export async function premiumUpgradeHandler(
       providerId: provider.config.id as any,
     });
 
+    // Build secure checkout keyboard — no raw card numbers exposed!
     const kb = new InlineKeyboard();
     if (paymentResult.paymentUrl) {
-      kb.url("💳 Pay Now", paymentResult.paymentUrl).row();
+      kb.url("💳 Subscribe Securely", paymentResult.paymentUrl).row();
     }
-    kb.text("🔙 Back to Plans", "premium:back");
+    kb.text("📋 Compare Plans", "premium:back");
 
+    // Clean payment screen — inspired by ChatGPT/Claude checkout
     const payMessage = [
-      `💳 *Complete Your Subscription Payment*`,
+      `🔐 *Secure Checkout*`,
       "",
-      `Plan: ${plan.emoji} *${plan.name}*`,
-      `Price: *${plan.price.label}*`,
-      `Provider: *${provider.providerName}*`,
+      `━━━━━━━━━━━━━━━━━━━━━`,
+      `${plan.emoji}  **${plan.name}**`,
+      `💰  **${plan.price.label}**`,
+      `━━━━━━━━━━━━━━━━━━━━━`,
+      "",
+      `💳 **Protected by ${provider.providerName}**`,
+      "",
+      `🔒 Your payment information is encrypted and`,
+      `   never stored by Kayzel Creator.`,
       "",
       paymentResult.paymentUrl
-        ? "Please click the button below to complete your payment securely."
-        : "Payment session initialized. Follow instructions to proceed.",
+        ? `👇 Click the button below to complete your subscription.`
+        : `📱 Follow the instructions from ${provider.providerName} to complete payment.`,
+      "",
+      `━━━━━━━━━━━━━━━━━━━━━`,
+      `Need help? Contact support.`,
     ].join("\n");
 
     await ctx.reply(payMessage, {
@@ -279,7 +351,6 @@ export async function premiumUpgradeHandler(
     });
   } catch (error) {
     log.error("Upgrade payment session failed", { userId, planId, error: String(error) });
-    // Fallback: If payment provider error occurs, provide direct notification
     await ctx.reply(t(lang, "errors.generic"), {
       parse_mode: "Markdown",
       reply_markup: premiumNavKeyboard,

@@ -162,19 +162,19 @@
     "back": "⬅️ *Orqaga*"
   },
   "premium": {
-    "title": "━━━━━━━━━━━━━━━━━━━━━\n⭐ *Premium*\n━━━━━━━━━━━━━━━━━━━━━",
-    "choose_plan": "📋 *Rejangizni tanlang*",
-    "current": "⭐ *Joriy:* {plan}",
+    "title": "━━━━━━━━━━━━━━━━━━━━━\n💎 *Premium*\n━━━━━━━━━━━━━━━━━━━━━",
+    "choose_plan": "🚀 *Rejangizni tanlang*",
+    "current": "💎 *Joriy:* {plan}",
     "current_lifetime": "👑 *Umrbod:* {plan}",
-    "current_days": "⭐ *{plan}* — {days} kun qoldi",
+    "current_days": "💎 *{plan}* — {days} kun qoldi",
     "expired": "⚠️ *{plan}* — Mudati tugagan. Yangilang.",
-    "current_free": "🆓 Siz bepul tarifdasiz.",
-    "upgrade_cta": "⬆️ {price} ga obuna bo'ling",
+    "current_free": "🆓 Siz bepul tarifdasiz — cheksiz kirish uchun Pro'ga o'ting.",
+    "upgrade_cta": "{price} ga obuna bo'ling",
     "upgrade_success": "🎉 *{plan} ga xush kelibsiz!*\n\nEndi barcha funksiyalardan cheksiz foydalanishingiz mumkin.\nMaroqli! 🚀",
-    "features": "✨ *Premium xususiyatlari:*\n\n• 🚀 Yuqori kunlik so'rov limitlari\n• 🤖 Rivojlangan AI modellariga kirish\n• 🎯 Ustuvor ishlov berish\n• 💬 Ustuvor qo'llab-quvvatlash\n• 📊 Rivojlangan tahlillar\n• 🔓 Eksklyuziv AI xususiyatlari",
+    "features": "✨ *Premium xususiyatlari:*\n\n• 🚀 Cheksiz AI Chat va rasm yaratish\n• 🤖 Eng so'nggi AI modellariga kirish (GPT-4o, Claude, Gemini)\n• 🎯 Ustuvor ishlov berish — tez javoblar\n• 📊 Cheksiz tarix va suhbatlar\n• 🆕 Yangi funksiyalar birinchi bo'lib\n• 🔒 Xavfsiz to'lov — Stripe tomonidan qo'llaniladi",
     "coming_soon": "🚀 *Premium obunalar tez orada!*\n\nYangilanishlarni kuzatib boring.",
-    "current": "⭐ *Sizning tarifingiz:* {tier}",
-    "upgrade": "⬆️ *Premium-ga o'tish*"
+    "current": "💎 *Joriy tarif:* {tier}",
+    "upgrade": "🚀 *Pro'ga o'tish*"
   },
   "result": {
     "copy": "📋 *Nusxalash*",

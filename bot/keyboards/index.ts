@@ -265,13 +265,13 @@ export const helpKeyboard = addNavRow(
 // PREMIUM
 // ═══════════════════════════════════════════════════════
 
-// Main premium hub — shows plan overview for non-premium users
+// Premium hub keyboard — plan selection for non-premium users
 export const premiumKeyboard = addNavRow(
   new InlineKeyboard()
-    .text("⭐ Pro Monthly", "premium:plan:pro_monthly")
-    .text("🌟 Pro Yearly", "premium:plan:pro_yearly")
+    .text("🚀 Pro Monthly • $2.99", "premium:plan:pro_monthly")
+    .text("🌟 Pro Yearly • $24.99", "premium:plan:pro_yearly")
     .row()
-    .text("👑 Lifetime", "premium:plan:lifetime")
+    .text("👑 Lifetime • $299.99", "premium:plan:lifetime")
 );
 
 // Dynamic premium hub keyboard: payment/purchase buttons visible ONLY to non-premium users
@@ -290,10 +290,10 @@ export function planSelectionKeyboard(
 ): InlineKeyboard {
   const kb = new InlineKeyboard();
   if (planId !== "free" && !isPremium && !isAdmin) {
-    kb.text("⬆️ Subscribe Now", `premium:subscribe:${planId}`);
+    kb.text("🚀 Subscribe Now", `premium:subscribe:${planId}`);
     kb.row();
   }
-  kb.text("🔙 Back to Plans", "premium:back");
+  kb.text("📋 Compare Plans", "premium:back");
   return addNavRow(kb);
 }
 

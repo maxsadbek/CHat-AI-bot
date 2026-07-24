@@ -52,17 +52,6 @@ const envSchema = z.object({
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
 
-  // ─── Click (Uzbekistan) ────────────────
-  CLICK_SERVICE_ID: z.string().optional(),
-  CLICK_MERCHANT_ID: z.string().optional(),
-  CLICK_SECRET_KEY: z.string().optional(),
-
-  // ─── Payme (Uzbekistan) ────────────────
-  PAYME_MERCHANT_ID: z.string().optional(),
-  PAYME_SECRET_KEY: z.string().optional(),
-
-  // ─── Telegram Stars ────────────────────
-  TELEGRAM_PROVIDER_TOKEN: z.string().optional(),
 });
 
 function getEnv() {
@@ -75,8 +64,8 @@ function getEnv() {
         .join("\n");
       console.error("❌ Invalid environment variables:\n", missing);
     }
-    // Return partial config with defaults for development
-    return envSchema.parse({ ...process.env, OPENAI_API_KEY: "sk-dummy" });
+    // Fallback: return partial config (allows dev to work without all keys)
+    return envSchema.partial().parse(process.env) as z.infer<typeof envSchema>;
   }
 }
 

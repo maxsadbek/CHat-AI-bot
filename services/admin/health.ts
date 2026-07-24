@@ -195,26 +195,16 @@ export class SystemHealthService {
   }
 
   private async checkPaymentProviders(): Promise<ComponentHealth> {
-    const enabledProviders: string[] = [];
-
-    if (env.STRIPE_SECRET_KEY) enabledProviders.push("Stripe");
-    if (env.CLICK_SERVICE_ID && env.CLICK_MERCHANT_ID && env.CLICK_SECRET_KEY)
-      enabledProviders.push("Click");
-    if (env.PAYME_MERCHANT_ID && env.PAYME_SECRET_KEY)
-      enabledProviders.push("Payme");
-    if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_PROVIDER_TOKEN)
-      enabledProviders.push("Telegram Stars");
-
-    if (enabledProviders.length === 0) {
+    if (!env.STRIPE_SECRET_KEY) {
       return {
         status: "degraded",
-        message: "No payment providers configured. Set STRIPE_SECRET_KEY or other provider credentials.",
+        message: "No payment providers configured. Set STRIPE_SECRET_KEY.",
       };
     }
 
     return {
       status: "healthy",
-      message: `Payment providers configured: ${enabledProviders.join(", ")}`,
+      message: "Stripe provider configured",
     };
   }
 

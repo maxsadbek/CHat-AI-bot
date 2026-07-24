@@ -7,10 +7,7 @@
  *
  * Architecture:
  *   PaymentProvider (interface)
- *     ├── ClickProvider
- *     ├── PaymeProvider
- *     ├── StripeProvider
- *     └── TelegramStarsProvider
+ *     └── StripeProvider
  *
  *   PaymentRegistry (factory)
  *     └── paymentRegistry.getProvider("stripe")
@@ -122,7 +119,7 @@ export interface WebhookResult {
 
 // ─── Enums ────────────────────────────────────────────
 
-export type PaymentProviderId = "click" | "payme" | "stripe" | "telegram_stars";
+export type PaymentProviderId = "stripe";
 
 export type PaymentStatus =
   | "pending"

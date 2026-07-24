@@ -4,7 +4,7 @@
  *
  * Body:
  *   planId: string — "pro_monthly" | "pro_yearly" | "lifetime"
- *   providerId: string — "stripe" | "telegram_stars" | "click" | "payme"
+ *   providerId: string — "stripe"
  *   successUrl?: string — URL to redirect after successful payment
  *   cancelUrl?: string — URL to redirect if payment is cancelled
  *
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // Validate payment provider
-    const validProviders = ["stripe", "telegram_stars", "click", "payme"];
+    const validProviders = ["stripe"];
     if (!validProviders.includes(providerId)) {
       return NextResponse.json(
         { error: `Invalid provider: ${providerId}. Must be one of: ${validProviders.join(", ")}` },

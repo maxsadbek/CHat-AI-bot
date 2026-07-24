@@ -12,10 +12,7 @@
  */
 
 import { logger } from "@/bot/core/logger";
-import { ClickProvider } from "./providers/click";
-import { PaymeProvider } from "./providers/payme";
 import { StripeProvider } from "./providers/stripe";
-import { TelegramStarsProvider } from "./providers/telegram-stars";
 import type {
   PaymentProvider,
   PaymentProviderId,
@@ -34,26 +31,7 @@ const log = logger.child("payment-registry");
 // ─── Provider Instance Cache ─────────────────────────
 // Singleton pattern — providers are instantiated once
 
-let _clickProvider: ClickProvider | null = null;
-let _paymeProvider: PaymeProvider | null = null;
 let _stripeProvider: StripeProvider | null = null;
-let _telegramStarsProvider: TelegramStarsProvider | null = null;
-
-function getClick(): ClickProvider {
-  if (!_clickProvider) {
-    _clickProvider = new ClickProvider();
-    log.info("Click provider instance created");
-  }
-  return _clickProvider;
-}
-
-function getPayme(): PaymeProvider {
-  if (!_paymeProvider) {
-    _paymeProvider = new PaymeProvider();
-    log.info("Payme provider instance created");
-  }
-  return _paymeProvider;
-}
 
 function getStripe(): StripeProvider {
   if (!_stripeProvider) {
@@ -63,22 +41,11 @@ function getStripe(): StripeProvider {
   return _stripeProvider;
 }
 
-function getTelegramStars(): TelegramStarsProvider {
-  if (!_telegramStarsProvider) {
-    _telegramStarsProvider = new TelegramStarsProvider();
-    log.info("Telegram Stars provider instance created");
-  }
-  return _telegramStarsProvider;
-}
-
 // ─── Provider Map ────────────────────────────────────
 // Maps provider IDs to factory functions
 
 const PROVIDER_MAP: Record<string, () => PaymentProvider> = {
-  click: getClick,
-  payme: getPayme,
   stripe: getStripe,
-  telegram_stars: getTelegramStars,
 };
 
 // ─── Payment Provider Registry ───────────────────────
@@ -90,9 +57,7 @@ class PaymentRegistry {
    * to know which specific provider is being used.
    *
    * @example
-   *   const provider = paymentRegistry.getProvider("stripe");
-   *   const provider = paymentRegistry.getProvider("telegram_stars");
-   *   const provider = paymentRegistry.getProvider("click");
+ *   const provider = paymentRegistry.getProvider("stripe");
    */
   getProvider(providerId: PaymentProviderId): PaymentProvider {
     const factory = PROVIDER_MAP[providerId];

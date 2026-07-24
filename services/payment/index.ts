@@ -4,10 +4,7 @@
  * The rest of the application should only import from here.
  *
  * Providers:
- *   - Click (Uzbekistan)
- *   - Payme (Uzbekistan)
  *   - Stripe (Global)
- *   - Telegram Stars (Global — best for Telegram bots)
  *
  * Usage:
  *   import { paymentRegistry, paymentService } from "@/services/payment";
@@ -39,7 +36,4 @@ export type {
 } from "./payment-service";
 
 // Provider classes (for direct instantiation in tests only)
-export { ClickProvider } from "./providers/click";
-export { PaymeProvider } from "./providers/payme";
 export { StripeProvider } from "./providers/stripe";
-export { TelegramStarsProvider } from "./providers/telegram-stars";

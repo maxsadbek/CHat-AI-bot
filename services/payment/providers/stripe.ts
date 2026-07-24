@@ -46,24 +46,31 @@ export class StripeProvider implements PaymentProvider {
   private stripe: Stripe | null = null;
 
   async initialize(): Promise<void> {
+    this.ensureStripe();
+  }
+
+  private ensureStripe(): Stripe {
+    if (this.stripe) return this.stripe;
+
+    // ─── Debug logging (temporary — remove after confirming env vars load) ──
+    console.log("[stripe] STRIPE_SECRET_KEY exists:", !!process.env.STRIPE_SECRET_KEY);
+    console.log("[stripe] Environment:", process.env.NODE_ENV);
+
     const secretKey = env.STRIPE_SECRET_KEY;
     if (!secretKey) {
       log.warn("Stripe provider not initialized: STRIPE_SECRET_KEY is not set");
-      return;
+      throw new Error(
+        "Stripe is not configured. Set STRIPE_SECRET_KEY in your environment."
+      );
     }
+
+    log.info("Stripe provider initializing");
     this.stripe = new Stripe(secretKey, {
       apiVersion: "2026-06-24.dahlia",
       typescript: true,
     });
     log.info("Stripe provider initialized successfully");
-  }
 
-  private ensureStripe(): Stripe {
-    if (!this.stripe) {
-      throw new Error(
-        "Stripe is not configured. Set STRIPE_SECRET_KEY in your environment."
-      );
-    }
     return this.stripe;
   }
 

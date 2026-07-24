@@ -77,15 +77,16 @@ function extractErrorDetails(error: unknown): Record<string, unknown> {
 /**
  * Format a 16-digit card number with spaces every 4 digits.
  * "8600123412341234" → "8600 1234 1234 1234"
- * Falls back to a masked display if the raw value is missing.
+ * Falls back to a generic masked placeholder if the env var is empty.
+ * NEVER hardcodes a real card number.
  */
 function formatCardNumber(raw: string): string {
   const digits = raw.replace(/\D/g, "");
   if (digits.length >= 16) {
     return digits.slice(0, 16).replace(/(.{4})/g, "$1 ").trim();
   }
-  // If the env var is shorter or empty, show a safe placeholder
-  return raw || "8600 XXXX XXXX XXXX";
+  // Generic placeholder — no real card number hardcoded
+  return "XXXX XXXX XXXX XXXX";
 }
 
 /**

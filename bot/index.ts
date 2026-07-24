@@ -733,7 +733,15 @@ export function createBot(): Bot<BotContext> {
   callbackRouter.register("manual:payment:receipt", async (ctx) => {
     await ctx.answerCallbackQuery();
     const planId = ctx.session.tempData.manualPaymentPlan ?? "pro_monthly";
+    log.debug("Manual payment receipt callback triggered", {
+      userId: ctx.from?.id,
+      planId,
+      tempData: ctx.session.tempData,
+    });
     await manualPaymentReceiptHandler(ctx, planId);
+    log.debug("Manual payment receipt handler completed — session step is now", {
+      step: ctx.session.step,
+    });
   });
 
   // Admin approves a manual payment
@@ -869,7 +877,7 @@ export function createBot(): Bot<BotContext> {
   // ════════════════════════════════════════════════════════
   // 6. TEXT MESSAGES — routes by session step
   // ════════════════════════════════════════════════════════
-  bot.on("message:text", async (ctx) => {
+  bot.on("message:text", async (ctx, next) => {
     const step = ctx.session.step;
 
     switch (step) {
@@ -912,8 +920,18 @@ export function createBot(): Bot<BotContext> {
         }
         break;
       default:
-        // If user is in manual payment receipt mode, remind them to send a photo
+        // If user is in manual payment receipt mode:
+        //   - If the message has a photo (caption + photo), pass to the photo handler via next()
+        //   - If only text, remind them to send a photo
         if (step === BotStep.MANUAL_PAYMENT_RECEIPT) {
+          if (ctx.message?.photo && ctx.message.photo.length > 0) {
+            log.debug("MANUAL_PAYMENT_RECEIPT: message has photo + caption, passing to photo handler via next()", {
+              userId: ctx.from?.id,
+              step,
+            });
+            await next();
+            return;
+          }
           await ctx.reply(
             "📸 *Please send a photo of your payment receipt.*\n\nSend exactly one photo showing the completed payment.",
             { parse_mode: "Markdown" }

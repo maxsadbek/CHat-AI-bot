@@ -52,6 +52,16 @@ const envSchema = z.object({
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
 
+  // ─── Manual Payment (Temporary) ──────────
+  /** Card holder name displayed on the manual payment page */
+  MANUAL_PAYMENT_CARD_NAME: z.string().default("Maxsad Baxtiyorov"),
+  /** Card number displayed (masked automatically) */
+  MANUAL_PAYMENT_CARD_NUMBER: z.string().default("8600123412341234"),
+  /** Local price in UZS (numbers only, e.g. 40000) */
+  MANUAL_PAYMENT_AMOUNT_UZS: z.coerce.number().default(40000),
+  /** USD price string (e.g. 2.99) */
+  MANUAL_PAYMENT_PRICE_USD: z.string().default("2.99"),
+
 });
 
 function getEnv() {

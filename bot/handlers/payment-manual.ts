@@ -16,6 +16,7 @@
  *   - Keeps all existing Stripe/payment code intact
  *   - Uses a separate ManualPayment DB model (manual_payments table)
  *   - Session step MANUAL_PAYMENT_RECEIPT tracks photo-waiting state
+ *   - All displayed values read from environment variables
  */
 
 import { InlineKeyboard } from "grammy";
@@ -24,7 +25,7 @@ import { BotStep } from "@/types";
 import { sessionManager } from "@/bot/core/session-manager";
 import { logger } from "@/bot/core/logger";
 import { prisma } from "@/lib/prisma";
-import { premiumNavKeyboard, mainMenuKeyboard } from "@/bot/keyboards";
+import { premiumNavKeyboard } from "@/bot/keyboards";
 import { env } from "@/config";
 import { SUBSCRIPTION_PLANS } from "@/config/plans";
 import type { PlanId } from "@/config/plans";
@@ -33,29 +34,47 @@ import { adminGuard } from "@/bot/middleware/admin";
 
 const log = logger.child("handler-manual-payment");
 
-// ─── Constants ──────────────────────────────────────────
+// ══════════════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════════════
 
-/** Fixed manual payment amount in UZS */
-const MANUAL_PAYMENT_AMOUNT = 40000;
-const MANUAL_PAYMENT_CURRENCY = "UZS";
+/**
+ * Format a 16-digit card number with spaces every 4 digits.
+ * "8600123412341234" → "8600 1234 1234 1234"
+ * Falls back to a masked display if the raw value is missing.
+ */
+function formatCardNumber(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length >= 16) {
+    return digits.slice(0, 16).replace(/(.{4})/g, "$1 ").trim();
+  }
+  // If the env var is shorter or empty, show a safe placeholder
+  return raw || "8600 XXXX XXXX XXXX";
+}
+
+/**
+ * Format a numeric amount with space as thousand separator.
+ * 40000 → "40 000"
+ */
+function formatUZS(amount: number): string {
+  return amount.toLocaleString("en-US").replace(/,/g, " ");
+}
 
 // ══════════════════════════════════════════════════════════
 // 1. SHOW MANUAL PAYMENT PAGE
 // ══════════════════════════════════════════════════════════
 
 /**
- * Display the manual payment page with card details.
- * Called from premiumUpgradeHandler when manual payment is selected.
+ * Display the premium manual payment page.
  *
- * Shows:
- *   💳 Manual Payment
- *   Card holder: Maxsad Baxtiyorov
- *   Card number: 8600 XXXX XXXX XXXX
- *   Amount: 40 000 UZS
+ * All display values (card holder, card number, amounts) are read
+ * from environment variables — never hardcoded.
  *
- * Buttons:
- *   📷 Send Receipt
- *   ⬅️ Back
+ * Design: Clean, Apple-inspired layout with:
+ *   - Generous vertical spacing for readability on mobile
+ *   - Section dividers for visual hierarchy
+ *   - Minimal but purposeful emoji use
+ *   - Clear CTA: only one primary action (Send Receipt)
  */
 export async function manualPaymentShowHandler(
   ctx: BotContext,
@@ -64,39 +83,65 @@ export async function manualPaymentShowHandler(
   const plan = SUBSCRIPTION_PLANS[planId as PlanId];
   if (!plan) return;
 
-  // Get user info from Telegram
-  const user = ctx.from;
-  const firstName = user?.first_name ?? "User";
-  const lastName = user?.last_name ?? "";
-
   // Store the planId in session tempData so the receipt callback can read it
   sessionManager.setTempData(ctx.session, "manualPaymentPlan", planId);
 
-  // Build the manual payment info message
+  // ─── Read all display values from environment ──────────
+  const cardHolder  = env.MANUAL_PAYMENT_CARD_NAME;
+  const rawCard     = env.MANUAL_PAYMENT_CARD_NUMBER;
+  const amountUZS   = env.MANUAL_PAYMENT_AMOUNT_UZS;
+  const priceUSD    = env.MANUAL_PAYMENT_PRICE_USD;
+
+  const formattedCard  = formatCardNumber(rawCard);
+  const formattedUZS   = formatUZS(amountUZS);
+  const appName        = env.NEXT_PUBLIC_APP_NAME || "Kayzel Creator";
+  const divider        = "━━━━━━━━━━━━━━━━━━━━━━";
+
+  // ─── Build the premium payment message ─────────────────
+  // Apple-inspired: clean sections, generous line breaks,
+  // clear information hierarchy, single primary CTA.
   const message = [
-    `━━━━━━━━━━━━━━━━━━━━━`,
-    `💳 *Manual Payment*`,
-    `━━━━━━━━━━━━━━━━━━━━━`,
+    divider,
+    `💎 *${appName} Pro*`,
+    divider,
     "",
-    `👤 *Card Holder:*`,
-    `${firstName} ${lastName}`,
+    `Unlock every premium feature.`,
     "",
-    `💳 *Card Number:*`,
-    `\`8600 XXXX XXXX XXXX\``,
+    `*Price*`,
     "",
-    `💰 *Amount:*`,
-    `${MANUAL_PAYMENT_AMOUNT.toLocaleString()} ${MANUAL_PAYMENT_CURRENCY}`,
+    `💰 *$${priceUSD}*`,
     "",
-    `━━━━━━━━━━━━━━━━━━━━━`,
+    `For users in Uzbekistan,`,
+    `a local payment method is available.`,
     "",
-    `📸 *After payment:*`,
-    `Send the payment receipt (screenshot).`,
+    divider,
     "",
-    `⏳ The administrator will verify the payment.`,
+    `💳 *Payment Details*`,
     "",
-    `✅ Premium will be activated after confirmation.`,
+    `👤 Card Holder`,
+    `${cardHolder}`,
     "",
-    `━━━━━━━━━━━━━━━━━━━━━`,
+    `💳 Card Number`,
+    `\`${formattedCard}\``,
+    "",
+    `💰 Local Amount`,
+    `${formattedUZS} UZS`,
+    "",
+    divider,
+    "",
+    `📌 *Instructions*`,
+    "",
+    `• Transfer the exact amount.`,
+    `• Take a screenshot after payment.`,
+    `• Press "📷 Send Receipt".`,
+    `• Wait for payment verification.`,
+    "",
+    divider,
+    "",
+    `⏱ Average verification`,
+    `5–30 minutes`,
+    "",
+    `🔒 Secure manual verification by ${appName} Team`,
   ].join("\n");
 
   // Import keyboard inline to avoid circular deps
@@ -182,6 +227,10 @@ export async function manualPaymentProcessPhotoHandler(
   const lastName = ctx.from?.last_name ?? "";
   const username = ctx.from?.username;
 
+  // Read amount from env (fallback to 40000 for DB storage)
+  const paymentAmount = env.MANUAL_PAYMENT_AMOUNT_UZS;
+  const paymentCurrency = "UZS";
+
   try {
     // Save manual payment record to database
     const manualPayment = await prisma.manualPayment.create({
@@ -190,8 +239,8 @@ export async function manualPaymentProcessPhotoHandler(
         telegramUserId: BigInt(telegramId),
         photoFileId: fileId,
         plan: planId,
-        amount: MANUAL_PAYMENT_AMOUNT,
-        currency: MANUAL_PAYMENT_CURRENCY,
+        amount: paymentAmount,
+        currency: paymentCurrency,
         status: "PENDING",
       },
     });
@@ -223,7 +272,7 @@ export async function manualPaymentProcessPhotoHandler(
       `${planName}`,
       "",
       `💰 *Amount:*`,
-      `${MANUAL_PAYMENT_AMOUNT.toLocaleString()} ${MANUAL_PAYMENT_CURRENCY}`,
+      `${formatUZS(paymentAmount)} ${paymentCurrency}`,
       "",
       `📅 *Date:*`,
       `${manualPayment.createdAt.toLocaleString()}`,
@@ -259,7 +308,7 @@ export async function manualPaymentProcessPhotoHandler(
       "",
       `━━━━━━━━━━━━━━━━━━━━━`,
       `📋 *Plan:* ${planName}`,
-      `💰 *Amount:* ${MANUAL_PAYMENT_AMOUNT.toLocaleString()} ${MANUAL_PAYMENT_CURRENCY}`,
+      `💰 *Amount:* ${formatUZS(paymentAmount)} ${paymentCurrency}`,
       `━━━━━━━━━━━━━━━━━━━━━`,
       "",
       forwardedCount > 0

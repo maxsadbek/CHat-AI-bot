@@ -301,14 +301,18 @@ export function planSelectionKeyboard(
 
 /**
  * Keyboard shown on the manual payment page.
- * User clicks "📷 Send Receipt" to send a payment screenshot.
- * User clicks "⬅️ Back" to return to plan selection.
+ * Minimal, clean layout — only two actions:
+ *   "📷 Send Receipt" — proceed to send payment screenshot
+ *   "⬅ Back" — return to plan comparison
+ *
+ * Note: Uses a dedicated callback for Back (premium:back) rather than
+ * the generic nav:back, so the user returns to the plan selection screen.
  */
 export function manualPaymentKeyboard(): InlineKeyboard {
-  return addNavRow(
-    new InlineKeyboard()
-      .text("📷 Send Receipt", "manual:payment:receipt")
-  );
+  return new InlineKeyboard()
+    .text("📷 Send Receipt", "manual:payment:receipt")
+    .row()
+    .text("⬅ Back", "premium:back");
 }
 
 // Navigation after upgrade / for active subscribers

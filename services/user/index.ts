@@ -10,6 +10,7 @@ import { subscriptionRepository } from "@/repositories/subscription";
 import { usageRepository } from "@/repositories/usage";
 import { getDailyLimit, SUBSCRIPTION_PLANS, type PlanId } from "@/config/plans";
 import { logger } from "@/bot/core/logger";
+import { isAdmin } from "@/services/admin/admin-guard";
 
 const log = logger.child("user-service");
 
@@ -25,7 +26,8 @@ export class UserService {
     username?: string;
     language_code?: string;
   }) {
-    const dailyLimit = (from as any).is_admin
+    const isUserAdmin = isAdmin(from.id);
+    const dailyLimit = isUserAdmin
       ? 999999
       : getDailyLimit("free");
 
@@ -82,6 +84,15 @@ export class UserService {
     used: number;
     limit: number;
   }> {
+    if (isAdmin(telegramId)) {
+      const user = await userRepository.findByTelegramId(telegramId);
+      return {
+        allowed: true,
+        used: user?.requestsToday ?? 0,
+        limit: 999999,
+      };
+    }
+
     const user = await userRepository.findByTelegramId(telegramId);
     if (!user) {
       return { allowed: true, used: 0, limit: 50 };

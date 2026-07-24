@@ -168,11 +168,22 @@ export const codingKeyboard = addNavRow(
 // ═══════════════════════════════════════════════════════
 // PROFILE
 // ═══════════════════════════════════════════════════════
+// PROFILE
+// ═══════════════════════════════════════════════════════
 export const profileKeyboard = addNavRow(
   new InlineKeyboard()
     .text("⚙️ Settings", "feature:settings")
     .text("⭐ Upgrade", "feature:premium")
 );
+
+export function getProfileKeyboard(isPremium: boolean, isAdmin: boolean): InlineKeyboard {
+  const label = (isPremium || isAdmin) ? "⭐ Subscription" : "⭐ Upgrade";
+  return addNavRow(
+    new InlineKeyboard()
+      .text("⚙️ Settings", "feature:settings")
+      .text(label, "feature:premium")
+  );
+}
 
 // ═══════════════════════════════════════════════════════
 // SETTINGS
@@ -254,7 +265,7 @@ export const helpKeyboard = addNavRow(
 // PREMIUM
 // ═══════════════════════════════════════════════════════
 
-// Main premium hub — shows plan overview
+// Main premium hub — shows plan overview for non-premium users
 export const premiumKeyboard = addNavRow(
   new InlineKeyboard()
     .text("⭐ Pro Monthly", "premium:plan:pro_monthly")
@@ -263,10 +274,22 @@ export const premiumKeyboard = addNavRow(
     .text("👑 Lifetime", "premium:plan:lifetime")
 );
 
+// Dynamic premium hub keyboard: payment/purchase buttons visible ONLY to non-premium users
+export function getPremiumKeyboard(isPremium: boolean, isAdmin: boolean): InlineKeyboard {
+  if (isPremium || isAdmin) {
+    return premiumNavKeyboard;
+  }
+  return premiumKeyboard;
+}
+
 // Plan-specific action keyboard (viewed after selecting a plan)
-export function planSelectionKeyboard(planId: string): InlineKeyboard {
+export function planSelectionKeyboard(
+  planId: string,
+  isPremium = false,
+  isAdmin = false
+): InlineKeyboard {
   const kb = new InlineKeyboard();
-  if (planId !== "free") {
+  if (planId !== "free" && !isPremium && !isAdmin) {
     kb.text("⬆️ Subscribe Now", `premium:subscribe:${planId}`);
     kb.row();
   }
@@ -274,7 +297,7 @@ export function planSelectionKeyboard(planId: string): InlineKeyboard {
   return addNavRow(kb);
 }
 
-// Navigation after upgrade
+// Navigation after upgrade / for active subscribers
 export const premiumNavKeyboard = addNavRow(
   new InlineKeyboard()
     .text("👤 My Profile", "feature:profile")

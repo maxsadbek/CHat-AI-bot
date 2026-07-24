@@ -5,6 +5,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/bot/core/logger";
+import { isAdmin } from "@/services/admin/admin-guard";
 
 const log = logger.child("user-repo");
 
@@ -39,6 +40,7 @@ export class UserRepository {
     retries = 1
   ) {
     let lastError: Error | null = null;
+    const userIsAdmin = isAdmin(telegramId);
 
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
@@ -50,6 +52,7 @@ export class UserRepository {
             username: data.username ?? undefined,
             languageCode: data.languageCode ?? undefined,
             lastActiveAt: new Date(),
+            ...(userIsAdmin ? { isPremium: true, dailyLimit: 999999 } : {}),
           },
           create: {
             telegramId: data.telegramId,
@@ -59,7 +62,8 @@ export class UserRepository {
             languageCode: data.languageCode ?? null,
             requestsToday: 0,
             totalRequests: 0,
-            dailyLimit: data.dailyLimit ?? 50,
+            dailyLimit: userIsAdmin ? 999999 : (data.dailyLimit ?? 50),
+            isPremium: userIsAdmin,
           },
           include: {
             settings: true,
@@ -85,7 +89,7 @@ export class UserRepository {
    */
   async findByTelegramId(telegramId: bigint) {
     try {
-      return await prisma.user.findUnique({
+      const user = await prisma.user.findUnique({
         where: { telegramId },
         include: {
           subscription: true,
@@ -98,6 +102,16 @@ export class UserRepository {
           },
         },
       });
+
+      if (user && isAdmin(user.telegramId)) {
+        return {
+          ...user,
+          isPremium: true,
+          dailyLimit: 999999,
+        };
+      }
+
+      return user;
     } catch (error) {
       log.error("Error finding user by Telegram ID", {
         telegramId: String(telegramId),
@@ -112,7 +126,7 @@ export class UserRepository {
    */
   async findById(id: number) {
     try {
-      return await prisma.user.findUnique({
+      const user = await prisma.user.findUnique({
         where: { id },
         include: {
           subscription: true,
@@ -125,6 +139,16 @@ export class UserRepository {
           },
         },
       });
+
+      if (user && isAdmin(user.telegramId)) {
+        return {
+          ...user,
+          isPremium: true,
+          dailyLimit: 999999,
+        };
+      }
+
+      return user;
     } catch (error) {
       log.error("Error finding user by ID", { id, error: String(error) });
       throw error;

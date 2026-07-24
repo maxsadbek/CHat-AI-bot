@@ -11,11 +11,13 @@ import type { BotContext } from "@/types";
 
 const log = logger.child("admin-guard");
 
-/**
- * Check if a Telegram user ID is an admin
- */
-export function isAdmin(telegramId: number): boolean {
-  return env.ADMIN_IDS.includes(telegramId);
+export function isAdmin(
+  telegramId: number | bigint | string | null | undefined
+): boolean {
+  if (telegramId === null || telegramId === undefined) return false;
+  const numId = typeof telegramId === "number" ? telegramId : Number(telegramId);
+  if (isNaN(numId)) return false;
+  return env.ADMIN_IDS.includes(numId);
 }
 
 /**

@@ -33,7 +33,14 @@ const envSchema = z.object({
   // Admin
   ADMIN_IDS: z
     .string()
-    .transform((val) => val.split(",").map(Number).filter(Boolean))
+    .transform((val) =>
+      val
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map(Number)
+        .filter((n) => !isNaN(n))
+    )
     .default(""),
   ADMIN_SECRET: z.string().default("admin-secret"),
 

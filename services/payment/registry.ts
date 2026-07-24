@@ -167,12 +167,17 @@ class PaymentRegistry {
   }
 
   /**
-   * Get the preferred provider from a sorted list (first enabled wins)
+   * Get the preferred provider from a sorted list (first enabled wins).
+   * Falls back to Stripe stub which returns a mock payment URL.
+   * This ensures the "💳 Pay Now" button is always visible during development/stub mode.
+   * In production, configure at least one real payment provider via environment variables.
    */
   getDefaultProvider(): PaymentProvider {
     const enabled = this.getEnabledProviders();
     if (enabled.length > 0) return enabled[0]!;
-    return getTelegramStars(); // Fallback default
+    // Stripe stub returns a mock payment URL so the payment flow displays the "💳 Pay Now" button.
+    // TelegramStars and other UZ providers (Click/Payme) return undefined paymentUrl.
+    return getStripe();
   }
 
   /**

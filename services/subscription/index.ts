@@ -24,8 +24,8 @@ import {
   type SubscriptionPlan,
   type BillingPeriod,
 } from "@/config/plans";
-
 import { logger } from "@/bot/core/logger";
+import { isAdmin } from "@/services/admin/admin-guard";
 
 const log = logger.child("subscription-service");
 
@@ -46,7 +46,8 @@ export interface SubscriptionInfo {
 
 export class SubscriptionService {
   /**
-   * Get user's current plan info with full details
+   * Get user's current plan info with full details.
+   * Admin users always receive non-expiring lifetime/admin plan.
    */
   async getUserPlan(userId: number): Promise<{
     plan: SubscriptionPlan;
@@ -54,6 +55,18 @@ export class SubscriptionService {
     daysRemaining: number | null;
     isLifetime: boolean;
   }> {
+    const user = await userRepository.findById(userId);
+
+    // Admin users always have non-expiring full access
+    if (user && isAdmin(user.telegramId)) {
+      return {
+        plan: SUBSCRIPTION_PLANS.lifetime,
+        isExpired: false,
+        daysRemaining: null,
+        isLifetime: true,
+      };
+    }
+
     const sub = await subscriptionRepository.findByUserId(userId);
 
     // Determine the plan
@@ -97,7 +110,7 @@ export class SubscriptionService {
       dailyLimit: sub.dailyLimit,
       startsAt: sub.startsAt,
       expiresAt: sub.expiresAt,
-      canceledAt: (sub as any).canceledAt, // TODO: Remove cast after prisma generate
+      canceledAt: (sub as any).canceledAt,
       paymentId: sub.paymentId,
       paymentProvider: sub.paymentProvider,
     };
@@ -118,11 +131,15 @@ export class SubscriptionService {
 
   /**
    * Cancel a user's subscription.
-   * Sets status to CANCELED and records the cancellation date,
-   * but keeps premium access until the expiry date.
    */
   async cancelSubscription(userId: number): Promise<SubscriptionInfo | null> {
     log.info("Canceling subscription", { userId });
+
+    const user = await userRepository.findById(userId);
+    if (user && isAdmin(user.telegramId)) {
+      log.warn("Cannot cancel admin subscription", { userId });
+      return null;
+    }
 
     const sub = await subscriptionRepository.findByUserId(userId);
     if (!sub) {
@@ -159,10 +176,15 @@ export class SubscriptionService {
 
   /**
    * Check if a subscription has expired and update status if so.
-   * Returns true if the subscription was just expired.
+   * Returns false for admins.
    */
   async checkExpiry(userId: number): Promise<boolean> {
     try {
+      const user = await userRepository.findById(userId);
+      if (user && isAdmin(user.telegramId)) {
+        return false; // Admins never expire
+      }
+
       const sub = await subscriptionRepository.findByUserId(userId);
       if (!sub || !sub.expiresAt || sub.planType === "free" || sub.planType === "lifetime") {
         return false;
@@ -193,10 +215,16 @@ export class SubscriptionService {
   }
 
   /**
-   * Check if a subscription has expired and downgrade if needed
+   * Check if a subscription has expired and downgrade if needed.
+   * Admins are never downgraded.
    */
   async checkAndHandleExpiry(userId: number): Promise<boolean> {
     try {
+      const user = await userRepository.findById(userId);
+      if (user && isAdmin(user.telegramId)) {
+        return false;
+      }
+
       const { isExpired, plan } = await this.getUserPlan(userId);
       if (isExpired && plan.id !== "free") {
         await this.downgrade(userId);
@@ -212,8 +240,7 @@ export class SubscriptionService {
 
   /**
    * Downgrade expired users to FREE plan.
-   * Finds all expired subscriptions and downgrades them.
-   * Should be called periodically (e.g., via cron job).
+   * Skips admin users.
    */
   async downgradeExpiredUsers(): Promise<number> {
     log.info("Running downgradeExpiredUsers check");
@@ -227,6 +254,11 @@ export class SubscriptionService {
       let downgraded = 0;
       for (const sub of expiredSubs) {
         try {
+          const user = await userRepository.findById(sub.userId);
+          if (user && isAdmin(user.telegramId)) {
+            continue; // Skip admin
+          }
+
           await this.downgrade(sub.userId);
           downgraded++;
         } catch (error) {
@@ -259,6 +291,18 @@ export class SubscriptionService {
     daysRemaining: number | null;
     expiresAt: Date | null;
   }> {
+    const user = await userRepository.findById(userId);
+    if (user && isAdmin(user.telegramId)) {
+      return {
+        planId: "lifetime",
+        plan: SUBSCRIPTION_PLANS.lifetime,
+        status: "ACTIVE",
+        isExpired: false,
+        daysRemaining: null,
+        expiresAt: null,
+      };
+    }
+
     const sub = await subscriptionRepository.findByUserId(userId);
     const planType = (sub?.planType ?? "free") as PlanId;
     const plan = SUBSCRIPTION_PLANS[planType] ?? SUBSCRIPTION_PLANS.free;
@@ -326,6 +370,12 @@ export class SubscriptionService {
    * Downgrade user back to Free plan
    */
   async downgrade(userId: number) {
+    const user = await userRepository.findById(userId);
+    if (user && isAdmin(user.telegramId)) {
+      log.warn("Attempted to downgrade admin user ignored", { userId });
+      return;
+    }
+
     const freePlan = SUBSCRIPTION_PLANS.free;
 
     await subscriptionRepository.upsert(userId, {
@@ -363,12 +413,18 @@ export class SubscriptionService {
   }
 
   /**
-   * Check if a plan is the user's current plan or better
+   * Check if user has access to a feature.
+   * Admins ALWAYS have access to every AI feature.
    */
   async hasAccessToFeature(
     userId: number,
     featureFlag: keyof SubscriptionPlan
   ): Promise<boolean> {
+    const user = await userRepository.findById(userId);
+    if (user && isAdmin(user.telegramId)) {
+      return true; // Admin has access to every AI feature
+    }
+
     const { plan } = await this.getUserPlan(userId);
     const value = plan[featureFlag];
     if (typeof value === "boolean") return value;
@@ -381,8 +437,9 @@ export class SubscriptionService {
    */
   async createPaymentSession(
     userId: number,
-    planId: PlanId
-  ): Promise<{ url?: string; sessionId: string }> {
+    planId: PlanId,
+    telegramUserId?: number
+  ): Promise<{ url?: string; sessionId: string; deepLink?: string }> {
     const plan = SUBSCRIPTION_PLANS[planId];
     if (!plan || !plan.isActive) {
       throw new Error(`Plan ${planId} is not available`);
@@ -390,13 +447,24 @@ export class SubscriptionService {
 
     log.info("Payment session requested", { userId, planId, amount: plan.price.amount });
 
-    // Delegates to paymentService
-    // const provider = paymentRegistry.getDefaultProvider();
-    // return provider.createPayment({ ... });
+    const user = await userRepository.findById(userId);
+    const tgId = telegramUserId ?? (user ? Number(user.telegramId) : 0);
+
+    const { paymentService } = await import("@/services/payment/payment-service");
+    const { paymentRegistry } = await import("@/services/payment/registry");
+
+    const provider = paymentRegistry.getDefaultProvider();
+    const result = await paymentService.createPayment({
+      userId,
+      telegramUserId: tgId,
+      planId,
+      providerId: provider.config.id as any,
+    });
 
     return {
-      url: undefined,
-      sessionId: `placeholder_${userId}_${planId}_${Date.now()}`,
+      url: result.paymentUrl,
+      deepLink: result.deepLink,
+      sessionId: result.session.id,
     };
   }
 

@@ -357,9 +357,13 @@ class PaymentService {
   }
 
   /**
-   * Convert raw DB payment record to a clean session object
+   * Convert raw DB payment record to a clean session object.
+   * Maps DB fields to the PaymentSession interface.
+   * paymentUrl and deepLink are transient (sent in createPayment response),
+   * but included here for compatibility if stored in metadata.
    */
   private toSession(record: any): PaymentSession {
+    const metadata = record.metadata as Record<string, unknown> | null | undefined;
     return {
       id: record.id,
       userId: record.userId,
@@ -371,6 +375,8 @@ class PaymentService {
       status: record.status,
       createdAt: record.createdAt,
       paidAt: record.paidAt,
+      paymentUrl: (metadata?.paymentUrl as string | undefined) ?? undefined,
+      deepLink: (metadata?.deepLink as string | undefined) ?? undefined,
     };
   }
 }

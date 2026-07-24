@@ -26,11 +26,12 @@
 import type { BotContext } from "@/types";
 import { BotStep } from "@/types";
 import { userService } from "@/services/user";
-import { profileKeyboard } from "@/bot/keyboards";
+import { profileKeyboard, getProfileKeyboard } from "@/bot/keyboards";
 import { formatDate } from "@/utils/helpers";
 import { t } from "@/bot/localization";
 import { LANGUAGE_NAMES } from "@/bot/localization";
 import { providerRegistry } from "@/services/ai/providers";
+import { isAdmin } from "@/services/admin/admin-guard";
 import { logger } from "@/bot/core/logger";
 
 const DIVIDER = "━━━━━━━━━━━━━━━━━━━━━";
@@ -50,12 +51,10 @@ export async function profileHandler(ctx: BotContext): Promise<void> {
   }
 
   const userId = ctx.session.userId;
+  const isAdminUser = isAdmin(from.id);
 
   try {
     // ─── PRIMARY: Find by internal ID (already verified by middleware) ──
-    // This uses the same value the middleware set after a successful upsert.
-    // It avoids a separate findByTelegramId query that could return null
-    // even though the user exists (the root cause of the "Profile not found" bug).
     let profile = await userService.getProfileById(userId);
 
     // ─── FALLBACK 1: Find by Telegram ID ─────────────────
@@ -86,12 +85,18 @@ export async function profileHandler(ctx: BotContext): Promise<void> {
     const selectedModelId = ctx.session.selectedModel ?? "gpt-4o";
     const modelName = providerRegistry.getModelName(selectedModelId);
 
-    const planLabel = profile.isPremium ? "⭐ Premium" : "🆓 Free";
+    const isEffectivePremium = profile.isPremium || isAdminUser;
+    const planLabel = isAdminUser
+      ? "👑 Admin Unlimited"
+      : isEffectivePremium
+        ? "⭐ Premium"
+        : "🆓 Free";
+
     const joinedDate = formatDate(profile.createdAt);
 
     // ─── Usage stats ──────────────────────────────────
     const used = profile.requestsToday;
-    const limit = profile.dailyLimit;
+    const limit = isAdminUser ? 999999 : profile.dailyLimit;
     const usagePercent = Math.min(Math.round((used / limit) * 100), 100);
     const filledBars = Math.min(Math.floor(usagePercent / 10), 10);
     const progressBar = "▓".repeat(filledBars) + "░".repeat(10 - filledBars);
@@ -117,7 +122,7 @@ export async function profileHandler(ctx: BotContext): Promise<void> {
       t(lang, "profile.stats_title"),
       DIVIDER,
       "",
-      `${t(lang, "profile.today", { used: String(used), limit: String(limit) })}`,
+      `${t(lang, "profile.today", { used: String(used), limit: isAdminUser ? "Unlimited" : String(limit) })}`,
       `${t(lang, "profile.progress", { bar: progressBar, percent: String(usagePercent) })}`,
       `${t(lang, "profile.total", { total: String(profile.totalRequests) })}`,
       "",
@@ -129,15 +134,16 @@ export async function profileHandler(ctx: BotContext): Promise<void> {
       `${t(lang, "profile.messages", { count: String(profile._count?.messages ?? 0) })}`,
       `${t(lang, "profile.last_active", { date: formatDate(profile.lastActiveAt) })}`,
       "",
-      // Upgrade CTA
-      t(lang, "profile.upgrade"),
+      // Upgrade CTA only for non-premium non-admin users
+      isEffectivePremium ? "✨ Active Subscription" : t(lang, "profile.upgrade"),
     ];
 
     const profileText = profileLines.join("\n");
+    const keyboard = getProfileKeyboard(profile.isPremium, isAdminUser);
 
     await ctx.reply(profileText, {
       parse_mode: "Markdown",
-      reply_markup: profileKeyboard,
+      reply_markup: keyboard,
       link_preview_options: { is_disabled: true },
     });
   } catch (error) {
@@ -151,7 +157,7 @@ export async function profileHandler(ctx: BotContext): Promise<void> {
     // Only show error message on real server failures
     await ctx.reply(t(lang, "profile.error"), {
       parse_mode: "Markdown",
-      reply_markup: profileKeyboard,
+      reply_markup: getProfileKeyboard(false, isAdminUser),
     });
   }
 }

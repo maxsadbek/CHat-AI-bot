@@ -458,10 +458,24 @@ function manualPaymentAdminKeyboard(paymentId: string): InlineKeyboard {
 }
 
 /**
+ * Build a status-only keyboard for a processed manual payment.
+ * Shows:
+ *   ✅ Approved (or ❌ Rejected)
+ *
+ * This is used to replace the action buttons after an admin has
+ * processed the payment, so other admins see the current status.
+ */
+function manualPaymentAdminDoneKeyboard(status: "APPROVED" | "REJECTED"): InlineKeyboard {
+  const label = status === "APPROVED" ? "✅ Approved" : "❌ Rejected";
+  return new InlineKeyboard().text(label, "manual:payment:done");
+}
+
+/**
  * Admin approves a manual payment.
  * - Sets user.isPremium = true
  * - Sets subscription expiresAt = +30 days
  * - Sends confirmation message to user
+ * - Updates the admin notification message to show approval status
  */
 export async function manualPaymentApproveHandler(
   ctx: BotContext,
@@ -471,20 +485,42 @@ export async function manualPaymentApproveHandler(
   if (!(await adminGuard(ctx))) return;
 
   const adminId = ctx.from!.id;
+  const adminUsername = ctx.from?.username;
+  const adminLabel = adminUsername ? `@${adminUsername}` : `#${adminId}`;
+
+  log.debug("=== MANUAL PAYMENT: APPROVE STARTED ===", {
+    paymentId,
+    adminId,
+    adminUsername,
+  });
 
   try {
-    // Find the manual payment record
+    // ─── Step 1: Find the payment record ────────────────
+    log.debug("APPROVE STEP 1: Looking up payment record", { paymentId });
     const payment = await prisma.manualPayment.findUnique({
       where: { id: paymentId },
       include: { user: true },
     });
 
+    log.debug("APPROVE STEP 2: Payment lookup result", {
+      found: !!payment,
+      paymentId,
+      status: payment?.status,
+      userId: payment?.userId,
+      planId: payment?.plan,
+    });
+
     if (!payment) {
+      log.warn("APPROVE: Payment record not found", { paymentId });
       await ctx.reply("❌ *Payment record not found.*", { parse_mode: "Markdown" });
       return;
     }
 
     if (payment.status !== "PENDING") {
+      log.warn("APPROVE: Payment already processed", {
+        paymentId,
+        currentStatus: payment.status,
+      });
       await ctx.reply(
         `❌ *Payment already ${payment.status.toLowerCase()}.*`,
         { parse_mode: "Markdown" }
@@ -492,7 +528,11 @@ export async function manualPaymentApproveHandler(
       return;
     }
 
-    // Update payment status to APPROVED
+    // ─── Step 3: Update payment status to APPROVED ──────
+    log.debug("APPROVE STEP 3: Updating payment status to APPROVED", {
+      paymentId,
+      adminId,
+    });
     await prisma.manualPayment.update({
       where: { id: paymentId },
       data: {
@@ -500,31 +540,85 @@ export async function manualPaymentApproveHandler(
         adminId: BigInt(adminId),
       },
     });
+    log.debug("APPROVE STEP 3: Status updated successfully");
 
-    // Activate premium subscription via subscription service
-    // This handles isPremium, dailyLimit, subscription record, etc.
+    // ─── Step 4: Activate premium subscription ──────────
+    log.debug("APPROVE STEP 4: Calling subscriptionService.upgrade()", {
+      userId: payment.userId,
+      planId: payment.plan,
+    });
     await subscriptionService.upgrade(
       payment.userId,
       payment.plan as PlanId,
       paymentId,
       "manual"
     );
+    log.debug("APPROVE STEP 4: Subscription upgraded successfully");
 
-    log.info("Manual payment approved", {
+    log.info("✅ Manual payment approved successfully", {
       paymentId,
       userId: payment.userId,
       planId: payment.plan,
       adminId,
+      adminUsername,
     });
 
-    // Notify admin
+    // ─── Step 5: Update admin notification message ──────
+    // Replace the action buttons (✅ Approve / ❌ Reject) with
+    // a status-only label so other admins know it's been handled.
+    log.debug("APPROVE STEP 5: Updating admin notification message");
+    try {
+      // Build updated caption showing approval status
+      const planName = SUBSCRIPTION_PLANS[payment.plan as PlanId]?.name ?? payment.plan;
+      const updatedCaption = [
+        `💰 *New Premium Payment*`,
+        "",
+        `👤 *User:*`,
+        payment.user?.username ? `@${payment.user.username}` : "—",
+        "",
+        `📛 *Name:*`,
+        `${payment.user?.firstName ?? "User"} ${payment.user?.lastName ?? ""}`,
+        "",
+        `🆔 *Telegram ID:*`,
+        `\`${String(payment.telegramUserId)}\``,
+        "",
+        `📋 *Plan:*`,
+        `${planName}`,
+        "",
+        `💰 *Amount:*`,
+        `${formatUZS(payment.amount)} ${payment.currency}`,
+        "",
+        `─── ─ ─ ─ ─ ─ ─ ───`,
+        `✅ *Approved by* ${adminLabel}`,
+        `📅 ${new Date().toLocaleString()}`,
+      ].join("\n");
+
+      // Edit the admin notification message caption and remove action buttons
+      await ctx.editMessageCaption({
+        caption: updatedCaption,
+        parse_mode: "Markdown",
+        reply_markup: manualPaymentAdminDoneKeyboard("APPROVED"),
+      });
+      log.debug("APPROVE STEP 5: Admin notification updated successfully");
+    } catch (err) {
+      // Non-critical: the payment was processed, editing the message is cosmetic
+      log.warn("Could not update admin notification message caption", {
+        paymentId,
+        errorDetails: extractErrorDetails(err),
+      });
+    }
+
+    // ─── Step 6: Notify admin (confirm action) ──────────
     await ctx.reply(
       `✅ *Payment approved!*\n\n` +
       `User #${payment.userId} has been granted ${payment.plan} for 30 days.`,
       { parse_mode: "Markdown" }
     );
 
-    // Send confirmation to the user
+    // ─── Step 7: Send confirmation to the user ──────────
+    log.debug("APPROVE STEP 7: Sending approval notification to user", {
+      telegramUserId: Number(payment.telegramUserId),
+    });
     try {
       const confirmMessage = [
         `✅ *Premium Activated!* 🎉`,
@@ -544,17 +638,19 @@ export async function manualPaymentApproveHandler(
         confirmMessage,
         { parse_mode: "Markdown" }
       );
-    } catch (error) {
-      log.error("Failed to send approval notification to user", {
+      log.debug("APPROVE STEP 7: User notified successfully");
+    } catch (err) {
+      log.error("APPROVE STEP 7: Failed to send approval notification to user", {
         telegramUserId: Number(payment.telegramUserId),
-        error: String(error),
+        errorDetails: extractErrorDetails(err),
       });
     }
   } catch (error) {
-    log.error("Error approving manual payment", {
+    const errorDetails = extractErrorDetails(error);
+    log.error("=== MANUAL PAYMENT: APPROVE FAILED ===", {
       paymentId,
       adminId,
-      error: String(error),
+      ...errorDetails,
     });
     await ctx.reply("❌ *Error approving payment.*", { parse_mode: "Markdown" });
   }
@@ -564,6 +660,7 @@ export async function manualPaymentApproveHandler(
  * Admin rejects a manual payment.
  * - Updates payment status to REJECTED
  * - Sends rejection message to user
+ * - Updates the admin notification message to show rejection status
  */
 export async function manualPaymentRejectHandler(
   ctx: BotContext,
@@ -573,19 +670,42 @@ export async function manualPaymentRejectHandler(
   if (!(await adminGuard(ctx))) return;
 
   const adminId = ctx.from!.id;
+  const adminUsername = ctx.from?.username;
+  const adminLabel = adminUsername ? `@${adminUsername}` : `#${adminId}`;
+
+  log.debug("=== MANUAL PAYMENT: REJECT STARTED ===", {
+    paymentId,
+    adminId,
+    adminUsername,
+  });
 
   try {
-    // Find the manual payment record
+    // ─── Step 1: Find the payment record ────────────────
+    log.debug("REJECT STEP 1: Looking up payment record", { paymentId });
     const payment = await prisma.manualPayment.findUnique({
       where: { id: paymentId },
+      include: { user: true },
+    });
+
+    log.debug("REJECT STEP 2: Payment lookup result", {
+      found: !!payment,
+      paymentId,
+      status: payment?.status,
+      userId: payment?.userId,
+      planId: payment?.plan,
     });
 
     if (!payment) {
+      log.warn("REJECT: Payment record not found", { paymentId });
       await ctx.reply("❌ *Payment record not found.*", { parse_mode: "Markdown" });
       return;
     }
 
     if (payment.status !== "PENDING") {
+      log.warn("REJECT: Payment already processed", {
+        paymentId,
+        currentStatus: payment.status,
+      });
       await ctx.reply(
         `❌ *Payment already ${payment.status.toLowerCase()}.*`,
         { parse_mode: "Markdown" }
@@ -593,7 +713,11 @@ export async function manualPaymentRejectHandler(
       return;
     }
 
-    // Update payment status to REJECTED
+    // ─── Step 3: Update payment status to REJECTED ──────
+    log.debug("REJECT STEP 3: Updating payment status to REJECTED", {
+      paymentId,
+      adminId,
+    });
     await prisma.manualPayment.update({
       where: { id: paymentId },
       data: {
@@ -601,22 +725,69 @@ export async function manualPaymentRejectHandler(
         adminId: BigInt(adminId),
       },
     });
+    log.debug("REJECT STEP 3: Status updated successfully");
 
-    log.info("Manual payment rejected", {
+    log.info("❌ Manual payment rejected", {
       paymentId,
       userId: payment.userId,
       planId: payment.plan,
       adminId,
+      adminUsername,
     });
 
-    // Notify admin
+    // ─── Step 4: Update admin notification message ──────
+    // Replace action buttons with rejection status so other admins
+    // know the payment has already been handled.
+    log.debug("REJECT STEP 4: Updating admin notification message");
+    try {
+      const planName = SUBSCRIPTION_PLANS[payment.plan as PlanId]?.name ?? payment.plan;
+      const updatedCaption = [
+        `💰 *New Premium Payment*`,
+        "",
+        `👤 *User:*`,
+        payment.user?.username ? `@${payment.user.username}` : "—",
+        "",
+        `📛 *Name:*`,
+        `${payment.user?.firstName ?? "User"} ${payment.user?.lastName ?? ""}`,
+        "",
+        `🆔 *Telegram ID:*`,
+        `\`${String(payment.telegramUserId)}\``,
+        "",
+        `📋 *Plan:*`,
+        `${planName}`,
+        "",
+        `💰 *Amount:*`,
+        `${formatUZS(payment.amount)} ${payment.currency}`,
+        "",
+        `─── ─ ─ ─ ─ ─ ─ ───`,
+        `❌ *Rejected by* ${adminLabel}`,
+        `📅 ${new Date().toLocaleString()}`,
+      ].join("\n");
+
+      await ctx.editMessageCaption({
+        caption: updatedCaption,
+        parse_mode: "Markdown",
+        reply_markup: manualPaymentAdminDoneKeyboard("REJECTED"),
+      });
+      log.debug("REJECT STEP 4: Admin notification updated successfully");
+    } catch (err) {
+      log.warn("Could not update admin notification message caption", {
+        paymentId,
+        errorDetails: extractErrorDetails(err),
+      });
+    }
+
+    // ─── Step 5: Notify admin (confirm action) ──────────
     await ctx.reply(
       `❌ *Payment rejected.*\n\n` +
       `User #${payment.userId}'s payment for ${payment.plan} has been rejected.`,
       { parse_mode: "Markdown" }
     );
 
-    // Send rejection notification to the user
+    // ─── Step 6: Send rejection notification to the user ─
+    log.debug("REJECT STEP 6: Sending rejection notification to user", {
+      telegramUserId: Number(payment.telegramUserId),
+    });
     try {
       const rejectMessage = [
         `❌ *Payment Rejected*`,
@@ -638,17 +809,19 @@ export async function manualPaymentRejectHandler(
         rejectMessage,
         { parse_mode: "Markdown" }
       );
-    } catch (error) {
-      log.error("Failed to send rejection notification to user", {
+      log.debug("REJECT STEP 6: User notified successfully");
+    } catch (err) {
+      log.error("REJECT STEP 6: Failed to send rejection notification to user", {
         telegramUserId: Number(payment.telegramUserId),
-        error: String(error),
+        errorDetails: extractErrorDetails(err),
       });
     }
   } catch (error) {
-    log.error("Error rejecting manual payment", {
+    const errorDetails = extractErrorDetails(error);
+    log.error("=== MANUAL PAYMENT: REJECT FAILED ===", {
       paymentId,
       adminId,
-      error: String(error),
+      ...errorDetails,
     });
     await ctx.reply("❌ *Error rejecting payment.*", { parse_mode: "Markdown" });
   }

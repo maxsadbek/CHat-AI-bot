@@ -744,6 +744,12 @@ export function createBot(): Bot<BotContext> {
     });
   });
 
+  // Status-only button shown after approve/reject (displays "✅ Approved" or "❌ Rejected")
+  // No-op: the button is display-only, just acknowledge the callback to remove loading state
+  callbackRouter.register("manual:payment:done", async (ctx) => {
+    await ctx.answerCallbackQuery("Payment already processed.");
+  });
+
   // Admin approves a manual payment
   callbackRouter.register(/^admin:manual:approve:(.+)/, async (ctx) => {
     await ctx.answerCallbackQuery();

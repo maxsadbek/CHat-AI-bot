@@ -476,6 +476,11 @@ function manualPaymentAdminDoneKeyboard(status: "APPROVED" | "REJECTED"): Inline
  * - Sets subscription expiresAt = +30 days
  * - Sends confirmation message to user
  * - Updates the admin notification message to show approval status
+ *
+ * Diagnostic approach: each individual Prisma operation is wrapped in its
+ * own try/catch with full error details (code, meta, stack) logged via
+ * extractErrorDetails(). The error is re-thrown so the outer catch block
+ * still shows the standard user-facing error message.
  */
 export async function manualPaymentApproveHandler(
   ctx: BotContext,
@@ -492,23 +497,43 @@ export async function manualPaymentApproveHandler(
     paymentId,
     adminId,
     adminUsername,
+    callbackData: ctx.callbackQuery?.data,
   });
 
   try {
-    // ─── Step 1: Find the payment record ────────────────
-    log.debug("APPROVE STEP 1: Looking up payment record", { paymentId });
-    const payment = await prisma.manualPayment.findUnique({
-      where: { id: paymentId },
-      include: { user: true },
-    });
+    // ════════════════════════════════════════════════════════
+    // STEP 1 & 2: Find the payment record by ID
+    // ════════════════════════════════════════════════════════
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let payment: any; // Type inferred from the findUnique call below
+    try {
+      log.debug("APPROVE DB-1: prisma.manualPayment.findUnique()", {
+        paymentId,
+        include: "user",
+      });
 
-    log.debug("APPROVE STEP 2: Payment lookup result", {
-      found: !!payment,
-      paymentId,
-      status: payment?.status,
-      userId: payment?.userId,
-      planId: payment?.plan,
-    });
+      payment = await prisma.manualPayment.findUnique({
+        where: { id: paymentId },
+        include: { user: true },
+      });
+
+      log.debug("APPROVE DB-1: findUnique result", {
+        found: !!payment,
+        paymentId,
+        status: payment?.status,
+        userId: payment?.userId,
+        planId: payment?.plan,
+        recordExists: !!payment,
+      });
+    } catch (dbError) {
+      const errDetails = extractErrorDetails(dbError);
+      log.error("APPROVE DB-1: findUnique FAILED", {
+        operation: "prisma.manualPayment.findUnique",
+        paymentId,
+        ...errDetails,
+      });
+      throw dbError; // re-throw so outer catch shows error message
+    }
 
     if (!payment) {
       log.warn("APPROVE: Payment record not found", { paymentId });
@@ -522,38 +547,74 @@ export async function manualPaymentApproveHandler(
         currentStatus: payment.status,
       });
       await ctx.reply(
-        `❌ *Payment already ${payment.status.toLowerCase()}.*`,
+        `⚠️ *This payment has already been processed.*\nCurrent status: ${payment.status.toLowerCase()}`,
         { parse_mode: "Markdown" }
       );
       return;
     }
 
-    // ─── Step 3: Update payment status to APPROVED ──────
-    log.debug("APPROVE STEP 3: Updating payment status to APPROVED", {
-      paymentId,
-      adminId,
-    });
-    await prisma.manualPayment.update({
-      where: { id: paymentId },
-      data: {
-        status: "APPROVED",
-        adminId: BigInt(adminId),
-      },
-    });
-    log.debug("APPROVE STEP 3: Status updated successfully");
+    // ════════════════════════════════════════════════════════
+    // STEP 3: Update payment status to APPROVED
+    // ════════════════════════════════════════════════════════
+    try {
+      log.debug("APPROVE DB-2: prisma.manualPayment.update()", {
+        paymentId,
+        newStatus: "APPROVED",
+        adminId,
+        adminIdType: typeof adminId,
+        adminIdBigInt: String(BigInt(adminId)),
+      });
 
-    // ─── Step 4: Activate premium subscription ──────────
-    log.debug("APPROVE STEP 4: Calling subscriptionService.upgrade()", {
-      userId: payment.userId,
-      planId: payment.plan,
-    });
-    await subscriptionService.upgrade(
-      payment.userId,
-      payment.plan as PlanId,
-      paymentId,
-      "manual"
-    );
-    log.debug("APPROVE STEP 4: Subscription upgraded successfully");
+      await prisma.manualPayment.update({
+        where: { id: paymentId },
+        data: {
+          status: "APPROVED",
+          adminId: BigInt(adminId),
+        },
+      });
+
+      log.debug("APPROVE DB-2: update succeeded");
+    } catch (dbError) {
+      const errDetails = extractErrorDetails(dbError);
+      log.error("APPROVE DB-2: update FAILED", {
+        operation: "prisma.manualPayment.update",
+        paymentId,
+        setStatus: "APPROVED",
+        setAdminId: String(BigInt(adminId)),
+        ...errDetails,
+      });
+      throw dbError; // re-throw so outer catch shows error message
+    }
+
+    // ════════════════════════════════════════════════════════
+    // STEP 4: Activate premium subscription
+    // ════════════════════════════════════════════════════════
+    try {
+      log.debug("APPROVE DB-3: subscriptionService.upgrade()", {
+        userId: payment.userId,
+        planId: payment.plan,
+        paymentId,
+      });
+
+      await subscriptionService.upgrade(
+        payment.userId,
+        payment.plan as PlanId,
+        paymentId,
+        "manual"
+      );
+
+      log.debug("APPROVE DB-3: subscription upgrade succeeded");
+    } catch (svcError) {
+      const errDetails = extractErrorDetails(svcError);
+      log.error("APPROVE DB-3: subscriptionService.upgrade() FAILED", {
+        operation: "subscriptionService.upgrade",
+        userId: payment.userId,
+        planId: payment.plan,
+        paymentId,
+        ...errDetails,
+      });
+      throw svcError; // re-throw so outer catch shows error message
+    }
 
     log.info("✅ Manual payment approved successfully", {
       paymentId,
@@ -563,12 +624,13 @@ export async function manualPaymentApproveHandler(
       adminUsername,
     });
 
-    // ─── Step 5: Update admin notification message ──────
-    // Replace the action buttons (✅ Approve / ❌ Reject) with
-    // a status-only label so other admins know it's been handled.
+    // ════════════════════════════════════════════════════════
+    // STEP 5: Update admin notification message
+    // Replace Approve/Reject buttons with status-only label.
+    // Cosmetic — failure is non-critical, logged but not re-thrown.
+    // ════════════════════════════════════════════════════════
     log.debug("APPROVE STEP 5: Updating admin notification message");
     try {
-      // Build updated caption showing approval status
       const planName = SUBSCRIPTION_PLANS[payment.plan as PlanId]?.name ?? payment.plan;
       const updatedCaption = [
         `💰 *New Premium Payment*`,
@@ -593,7 +655,6 @@ export async function manualPaymentApproveHandler(
         `📅 ${new Date().toLocaleString()}`,
       ].join("\n");
 
-      // Edit the admin notification message caption and remove action buttons
       await ctx.editMessageCaption({
         caption: updatedCaption,
         parse_mode: "Markdown",
@@ -601,21 +662,25 @@ export async function manualPaymentApproveHandler(
       });
       log.debug("APPROVE STEP 5: Admin notification updated successfully");
     } catch (err) {
-      // Non-critical: the payment was processed, editing the message is cosmetic
-      log.warn("Could not update admin notification message caption", {
+      log.warn("APPROVE STEP 5: Could not update admin notification", {
         paymentId,
         errorDetails: extractErrorDetails(err),
       });
     }
 
-    // ─── Step 6: Notify admin (confirm action) ──────────
+    // ════════════════════════════════════════════════════════
+    // STEP 6: Confirm action to the admin
+    // ════════════════════════════════════════════════════════
     await ctx.reply(
       `✅ *Payment approved!*\n\n` +
       `User #${payment.userId} has been granted ${payment.plan} for 30 days.`,
       { parse_mode: "Markdown" }
     );
 
-    // ─── Step 7: Send confirmation to the user ──────────
+    // ════════════════════════════════════════════════════════
+    // STEP 7: Notify the user
+    // Non-critical — failure is logged but does not re-throw.
+    // ════════════════════════════════════════════════════════
     log.debug("APPROVE STEP 7: Sending approval notification to user", {
       telegramUserId: Number(payment.telegramUserId),
     });
@@ -640,7 +705,7 @@ export async function manualPaymentApproveHandler(
       );
       log.debug("APPROVE STEP 7: User notified successfully");
     } catch (err) {
-      log.error("APPROVE STEP 7: Failed to send approval notification to user", {
+      log.error("APPROVE STEP 7: Failed to send notification to user", {
         telegramUserId: Number(payment.telegramUserId),
         errorDetails: extractErrorDetails(err),
       });
@@ -661,6 +726,11 @@ export async function manualPaymentApproveHandler(
  * - Updates payment status to REJECTED
  * - Sends rejection message to user
  * - Updates the admin notification message to show rejection status
+ *
+ * Diagnostic approach: each individual Prisma operation is wrapped in its
+ * own try/catch with full error details (code, meta, stack) logged via
+ * extractErrorDetails(). The error is re-thrown so the outer catch block
+ * still shows the standard user-facing error message.
  */
 export async function manualPaymentRejectHandler(
   ctx: BotContext,
@@ -677,23 +747,42 @@ export async function manualPaymentRejectHandler(
     paymentId,
     adminId,
     adminUsername,
+    callbackData: ctx.callbackQuery?.data,
   });
 
   try {
-    // ─── Step 1: Find the payment record ────────────────
-    log.debug("REJECT STEP 1: Looking up payment record", { paymentId });
-    const payment = await prisma.manualPayment.findUnique({
-      where: { id: paymentId },
-      include: { user: true },
-    });
+    // ════════════════════════════════════════════════════════
+    // STEP 1 & 2: Find the payment record by ID
+    // ════════════════════════════════════════════════════════
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let payment: any; // Type inferred from the findUnique call below
+    try {
+      log.debug("REJECT DB-1: prisma.manualPayment.findUnique()", {
+        paymentId,
+        include: "user",
+      });
 
-    log.debug("REJECT STEP 2: Payment lookup result", {
-      found: !!payment,
-      paymentId,
-      status: payment?.status,
-      userId: payment?.userId,
-      planId: payment?.plan,
-    });
+      payment = await prisma.manualPayment.findUnique({
+        where: { id: paymentId },
+        include: { user: true },
+      });
+
+      log.debug("REJECT DB-1: findUnique result", {
+        found: !!payment,
+        paymentId,
+        status: payment?.status,
+        userId: payment?.userId,
+        planId: payment?.plan,
+      });
+    } catch (dbError) {
+      const errDetails = extractErrorDetails(dbError);
+      log.error("REJECT DB-1: findUnique FAILED", {
+        operation: "prisma.manualPayment.findUnique",
+        paymentId,
+        ...errDetails,
+      });
+      throw dbError; // re-throw so outer catch shows error message
+    }
 
     if (!payment) {
       log.warn("REJECT: Payment record not found", { paymentId });
@@ -707,25 +796,43 @@ export async function manualPaymentRejectHandler(
         currentStatus: payment.status,
       });
       await ctx.reply(
-        `❌ *Payment already ${payment.status.toLowerCase()}.*`,
+        `⚠️ *This payment has already been processed.*\nCurrent status: ${payment.status.toLowerCase()}`,
         { parse_mode: "Markdown" }
       );
       return;
     }
 
-    // ─── Step 3: Update payment status to REJECTED ──────
-    log.debug("REJECT STEP 3: Updating payment status to REJECTED", {
-      paymentId,
-      adminId,
-    });
-    await prisma.manualPayment.update({
-      where: { id: paymentId },
-      data: {
-        status: "REJECTED",
-        adminId: BigInt(adminId),
-      },
-    });
-    log.debug("REJECT STEP 3: Status updated successfully");
+    // ════════════════════════════════════════════════════════
+    // STEP 3: Update payment status to REJECTED
+    // ════════════════════════════════════════════════════════
+    try {
+      log.debug("REJECT DB-2: prisma.manualPayment.update()", {
+        paymentId,
+        newStatus: "REJECTED",
+        adminId,
+        adminIdBigInt: String(BigInt(adminId)),
+      });
+
+      await prisma.manualPayment.update({
+        where: { id: paymentId },
+        data: {
+          status: "REJECTED",
+          adminId: BigInt(adminId),
+        },
+      });
+
+      log.debug("REJECT DB-2: update succeeded");
+    } catch (dbError) {
+      const errDetails = extractErrorDetails(dbError);
+      log.error("REJECT DB-2: update FAILED", {
+        operation: "prisma.manualPayment.update",
+        paymentId,
+        setStatus: "REJECTED",
+        setAdminId: String(BigInt(adminId)),
+        ...errDetails,
+      });
+      throw dbError; // re-throw so outer catch shows error message
+    }
 
     log.info("❌ Manual payment rejected", {
       paymentId,
@@ -735,9 +842,11 @@ export async function manualPaymentRejectHandler(
       adminUsername,
     });
 
-    // ─── Step 4: Update admin notification message ──────
-    // Replace action buttons with rejection status so other admins
-    // know the payment has already been handled.
+    // ════════════════════════════════════════════════════════
+    // STEP 4: Update admin notification message
+    // Replace Approve/Reject buttons with status-only label.
+    // Cosmetic — failure is non-critical, logged but not re-thrown.
+    // ════════════════════════════════════════════════════════
     log.debug("REJECT STEP 4: Updating admin notification message");
     try {
       const planName = SUBSCRIPTION_PLANS[payment.plan as PlanId]?.name ?? payment.plan;
@@ -771,20 +880,25 @@ export async function manualPaymentRejectHandler(
       });
       log.debug("REJECT STEP 4: Admin notification updated successfully");
     } catch (err) {
-      log.warn("Could not update admin notification message caption", {
+      log.warn("REJECT STEP 4: Could not update admin notification", {
         paymentId,
         errorDetails: extractErrorDetails(err),
       });
     }
 
-    // ─── Step 5: Notify admin (confirm action) ──────────
+    // ════════════════════════════════════════════════════════
+    // STEP 5: Confirm action to the admin
+    // ════════════════════════════════════════════════════════
     await ctx.reply(
       `❌ *Payment rejected.*\n\n` +
       `User #${payment.userId}'s payment for ${payment.plan} has been rejected.`,
       { parse_mode: "Markdown" }
     );
 
-    // ─── Step 6: Send rejection notification to the user ─
+    // ════════════════════════════════════════════════════════
+    // STEP 6: Notify the user
+    // Non-critical — failure is logged but does not re-throw.
+    // ════════════════════════════════════════════════════════
     log.debug("REJECT STEP 6: Sending rejection notification to user", {
       telegramUserId: Number(payment.telegramUserId),
     });
@@ -811,7 +925,7 @@ export async function manualPaymentRejectHandler(
       );
       log.debug("REJECT STEP 6: User notified successfully");
     } catch (err) {
-      log.error("REJECT STEP 6: Failed to send rejection notification to user", {
+      log.error("REJECT STEP 6: Failed to send notification to user", {
         telegramUserId: Number(payment.telegramUserId),
         errorDetails: extractErrorDetails(err),
       });

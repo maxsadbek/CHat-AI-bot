@@ -930,6 +930,9 @@ export function createBot(): Bot<BotContext> {
               step,
             });
             await next();
+            log.debug("MANUAL_PAYMENT_RECEIPT: after next() returned — photo handler completed", {
+              userId: ctx.from?.id,
+            });
             return;
           }
           await ctx.reply(
@@ -966,6 +969,16 @@ export function createBot(): Bot<BotContext> {
   // ─── Photo Messages ─────────────────────────────
   bot.on("message:photo", async (ctx) => {
     const step = ctx.session.step;
+    const hasCaption = !!ctx.message?.caption;
+
+    log.debug("message:photo handler fired", {
+      step,
+      userId: ctx.from?.id,
+      hasCaption,
+      messageId: ctx.message?.message_id,
+      stepIsPaymentReceipt: step === BotStep.MANUAL_PAYMENT_RECEIPT,
+      adminMode: ctx.session.tempData?.adminMode,
+    });
 
     // Handle manual payment receipt photos
     if (step === BotStep.MANUAL_PAYMENT_RECEIPT) {
@@ -983,6 +996,10 @@ export function createBot(): Bot<BotContext> {
     }
     // Non-admin photos in non-broadcast mode are silently ignored
     // to prevent accidental processing of user-uploaded photos
+    log.debug("message:photo — silently ignored", {
+      step,
+      userId: ctx.from?.id,
+    });
   });
 
   return bot;

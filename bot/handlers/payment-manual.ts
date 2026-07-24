@@ -293,12 +293,13 @@ export async function manualPaymentProcessPhotoHandler(
   const lastName = ctx.from?.last_name ?? "";
   const username = ctx.from?.username;
 
-  // Read amount from env with validation
+  // ─── Read amount from env — NEVER hardcode ────────────
   const rawAmount = env.MANUAL_PAYMENT_AMOUNT_UZS;
-  // Ensure amount is a valid positive integer (Prisma Int column rejects NaN/non-integers)
+  // Ensure amount is a valid positive integer (Prisma Int column rejects NaN/non-integers).
+  // If the env var is missing or invalid, use the Zod default (0) as a safe fallback.
   const paymentAmount = Number.isFinite(rawAmount) && rawAmount > 0
     ? Math.floor(rawAmount)
-    : 40000; // Safe fallback
+    : env.MANUAL_PAYMENT_AMOUNT_UZS; // Already validated by Zod; 0 means "not configured"
   const paymentCurrency = "UZS";
 
   log.debug("Amount resolved from env", {

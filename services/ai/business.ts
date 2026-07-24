@@ -1,16 +1,26 @@
-import { providerRegistry } from "@/services/ai/providers";
-import type { BusinessContent, BusinessContentType } from "@/types";
+/**
+ * Enterprise Business AI Service
+ */
 
-export class BusinessAIService {
+import { BaseAIService } from "./base";
+import type { BusinessContent, BusinessContentType } from "@/types";
+import type { PlanType } from "@/config/ai";
+
+export class BusinessAIService extends BaseAIService {
   private readonly types: BusinessContentType[] = [
     "startup_idea", "business_plan", "marketing_strategy",
     "brand_name", "slogan", "logo_prompt", "color_palette", "landing_page_copy",
   ];
 
+  constructor() {
+    super("business");
+  }
+
   async generate(
     description: string,
     type: BusinessContentType,
-    modelId?: string
+    modelId?: string,
+    userPlan?: string | PlanType
   ): Promise<BusinessContent> {
     const prompts: Record<BusinessContentType, string> = {
       startup_idea: "Generate innovative startup ideas based on this description",
@@ -33,15 +43,12 @@ ${prompts[type]}.`;
 Provide detailed, actionable content with examples and explanations.
 Format with clear sections and bullet points where appropriate.`;
 
-    const provider = providerRegistry.getProvider(modelId);
-
-    const response = await provider.chat({
-      messages: [{ role: "user", content: userPrompt }],
+    const response = await this.executeAI(
+      [{ role: "user", content: userPrompt }],
       systemPrompt,
-      temperature: 0.8,
-      maxTokens: 4096,
       modelId,
-    });
+      userPlan
+    );
 
     return {
       type,

@@ -1,7 +1,12 @@
-import { providerRegistry } from "@/services/ai/providers";
-import type { VideoPrompt, VideoPlatform } from "@/types";
+/**
+ * Enterprise Video AI Prompt Service
+ */
 
-export class VideoAIService {
+import { BaseAIService } from "./base";
+import type { VideoPrompt, VideoPlatform } from "@/types";
+import type { PlanType } from "@/config/ai";
+
+export class VideoAIService extends BaseAIService {
   private readonly platforms: VideoPlatform[] = [
     "Hailuo AI",
     "Kling AI",
@@ -10,10 +15,15 @@ export class VideoAIService {
     "PixVerse",
   ];
 
+  constructor() {
+    super("video");
+  }
+
   async generatePrompt(
     description: string,
     platform?: VideoPlatform,
-    modelId?: string
+    modelId?: string,
+    userPlan?: string | PlanType
   ): Promise<VideoPrompt[]> {
     const targetPlatforms = platform ? [platform] : this.platforms;
 
@@ -40,15 +50,12 @@ Platforms: ${targetPlatforms.join(", ")}
 
 Return the response as structured text with clear sections for each platform.`;
 
-    const provider = providerRegistry.getProvider(modelId);
-
-    const response = await provider.chat({
-      messages: [{ role: "user", content: userPrompt }],
+    const response = await this.executeAI(
+      [{ role: "user", content: userPrompt }],
       systemPrompt,
-      temperature: 0.8,
-      maxTokens: 4096,
       modelId,
-    });
+      userPlan
+    );
 
     return targetPlatforms.map((p) => ({
       platform: p,
@@ -58,11 +65,11 @@ Return the response as structured text with clear sections for each platform.`;
       lens: "",
       environment: "",
       negativePrompt: "",
+      fullPrompt: response.content,
       voice: "",
       music: "",
       duration: "",
       style: "",
-      fullPrompt: response.content,
     }));
   }
 

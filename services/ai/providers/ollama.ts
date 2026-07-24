@@ -1,30 +1,30 @@
 /**
- * OpenAI Provider Implementation
+ * Ollama Local AI Provider Implementation
+ * Interfacing with local LLMs via OpenAI-compatible endpoint.
  */
 
 import OpenAI from "openai";
 import { aiConfig } from "@/config/ai";
 import { logger } from "@/bot/core/logger";
-import { OPENAI_MODELS } from "./models";
+import { OLLAMA_MODELS } from "./models";
 import { normalizeAIError } from "../utils/errors";
 import type { AIProvider, ChatRequest, ChatResponse, ProviderModel } from "./interface";
 
-const log = logger.child("provider-openai");
+const log = logger.child("provider-ollama");
 
-export class OpenAIProviderImpl implements AIProvider {
-  readonly providerName = "OpenAI";
-  readonly models: ProviderModel[] = OPENAI_MODELS;
+export class OllamaProviderImpl implements AIProvider {
+  readonly providerName = "Ollama";
+  readonly models: ProviderModel[] = OLLAMA_MODELS;
   private client: OpenAI;
 
   constructor() {
-    const setting = aiConfig.getProviderSetting("openai");
-    const apiKey = process.env.OPENAI_API_KEY || "sk-dummy";
+    const setting = aiConfig.getProviderSetting("ollama");
 
     this.client = new OpenAI({
-      apiKey,
-      baseURL: setting?.baseUrl || "https://api.openai.com/v1",
-      maxRetries: 0, // Handled by Central Execution Pipeline
-      timeout: setting?.timeoutMs || 60000,
+      apiKey: "ollama-local",
+      baseURL: setting?.baseUrl || "http://localhost:11434/v1",
+      maxRetries: 0,
+      timeout: setting?.timeoutMs || 120000,
     });
   }
 
@@ -43,11 +43,9 @@ export class OpenAIProviderImpl implements AIProvider {
 
     try {
       const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
-
       if (request.systemPrompt) {
         messages.push({ role: "system", content: request.systemPrompt });
       }
-
       for (const msg of request.messages) {
         if (msg.role === "system") continue;
         messages.push({
@@ -56,8 +54,10 @@ export class OpenAIProviderImpl implements AIProvider {
         });
       }
 
+      const ollamaModelName = resolvedModel.id.replace(/^ollama-/, "");
+
       const completion = await this.client.chat.completions.create({
-        model: resolvedModel.id,
+        model: ollamaModelName,
         messages,
         max_tokens: request.maxTokens,
         temperature: request.temperature ?? 0.7,
@@ -65,7 +65,7 @@ export class OpenAIProviderImpl implements AIProvider {
 
       const choice = completion.choices[0];
       if (!choice?.message?.content) {
-        throw new Error("No response content from OpenAI API");
+        throw new Error("Empty response returned from local Ollama instance");
       }
 
       return {
@@ -78,10 +78,10 @@ export class OpenAIProviderImpl implements AIProvider {
             }
           : undefined,
         model: resolvedModel.id,
-        provider: "openai",
+        provider: "ollama",
       };
     } catch (err) {
-      log.error("OpenAI provider error", { error: String(err) });
+      log.error("Ollama provider error", { error: String(err) });
       throw normalizeAIError(err, this.providerName);
     }
   }
@@ -103,8 +103,10 @@ export class OpenAIProviderImpl implements AIProvider {
       });
     }
 
+    const ollamaModelName = resolvedModel.id.replace(/^ollama-/, "");
+
     const stream = await this.client.chat.completions.create({
-      model: resolvedModel.id,
+      model: ollamaModelName,
       messages,
       max_tokens: request.maxTokens,
       temperature: request.temperature ?? 0.7,

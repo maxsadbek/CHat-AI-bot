@@ -1,16 +1,26 @@
-import { providerRegistry } from "@/services/ai/providers";
-import type { SocialMediaContent, SocialPlatform } from "@/types";
+/**
+ * Enterprise Social Media AI Service
+ */
 
-export class SocialAIService {
+import { BaseAIService } from "./base";
+import type { SocialMediaContent, SocialPlatform } from "@/types";
+import type { PlanType } from "@/config/ai";
+
+export class SocialAIService extends BaseAIService {
   private readonly platforms: SocialPlatform[] = [
     "Instagram", "TikTok", "Telegram", "Facebook", "LinkedIn", "YouTube",
   ];
+
+  constructor() {
+    super("social");
+  }
 
   async generateContent(
     topic: string,
     platform?: SocialPlatform,
     tone: string = "professional",
-    modelId?: string
+    modelId?: string,
+    userPlan?: string | PlanType
   ): Promise<SocialMediaContent[]> {
     const targetPlatforms = platform ? [platform] : this.platforms;
 
@@ -33,15 +43,12 @@ Platforms: ${targetPlatforms.join(", ")}
 
 Return as structured text with clear sections for each platform.`;
 
-    const provider = providerRegistry.getProvider(modelId);
-
-    const response = await provider.chat({
-      messages: [{ role: "user", content: userPrompt }],
+    const response = await this.executeAI(
+      [{ role: "user", content: userPrompt }],
       systemPrompt,
-      temperature: 0.8,
-      maxTokens: 4096,
       modelId,
-    });
+      userPlan
+    );
 
     return targetPlatforms.map((p) => ({
       platform: p,

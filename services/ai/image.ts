@@ -1,13 +1,12 @@
 /**
- * Image AI Service
- * Generates detailed prompts for various image AI platforms.
- * Uses the provider registry — no direct SDK calls.
+ * Enterprise Image AI Prompt Service
  */
 
-import { providerRegistry } from "@/services/ai/providers";
+import { BaseAIService } from "./base";
 import type { ImagePrompt, ImagePlatform } from "@/types";
+import type { PlanType } from "@/config/ai";
 
-export class ImageAIService {
+export class ImageAIService extends BaseAIService {
   private readonly platforms: ImagePlatform[] = [
     "GPT Image",
     "Flux",
@@ -16,13 +15,15 @@ export class ImageAIService {
     "Ideogram",
   ];
 
-  /**
-   * Generate image prompts based on user description
-   */
+  constructor() {
+    super("image");
+  }
+
   async generatePrompt(
     description: string,
     platform?: ImagePlatform,
-    modelId?: string
+    modelId?: string,
+    userPlan?: string | PlanType
   ): Promise<ImagePrompt[]> {
     const targetPlatforms = platform ? [platform] : this.platforms;
 
@@ -45,15 +46,12 @@ Platforms: ${targetPlatforms.join(", ")}
 
 Return the response as structured text with clear sections for each platform.`;
 
-    const provider = providerRegistry.getProvider(modelId);
-
-    const response = await provider.chat({
-      messages: [{ role: "user", content: userPrompt }],
+    const response = await this.executeAI(
+      [{ role: "user", content: userPrompt }],
       systemPrompt,
-      temperature: 0.8,
-      maxTokens: 4096,
       modelId,
-    });
+      userPlan
+    );
 
     return targetPlatforms.map((p) => ({
       platform: p,
@@ -67,9 +65,6 @@ Return the response as structured text with clear sections for each platform.`;
     }));
   }
 
-  /**
-   * Get available platforms
-   */
   getPlatforms(): ImagePlatform[] {
     return [...this.platforms];
   }

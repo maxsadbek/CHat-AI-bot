@@ -1,30 +1,31 @@
 /**
- * OpenAI Provider Implementation
+ * Groq AI Provider Implementation
+ * Uses OpenAI-compatible API protocol.
  */
 
 import OpenAI from "openai";
 import { aiConfig } from "@/config/ai";
 import { logger } from "@/bot/core/logger";
-import { OPENAI_MODELS } from "./models";
+import { GROQ_MODELS } from "./models";
 import { normalizeAIError } from "../utils/errors";
 import type { AIProvider, ChatRequest, ChatResponse, ProviderModel } from "./interface";
 
-const log = logger.child("provider-openai");
+const log = logger.child("provider-groq");
 
-export class OpenAIProviderImpl implements AIProvider {
-  readonly providerName = "OpenAI";
-  readonly models: ProviderModel[] = OPENAI_MODELS;
+export class GroqProviderImpl implements AIProvider {
+  readonly providerName = "Groq";
+  readonly models: ProviderModel[] = GROQ_MODELS;
   private client: OpenAI;
 
   constructor() {
-    const setting = aiConfig.getProviderSetting("openai");
-    const apiKey = process.env.OPENAI_API_KEY || "sk-dummy";
+    const setting = aiConfig.getProviderSetting("groq");
+    const apiKey = process.env.GROQ_API_KEY || "groq-dummy-key";
 
     this.client = new OpenAI({
       apiKey,
-      baseURL: setting?.baseUrl || "https://api.openai.com/v1",
-      maxRetries: 0, // Handled by Central Execution Pipeline
-      timeout: setting?.timeoutMs || 60000,
+      baseURL: setting?.baseUrl || "https://api.groq.com/openai/v1",
+      maxRetries: 0, // Retries handled by central execution pipeline
+      timeout: setting?.timeoutMs || 30000,
     });
   }
 
@@ -43,11 +44,9 @@ export class OpenAIProviderImpl implements AIProvider {
 
     try {
       const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
-
       if (request.systemPrompt) {
         messages.push({ role: "system", content: request.systemPrompt });
       }
-
       for (const msg of request.messages) {
         if (msg.role === "system") continue;
         messages.push({
@@ -56,8 +55,11 @@ export class OpenAIProviderImpl implements AIProvider {
         });
       }
 
+      // Map internal ID to Groq model ID if needed
+      const actualModelId = resolvedModel.id.replace(/^groq-/, "");
+
       const completion = await this.client.chat.completions.create({
-        model: resolvedModel.id,
+        model: actualModelId,
         messages,
         max_tokens: request.maxTokens,
         temperature: request.temperature ?? 0.7,
@@ -65,7 +67,7 @@ export class OpenAIProviderImpl implements AIProvider {
 
       const choice = completion.choices[0];
       if (!choice?.message?.content) {
-        throw new Error("No response content from OpenAI API");
+        throw new Error("Empty response returned from Groq API");
       }
 
       return {
@@ -78,10 +80,10 @@ export class OpenAIProviderImpl implements AIProvider {
             }
           : undefined,
         model: resolvedModel.id,
-        provider: "openai",
+        provider: "groq",
       };
     } catch (err) {
-      log.error("OpenAI provider error", { error: String(err) });
+      log.error("Groq provider error", { error: String(err) });
       throw normalizeAIError(err, this.providerName);
     }
   }
@@ -103,8 +105,10 @@ export class OpenAIProviderImpl implements AIProvider {
       });
     }
 
+    const actualModelId = resolvedModel.id.replace(/^groq-/, "");
+
     const stream = await this.client.chat.completions.create({
-      model: resolvedModel.id,
+      model: actualModelId,
       messages,
       max_tokens: request.maxTokens,
       temperature: request.temperature ?? 0.7,

@@ -1,13 +1,10 @@
 /**
- * AI Model Definitions
- * Central registry of all available AI models across providers.
- * Add new models here — no other code changes needed.
+ * Unified AI Model Catalogue across 7 Providers
  */
 
 import type { ProviderModel } from "./interface";
 
 // ─── OpenAI Models ────────────────────────────────────
-
 export const OPENAI_MODELS: ProviderModel[] = [
   {
     id: "gpt-4o",
@@ -64,7 +61,6 @@ export const OPENAI_MODELS: ProviderModel[] = [
 ];
 
 // ─── Google Gemini Models ─────────────────────────────
-
 export const GEMINI_MODELS: ProviderModel[] = [
   {
     id: "gemini-2.0-flash",
@@ -105,23 +101,9 @@ export const GEMINI_MODELS: ProviderModel[] = [
       maxOutputTokens: 8192,
     },
   },
-  {
-    id: "gemini-1.5-pro",
-    name: "Gemini 1.5 Pro",
-    provider: "gemini",
-    default: false,
-    capabilities: {
-      streaming: true,
-      vision: true,
-      functionCalling: true,
-      maxContextTokens: 2097152,
-      maxOutputTokens: 8192,
-    },
-  },
 ];
 
 // ─── Anthropic Claude Models ──────────────────────────
-
 export const CLAUDE_MODELS: ProviderModel[] = [
   {
     id: "claude-sonnet-4-20250514",
@@ -151,9 +133,37 @@ export const CLAUDE_MODELS: ProviderModel[] = [
   },
 ];
 
-// ─── DeepSeek Models ──────────────────────────────────
-// DeepSeek uses an OpenAI-compatible API endpoint.
+// ─── Groq Models ──────────────────────────────────────
+export const GROQ_MODELS: ProviderModel[] = [
+  {
+    id: "groq-llama-3.3-70b",
+    name: "Llama 3.3 70B (Groq)",
+    provider: "groq",
+    default: true,
+    capabilities: {
+      streaming: true,
+      vision: false,
+      functionCalling: true,
+      maxContextTokens: 128000,
+      maxOutputTokens: 8192,
+    },
+  },
+  {
+    id: "groq-mixtral-8x7b",
+    name: "Mixtral 8x7B (Groq)",
+    provider: "groq",
+    default: false,
+    capabilities: {
+      streaming: true,
+      vision: false,
+      functionCalling: true,
+      maxContextTokens: 32768,
+      maxOutputTokens: 4096,
+    },
+  },
+];
 
+// ─── DeepSeek Models ──────────────────────────────────
 export const DEEPSEEK_MODELS: ProviderModel[] = [
   {
     id: "deepseek-chat",
@@ -168,34 +178,99 @@ export const DEEPSEEK_MODELS: ProviderModel[] = [
       maxOutputTokens: 4096,
     },
   },
+  {
+    id: "deepseek-coder",
+    name: "DeepSeek Coder",
+    provider: "deepseek",
+    default: false,
+    capabilities: {
+      streaming: true,
+      vision: false,
+      functionCalling: true,
+      maxContextTokens: 128000,
+      maxOutputTokens: 4096,
+    },
+  },
 ];
 
-// ─── All Models Flat List ─────────────────────────────
+// ─── OpenRouter Models ────────────────────────────────
+export const OPENROUTER_MODELS: ProviderModel[] = [
+  {
+    id: "openrouter-auto",
+    name: "OpenRouter Auto",
+    provider: "openrouter",
+    default: true,
+    capabilities: {
+      streaming: true,
+      vision: true,
+      functionCalling: true,
+      maxContextTokens: 128000,
+      maxOutputTokens: 4096,
+    },
+  },
+  {
+    id: "openrouter-gpt-4o",
+    name: "OpenRouter GPT-4o",
+    provider: "openrouter",
+    default: false,
+    capabilities: {
+      streaming: true,
+      vision: true,
+      functionCalling: true,
+      maxContextTokens: 128000,
+      maxOutputTokens: 4096,
+    },
+  },
+];
+
+// ─── Ollama Models ────────────────────────────────────
+export const OLLAMA_MODELS: ProviderModel[] = [
+  {
+    id: "ollama-llama3",
+    name: "Llama 3 (Ollama Local)",
+    provider: "ollama",
+    default: true,
+    capabilities: {
+      streaming: true,
+      vision: false,
+      functionCalling: false,
+      maxContextTokens: 8192,
+      maxOutputTokens: 2048,
+    },
+  },
+  {
+    id: "ollama-codellama",
+    name: "CodeLlama (Ollama Local)",
+    provider: "ollama",
+    default: false,
+    capabilities: {
+      streaming: true,
+      vision: false,
+      functionCalling: false,
+      maxContextTokens: 16384,
+      maxOutputTokens: 4096,
+    },
+  },
+];
 
 export const ALL_MODELS: ProviderModel[] = [
   ...OPENAI_MODELS,
   ...GEMINI_MODELS,
   ...CLAUDE_MODELS,
+  ...GROQ_MODELS,
   ...DEEPSEEK_MODELS,
+  ...OPENROUTER_MODELS,
+  ...OLLAMA_MODELS,
 ];
 
-/**
- * Find a model by its ID across all providers
- */
 export function findModel(modelId: string): ProviderModel | undefined {
   return ALL_MODELS.find((m) => m.id === modelId);
 }
 
-/**
- * Get models for a specific provider
- */
 export function getModelsByProvider(provider: string): ProviderModel[] {
   return ALL_MODELS.filter((m) => m.provider === provider);
 }
 
-/**
- * Get all available model IDs for user selection in Settings
- */
 export function getSelectableModels(): Array<{
   id: string;
   label: string;

@@ -1,29 +1,34 @@
 /**
- * OpenAI Provider Implementation
+ * OpenRouter AI Provider Implementation
+ * Compatible with OpenAI API protocol.
  */
 
 import OpenAI from "openai";
 import { aiConfig } from "@/config/ai";
 import { logger } from "@/bot/core/logger";
-import { OPENAI_MODELS } from "./models";
+import { OPENROUTER_MODELS } from "./models";
 import { normalizeAIError } from "../utils/errors";
 import type { AIProvider, ChatRequest, ChatResponse, ProviderModel } from "./interface";
 
-const log = logger.child("provider-openai");
+const log = logger.child("provider-openrouter");
 
-export class OpenAIProviderImpl implements AIProvider {
-  readonly providerName = "OpenAI";
-  readonly models: ProviderModel[] = OPENAI_MODELS;
+export class OpenRouterProviderImpl implements AIProvider {
+  readonly providerName = "OpenRouter";
+  readonly models: ProviderModel[] = OPENROUTER_MODELS;
   private client: OpenAI;
 
   constructor() {
-    const setting = aiConfig.getProviderSetting("openai");
-    const apiKey = process.env.OPENAI_API_KEY || "sk-dummy";
+    const setting = aiConfig.getProviderSetting("openrouter");
+    const apiKey = process.env.OPENROUTER_API_KEY || "openrouter-dummy-key";
 
     this.client = new OpenAI({
       apiKey,
-      baseURL: setting?.baseUrl || "https://api.openai.com/v1",
-      maxRetries: 0, // Handled by Central Execution Pipeline
+      baseURL: setting?.baseUrl || "https://openrouter.ai/api/v1",
+      defaultHeaders: {
+        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+        "X-Title": process.env.NEXT_PUBLIC_APP_NAME || "AI Creator Studio",
+      },
+      maxRetries: 0,
       timeout: setting?.timeoutMs || 60000,
     });
   }
@@ -43,11 +48,9 @@ export class OpenAIProviderImpl implements AIProvider {
 
     try {
       const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
-
       if (request.systemPrompt) {
         messages.push({ role: "system", content: request.systemPrompt });
       }
-
       for (const msg of request.messages) {
         if (msg.role === "system") continue;
         messages.push({
@@ -56,8 +59,13 @@ export class OpenAIProviderImpl implements AIProvider {
         });
       }
 
+      const openrouterModel =
+        resolvedModel.id === "openrouter-auto"
+          ? "openrouter/auto"
+          : resolvedModel.id.replace(/^openrouter-/, "");
+
       const completion = await this.client.chat.completions.create({
-        model: resolvedModel.id,
+        model: openrouterModel,
         messages,
         max_tokens: request.maxTokens,
         temperature: request.temperature ?? 0.7,
@@ -65,7 +73,7 @@ export class OpenAIProviderImpl implements AIProvider {
 
       const choice = completion.choices[0];
       if (!choice?.message?.content) {
-        throw new Error("No response content from OpenAI API");
+        throw new Error("Empty response returned from OpenRouter API");
       }
 
       return {
@@ -78,10 +86,10 @@ export class OpenAIProviderImpl implements AIProvider {
             }
           : undefined,
         model: resolvedModel.id,
-        provider: "openai",
+        provider: "openrouter",
       };
     } catch (err) {
-      log.error("OpenAI provider error", { error: String(err) });
+      log.error("OpenRouter provider error", { error: String(err) });
       throw normalizeAIError(err, this.providerName);
     }
   }
@@ -103,8 +111,13 @@ export class OpenAIProviderImpl implements AIProvider {
       });
     }
 
+    const openrouterModel =
+      resolvedModel.id === "openrouter-auto"
+        ? "openrouter/auto"
+        : resolvedModel.id.replace(/^openrouter-/, "");
+
     const stream = await this.client.chat.completions.create({
-      model: resolvedModel.id,
+      model: openrouterModel,
       messages,
       max_tokens: request.maxTokens,
       temperature: request.temperature ?? 0.7,

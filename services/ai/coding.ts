@@ -1,16 +1,27 @@
-import { providerRegistry } from "@/services/ai/providers";
-import type { CodeGeneration, CodeLanguage } from "@/types";
+/**
+ * Enterprise Coding AI Service
+ * Generates, debugs, and explains code using central AI execution pipeline.
+ */
 
-export class CodingAIService {
+import { BaseAIService } from "./base";
+import type { CodeGeneration, CodeLanguage } from "@/types";
+import type { PlanType } from "@/config/ai";
+
+export class CodingAIService extends BaseAIService {
   private readonly languages: CodeLanguage[] = [
     "HTML", "CSS", "React", "Next.js", "Tailwind",
     "Node.js", "Express", "Prisma", "SQL", "API",
   ];
 
+  constructor() {
+    super("coding");
+  }
+
   async generate(
     description: string,
     language: CodeLanguage,
-    modelId?: string
+    modelId?: string,
+    userPlan?: string | PlanType
   ): Promise<CodeGeneration> {
     const systemPrompt = `You are an expert software engineer.
 You write clean, production-ready code.
@@ -30,15 +41,12 @@ Make sure the code is:
 - Following best practices
 - Error-handled`;
 
-    const provider = providerRegistry.getProvider(modelId);
-
-    const response = await provider.chat({
-      messages: [{ role: "user", content: userPrompt }],
+    const response = await this.executeAI(
+      [{ role: "user", content: userPrompt }],
       systemPrompt,
-      temperature: 0.3,
-      maxTokens: 4096,
       modelId,
-    });
+      userPlan
+    );
 
     return {
       language,
@@ -47,19 +55,21 @@ Make sure the code is:
     };
   }
 
-  async debug(code: string, language: string, modelId?: string): Promise<CodeGeneration> {
-    const provider = providerRegistry.getProvider(modelId);
+  async debug(
+    code: string,
+    language: string,
+    modelId?: string,
+    userPlan?: string | PlanType
+  ): Promise<CodeGeneration> {
+    const systemPrompt = "You are an expert debugger. Find and fix issues in code.";
+    const userPrompt = `Debug this ${language} code and explain the issues:\n\n${code}\n\nProvide:\n1. The fixed code\n2. List of issues found\n3. Explanation of fixes\n4. Prevention tips`;
 
-    const response = await provider.chat({
-      messages: [{
-        role: "user",
-        content: `Debug this ${language} code and explain the issues:\n\n${code}\n\nProvide:\n1. The fixed code\n2. List of issues found\n3. Explanation of fixes\n4. Prevention tips`,
-      }],
-      systemPrompt: "You are an expert debugger. Find and fix issues in code.",
-      temperature: 0.3,
-      maxTokens: 4096,
+    const response = await this.executeAI(
+      [{ role: "user", content: userPrompt }],
+      systemPrompt,
       modelId,
-    });
+      userPlan
+    );
 
     return {
       language: language as CodeLanguage,
@@ -68,19 +78,21 @@ Make sure the code is:
     };
   }
 
-  async explain(code: string, language: string, modelId?: string): Promise<string> {
-    const provider = providerRegistry.getProvider(modelId);
+  async explain(
+    code: string,
+    language: string,
+    modelId?: string,
+    userPlan?: string | PlanType
+  ): Promise<string> {
+    const systemPrompt = "You are an expert programming teacher. Explain code clearly and thoroughly.";
+    const userPrompt = `Explain this ${language} code in detail:\n\n${code}\n\nCover:\n- What the code does\n- How it works (line by line)\n- Key concepts used\n- Potential improvements`;
 
-    const response = await provider.chat({
-      messages: [{
-        role: "user",
-        content: `Explain this ${language} code in detail:\n\n${code}\n\nCover:\n- What the code does\n- How it works (line by line)\n- Key concepts used\n- Potential improvements`,
-      }],
-      systemPrompt: "You are an expert programming teacher. Explain code clearly and thoroughly.",
-      temperature: 0.5,
-      maxTokens: 4096,
+    const response = await this.executeAI(
+      [{ role: "user", content: userPrompt }],
+      systemPrompt,
       modelId,
-    });
+      userPlan
+    );
 
     return response.content;
   }

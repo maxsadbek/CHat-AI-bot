@@ -3,7 +3,7 @@ import { BotStep } from "@/types";
 import { clearModeData } from "@/bot/session";
 import { t } from "@/bot/localization";
 import { translateKeyboard } from "@/bot/keyboards";
-import { providerRegistry } from "@/services/ai/providers";
+import { translateAIService } from "@/services/ai/translate";
 import { logger } from "@/bot/core/logger";
 import {
   createConversation,
@@ -81,15 +81,12 @@ export async function translateProcessHandler(ctx: BotContext): Promise<void> {
   await ctx.replyWithChatAction("typing");
 
   try {
-    const provider = providerRegistry.getProvider(ctx.session.selectedModel);
-    const translationResponse = await provider.chat({
-      messages: [{ role: "user", content: `Translate this to ${targetLanguage}: ${sourceText}` }],
-      systemPrompt: "You are a professional translator. Translate the text accurately while preserving tone and meaning. Only respond with the translated text.",
-      maxTokens: 2048,
-      temperature: 0.3,
-    });
+    const translated = await translateAIService.translateText(
+      sourceText,
+      targetLanguage,
+      ctx.session.selectedModel
+    );
 
-    const translated = translationResponse.content;
     if (!translated) throw new Error("No translation");
 
     // Store in session
@@ -151,15 +148,12 @@ export async function translateLanguageHandler(ctx: BotContext): Promise<void> {
   await ctx.replyWithChatAction("typing");
 
   try {
-    const provider = providerRegistry.getProvider(ctx.session.selectedModel);
-    const translationResponse = await provider.chat({
-      messages: [{ role: "user", content: `Translate this to ${text}: ${pendingText}` }],
-      systemPrompt: "You are a professional translator. Translate accurately while preserving tone and meaning.",
-      maxTokens: 2048,
-      temperature: 0.3,
-    });
+    const translated = await translateAIService.translateText(
+      pendingText,
+      text,
+      ctx.session.selectedModel
+    );
 
-    const translated = translationResponse.content;
     if (!translated) throw new Error("No translation");
 
     // Clear pending translation

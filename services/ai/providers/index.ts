@@ -1,9 +1,14 @@
 /**
- * AI Providers Module
- * Central entry point for all AI provider functionality.
- * The rest of the application should only import from here.
+ * AI Provider Layer Index
  */
 
-export { providerRegistry } from "./registry";
-export type { AIProvider, ChatRequest, ChatResponse, ChatMessage, ProviderModel, ModelCapabilities } from "./interface";
-export { ALL_MODELS, findModel, getModelsByProvider, getSelectableModels } from "./models";
+export * from "./interface";
+export * from "./models";
+export * from "./openai";
+export * from "./claude";
+export * from "./gemini";
+export * from "./deepseek";
+export * from "./groq";
+export * from "./openrouter";
+export * from "./ollama";
+export * from "./registry";

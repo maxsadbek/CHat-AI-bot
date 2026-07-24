@@ -34,6 +34,7 @@ model User {
   projectFiles  ProjectFile[]
   projectNotes  ProjectNote[]
   payments      Payment[]
+  manualPayments ManualPayment[]
 
   @@index([telegramId])
   @@index([createdAt])
@@ -239,6 +240,29 @@ model ProjectNote {
 }
 
 // ─── Admin Log ─────────────────────────────────────────
+
+// ─── Manual Payment (Temporary) ──────────────────────
+
+model ManualPayment {
+  id              String    @id @default(uuid())
+  userId          Int
+  telegramUserId  BigInt
+  photoFileId     String                                // Telegram file_id of the payment receipt screenshot
+  plan            String                                // "pro_monthly" | "pro_yearly" | "lifetime"
+  amount          Int       @default(40000)             // Amount in UZS minor units (40,000 UZS)
+  currency        String    @default("UZS")
+  status          String    @default("PENDING")         // "PENDING" | "APPROVED" | "REJECTED"
+  adminId         BigInt?                               // Admin Telegram ID who processed it
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("manual_payments")
+}
 
 model AdminLog {
   id        String   @id @default(uuid())

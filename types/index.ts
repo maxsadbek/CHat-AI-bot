@@ -55,6 +55,11 @@ export enum BotStep {
   PROJECT_CREATE = "project_create",
   PROJECT_RENAME = "project_rename",
   PROJECT_NOTE_CREATE = "project_note_create",
+
+  /**
+   * Manual Payment — waiting for user to send a payment receipt photo
+   */
+  MANUAL_PAYMENT_RECEIPT = "manual_payment_receipt",
 }
 
 // ─── AI Service Types ────────────────────────────────────

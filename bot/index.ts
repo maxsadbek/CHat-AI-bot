@@ -78,6 +78,12 @@ import {
 } from "@/bot/handlers/history-menu";
 import { premiumHandler, premiumPlanHandler, premiumUpgradeHandler } from "@/bot/handlers/premium";
 import {
+  manualPaymentReceiptHandler,
+  manualPaymentApproveHandler,
+  manualPaymentRejectHandler,
+  manualPaymentProcessPhotoHandler,
+} from "@/bot/handlers/payment-manual";
+import {
   projectsHandler,
   projectCreateHandler,
   projectCreateNameHandler,
@@ -721,6 +727,27 @@ export function createBot(): Bot<BotContext> {
     await premiumHandler(ctx);
   });
 
+  // ─── Manual Payment ────────────────────────────
+  // User clicks "📷 Send Receipt" — wait for photo
+  // The planId is already stored in session tempData by manualPaymentShowHandler
+  callbackRouter.register("manual:payment:receipt", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const planId = ctx.session.tempData.manualPaymentPlan ?? "pro_monthly";
+    await manualPaymentReceiptHandler(ctx, planId);
+  });
+
+  // Admin approves a manual payment
+  callbackRouter.register(/^admin:manual:approve:(.+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await manualPaymentApproveHandler(ctx, (ctx as any).match[1]!);
+  });
+
+  // Admin rejects a manual payment
+  callbackRouter.register(/^admin:manual:reject:(.+)/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await manualPaymentRejectHandler(ctx, (ctx as any).match[1]!);
+  });
+
   // ─── Result Actions (future-ready) ────────────────
   callbackRouter.register("result:copy", async (ctx) => {
     await ctx.answerCallbackQuery("📋 Copied to clipboard!");
@@ -885,6 +912,14 @@ export function createBot(): Bot<BotContext> {
         }
         break;
       default:
+        // If user is in manual payment receipt mode, remind them to send a photo
+        if (step === BotStep.MANUAL_PAYMENT_RECEIPT) {
+          await ctx.reply(
+            "📸 *Please send a photo of your payment receipt.*\n\nSend exactly one photo showing the completed payment.",
+            { parse_mode: "Markdown" }
+          );
+          break;
+        }
         // Check for admin broadcast modes
         if (ctx.session.tempData?.adminMode === "broadcast_text") {
           await adminBroadcastSendTextHandler(ctx);
@@ -910,9 +945,17 @@ export function createBot(): Bot<BotContext> {
     }
   });
 
-  // ─── Photo Messages (admin broadcast only) ────────
+  // ─── Photo Messages ─────────────────────────────
   bot.on("message:photo", async (ctx) => {
-    // Only process photos when admin broadcast mode is active AND user is admin
+    const step = ctx.session.step;
+
+    // Handle manual payment receipt photos
+    if (step === BotStep.MANUAL_PAYMENT_RECEIPT) {
+      await manualPaymentProcessPhotoHandler(ctx);
+      return;
+    }
+
+    // Handle admin broadcast photos
     if (ctx.session.tempData?.adminMode === "broadcast_photo") {
       const tid = ctx.from?.id;
       if (tid && isAdmin(tid)) {

@@ -297,6 +297,20 @@ export function planSelectionKeyboard(
   return addNavRow(kb);
 }
 
+// ─── Manual Payment Keyboard ────────────────────────────
+
+/**
+ * Keyboard shown on the manual payment page.
+ * User clicks "📷 Send Receipt" to send a payment screenshot.
+ * User clicks "⬅️ Back" to return to plan selection.
+ */
+export function manualPaymentKeyboard(): InlineKeyboard {
+  return addNavRow(
+    new InlineKeyboard()
+      .text("📷 Send Receipt", "manual:payment:receipt")
+  );
+}
+
 // Navigation after upgrade / for active subscribers
 export const premiumNavKeyboard = addNavRow(
   new InlineKeyboard()

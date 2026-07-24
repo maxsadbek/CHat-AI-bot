@@ -21,6 +21,7 @@ import {
 } from "@/bot/keyboards";
 import { isAdmin } from "@/services/admin/admin-guard";
 import { logger } from "@/bot/core/logger";
+import { manualPaymentShowHandler } from "@/bot/handlers/payment-manual";
 
 const log = logger.child("handler-premium");
 const DIVIDER = "━━━━━━━━━━━━━━━━━━━━━";
@@ -254,8 +255,13 @@ export async function premiumPlanHandler(
 }
 
 /**
- * Handle upgrade confirmation — creates payment session & provides payment link
- * Shows a clean secure payment screen without exposing raw payment details.
+ * Handle upgrade confirmation — shows the manual payment page.
+ *
+ * TEMPORARY: Instead of creating a Stripe Checkout Session,
+ * displays a manual payment page with card details.
+ * The user sends a receipt screenshot, and admins verify manually.
+ *
+ * Stripe integration remains intact in the codebase for future use.
  */
 export async function premiumUpgradeHandler(
   ctx: BotContext,
@@ -268,6 +274,7 @@ export async function premiumUpgradeHandler(
   if (!userId || !telegramId) return;
 
   // ─── Admin guard: never show payment ───
+  // Admins always have full access and should never see payment screens.
   if (isAdmin(telegramId)) {
     await ctx.reply(
       `👑 *Admin Account*\n\nYou already have unlimited access to all features. No payment needed.`,
@@ -304,53 +311,13 @@ export async function premiumUpgradeHandler(
   if (!plan) return;
 
   try {
-    const provider = paymentRegistry.getDefaultProvider();
-    const paymentResult = await paymentService.createPayment({
-      userId,
-      telegramUserId: telegramId,
-      planId: planId as PlanId,
-      providerId: provider.config.id as any,
-    });
+    // TEMPORARY: Show manual payment page instead of creating Stripe Checkout.
+    // Stripe integration code remains intact in services/payment/ for future use.
+    await manualPaymentShowHandler(ctx, planId);
 
-    // Build secure checkout keyboard — no raw card numbers exposed!
-    const kb = new InlineKeyboard();
-    if (paymentResult.paymentUrl) {
-      kb.url("💳 Subscribe Securely", paymentResult.paymentUrl).row();
-    }
-    kb.text("📋 Compare Plans", "premium:back");
-
-    // Clean payment screen — inspired by ChatGPT/Claude checkout
-    const payMessage = [
-      `🔐 *Secure Checkout*`,
-      "",
-      `━━━━━━━━━━━━━━━━━━━━━`,
-      `${plan.emoji}  **${plan.name}**`,
-      `💰  **${plan.price.label}**`,
-      `━━━━━━━━━━━━━━━━━━━━━`,
-      "",
-      `💳 **Protected by ${provider.providerName}**`,
-      "",
-      `🔒 Your payment information is encrypted and`,
-      `   never stored by Kayzel Creator.`,
-      "",
-      paymentResult.paymentUrl
-        ? `👇 Click the button below to complete your subscription.`
-        : `📱 Follow the instructions from ${provider.providerName} to complete payment.`,
-      "",
-      `━━━━━━━━━━━━━━━━━━━━━`,
-      `Need help? Contact support.`,
-    ].join("\n");
-
-    await ctx.reply(payMessage, {
-      parse_mode: "Markdown",
-      reply_markup: kb,
-    });
-
-    log.info(`Payment initiated for user ${userId} plan ${planId}`, {
-      paymentId: paymentResult.session.id,
-    });
+    log.info(`Manual payment page shown for user ${userId} plan ${planId}`);
   } catch (error) {
-    log.error("Upgrade payment session failed", { userId, planId, error: String(error) });
+    log.error("Failed to show manual payment page", { userId, planId, error: String(error) });
     await ctx.reply(t(lang, "errors.generic"), {
       parse_mode: "Markdown",
       reply_markup: premiumNavKeyboard,

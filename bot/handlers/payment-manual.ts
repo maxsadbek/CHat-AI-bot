@@ -310,10 +310,12 @@ export async function manualPaymentProcessPhotoHandler(
 
   try {
     // ─── Build and log the full create() payload ───────────
+    // ─── Build and log the full create() payload ───────────
     const createPayload = {
       userId,
       telegramUserId: BigInt(telegramId),
-      photoFileId: fileId,
+      receiptFileId: fileId,
+      receiptMessageId: messageId ?? null,
       plan: planId,
       amount: paymentAmount,
       currency: paymentCurrency,

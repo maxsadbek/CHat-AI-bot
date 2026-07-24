@@ -875,9 +875,69 @@ export function createBot(): Bot<BotContext> {
   });
 
   // ════════════════════════════════════════════════════════
-  // 6. TEXT MESSAGES — routes by session step
+  // 6. PHOTO MESSAGES — runs BEFORE message:text
   // ════════════════════════════════════════════════════════
-  bot.on("message:text", async (ctx, next) => {
+  // IMPORTANT: This handler is registered BEFORE message:text so that
+  // for photos WITH captions, the photo handler fires first and can
+  // process manual payment receipts before message:text ever runs.
+  //
+  // Registration order: callbackQuery → message:photo → message:text
+  bot.on("message:photo", async (ctx) => {
+    const step = ctx.session.step;
+    const hasCaption = !!ctx.message?.caption;
+    const handlerSelected = step === BotStep.MANUAL_PAYMENT_RECEIPT
+      ? "manualPaymentProcessPhotoHandler"
+      : ctx.session.tempData?.adminMode === "broadcast_photo"
+        ? "adminBroadcastSendPhotoHandler"
+        : "SILENTLY_IGNORED";
+
+    log.debug("📸 PHOTO RECEIVED", {
+      step,
+      stepName: step,
+      userId: ctx.from?.id,
+      hasCaption,
+      messageId: ctx.message?.message_id,
+    });
+    log.debug("📸 CURRENT STEP", {
+      step,
+      isManualPaymentReceipt: step === BotStep.MANUAL_PAYMENT_RECEIPT,
+    });
+    log.debug("📸 HANDLER SELECTED", {
+      handler: handlerSelected,
+    });
+
+    // ─── Priority 1: Manual payment receipt photo ─────────
+    if (step === BotStep.MANUAL_PAYMENT_RECEIPT) {
+      await manualPaymentProcessPhotoHandler(ctx);
+      return;
+    }
+
+    // ─── Priority 2: Admin broadcast photo ───────────────
+    if (ctx.session.tempData?.adminMode === "broadcast_photo") {
+      const tid = ctx.from?.id;
+      if (tid && isAdmin(tid)) {
+        await adminBroadcastSendPhotoHandler(ctx);
+        return;
+      }
+    }
+
+    // ─── Default: silently ignore ────────────────────────
+    // Non-admin photos in non-broadcast mode are silently ignored
+    // to prevent accidental processing of user-uploaded photos
+    log.debug("message:photo — silently ignored", {
+      step,
+      userId: ctx.from?.id,
+    });
+  });
+
+  // ════════════════════════════════════════════════════════
+  // 7. TEXT MESSAGES — routes by session step
+  // ════════════════════════════════════════════════════════
+  // NOTE: For photos with captions, the message:photo handler (section 6)
+  // fires FIRST and handles payment receipts. This handler only sees
+  // the text portion if message:photo calls next() — but for payment
+  // receipts it returns without calling next(), so message:text never runs.
+  bot.on("message:text", async (ctx) => {
     const step = ctx.session.step;
 
     switch (step) {
@@ -920,21 +980,9 @@ export function createBot(): Bot<BotContext> {
         }
         break;
       default:
-        // If user is in manual payment receipt mode:
-        //   - If the message has a photo (caption + photo), pass to the photo handler via next()
-        //   - If only text, remind them to send a photo
+        // If user is in manual payment receipt mode but sent ONLY text (no photo),
+        // remind them to send a photo. Photos are handled by the message:photo handler above.
         if (step === BotStep.MANUAL_PAYMENT_RECEIPT) {
-          if (ctx.message?.photo && ctx.message.photo.length > 0) {
-            log.debug("MANUAL_PAYMENT_RECEIPT: message has photo + caption, passing to photo handler via next()", {
-              userId: ctx.from?.id,
-              step,
-            });
-            await next();
-            log.debug("MANUAL_PAYMENT_RECEIPT: after next() returned — photo handler completed", {
-              userId: ctx.from?.id,
-            });
-            return;
-          }
           await ctx.reply(
             "📸 *Please send a photo of your payment receipt.*\n\nSend exactly one photo showing the completed payment.",
             { parse_mode: "Markdown" }
@@ -964,42 +1012,6 @@ export function createBot(): Bot<BotContext> {
         });
         break;
     }
-  });
-
-  // ─── Photo Messages ─────────────────────────────
-  bot.on("message:photo", async (ctx) => {
-    const step = ctx.session.step;
-    const hasCaption = !!ctx.message?.caption;
-
-    log.debug("message:photo handler fired", {
-      step,
-      userId: ctx.from?.id,
-      hasCaption,
-      messageId: ctx.message?.message_id,
-      stepIsPaymentReceipt: step === BotStep.MANUAL_PAYMENT_RECEIPT,
-      adminMode: ctx.session.tempData?.adminMode,
-    });
-
-    // Handle manual payment receipt photos
-    if (step === BotStep.MANUAL_PAYMENT_RECEIPT) {
-      await manualPaymentProcessPhotoHandler(ctx);
-      return;
-    }
-
-    // Handle admin broadcast photos
-    if (ctx.session.tempData?.adminMode === "broadcast_photo") {
-      const tid = ctx.from?.id;
-      if (tid && isAdmin(tid)) {
-        await adminBroadcastSendPhotoHandler(ctx);
-        return;
-      }
-    }
-    // Non-admin photos in non-broadcast mode are silently ignored
-    // to prevent accidental processing of user-uploaded photos
-    log.debug("message:photo — silently ignored", {
-      step,
-      userId: ctx.from?.id,
-    });
   });
 
   return bot;

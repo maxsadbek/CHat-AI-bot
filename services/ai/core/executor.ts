@@ -11,7 +11,7 @@
  * - Friendly error messages: never expose provider/internal details
  */
 
-import { aiConfig, FeatureType } from "@/config/ai";
+import { aiConfig, FeatureType, type ProviderId } from "@/config/ai";
 import { providerRegistry, ProviderRegistry } from "../providers/registry";
 import { logger } from "@/bot/core/logger";
 import { CostOptimizationStrategy } from "../strategies/cost";
@@ -24,17 +24,20 @@ const log = logger.child("ai-executor");
 
 /**
  * Optimal error messages per feature — never expose provider/internal details.
- * These are the ONLY messages users will see on failure.
- * They sound like a production SaaS: optimistic, helpful, never technical.
+ * These messages guide the user toward actionable next steps rather than
+ * generic "try again" messages. They cover three categories:
+ *   1. Provider unavailable (backup being tried)
+ *   2. API limit reached (rate limiting / quota exhausted)
+ *   3. All providers exhausted (complete outage)
  */
 const FRIENDLY_ERRORS: Record<FeatureType, string> = {
-  chat: "⚠️ AI is temporarily busy. Your message is queued — please try again in a few moments.",
-  image: "⚠️ Image generation is under high demand. We've optimized the system and you can try again now.",
-  video: "⚠️ Video prompt generation is temporarily scaling up. Please retry in a moment.",
-  coding: "⚠️ Code generation is temporarily at capacity. The system will be ready shortly.",
-  business: "⚠️ Business analysis is processing another request. Please try again in a few seconds.",
-  translate: "⚠️ Translation service is temporarily unavailable. The system is recovering automatically.",
-  social: "⚠️ Content generation is temporarily unavailable. Our systems will retry automatically.",
+  chat: "⚠️ All AI providers are currently unavailable for chat. Please try again in a few minutes.",
+  image: "⚠️ All AI providers are currently unavailable for image generation. Please try again in a few minutes.",
+  video: "⚠️ All AI providers are currently unavailable for video prompts. Please try again in a few minutes.",
+  coding: "⚠️ All AI providers are currently unavailable for coding. Please try again in a few minutes.",
+  business: "⚠️ All AI providers are currently unavailable for business analysis. Please try again in a few minutes.",
+  translate: "⚠️ All AI providers are currently unavailable for translation. Please try again in a few minutes.",
+  social: "⚠️ All AI providers are currently unavailable for social content. Please try again in a few minutes.",
 };
 
 export interface AIExecutionOptions {
@@ -173,6 +176,18 @@ export class AIExecutor {
 
     for (let attempt = 0; attempt < providerChain.length; attempt++) {
       const providerId = providerChain[attempt]!;
+
+      // ── Pre-flight: Check API key and enabled status ─────────
+      const setting = aiConfig.getProviderSetting(providerId as ProviderId);
+      if (!setting || !setting.enabled) {
+        log.warn(`[EXECUTOR] Skipping ${providerId}: provider is disabled or not configured`);
+        continue;
+      }
+      const apiKey = process.env[setting.envKey];
+      if (!apiKey) {
+        log.warn(`[EXECUTOR] Skipping ${providerId}: API key missing (env: ${setting.envKey})`);
+        continue;
+      }
 
       try {
         const provider = this.registry.getProviderById(providerId);

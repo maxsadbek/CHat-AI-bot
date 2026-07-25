@@ -28,6 +28,7 @@ import { failoverHandler } from "./failover";
 import { responseCache } from "./cache";
 import { usageTracker, UsageTracker } from "./usage-tracker";
 import { AITelemetry } from "@/services/ai/utils/logger";
+import { AIError } from "@/services/ai/types/errors";
 import type { ChatRequest, ChatResponse } from "@/services/ai/providers/interface";
 import type { RouterOptions, RouterResult, RouterStats } from "./types";
 
@@ -239,8 +240,18 @@ export class AIRouter {
         error: errorMsg,
       });
 
-      // Re-throw the friendly error
-      throw err;
+      // If it's already an AIError (from failoverHandler), re-throw as-is
+      // since it already has a user-friendly message
+      if (err instanceof AIError) {
+        throw err;
+      }
+
+      // Wrap unknown errors in a user-friendly AIError
+      throw new AIError(
+        "⚠️ An unexpected error occurred. Please try again later.",
+        "PROVIDER_ERROR",
+        { retryable: true }
+      );
     }
   }
 

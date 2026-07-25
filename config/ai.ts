@@ -96,12 +96,12 @@ export class AIConfig {
     // AI_PROVIDER_ORDER from env: gemini,cerebras,mistral,openrouter
     defaultProvider: (process.env.AI_PROVIDER_ORDER?.split(",")[0]?.trim() as ProviderId) || "gemini",
     // Feature-based degradation: starts from requested limit, reduces stepwise.
-    // With coding PREMIUM limits up to 2000, 5 steps give graceful
-    // degradation: 2000 → 1400 → 800 → 600 → 400.
+    // With FREE/PREMIUM token limits (600/1400), 5 steps give graceful
+    // degradation: 1200 → 800 → 600 → 400 → 250.
     // The getDegradedMaxTokens() method finds the closest step <= requested
     // and applies the attempt offset, so smaller requests degrade from
     // the appropriate starting point.
-    fallbackSteps: [2000, 1400, 800, 600, 400],
+    fallbackSteps: [1200, 800, 600, 400, 250],
     retry: {
       maxRetries: 3,
       initialBackoffMs: 500,

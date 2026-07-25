@@ -52,8 +52,8 @@ const envSchema = z.object({
   ROUTER_SOCIAL_PRIORITY: z.string().default("gemini,cerebras,mistral,openrouter"),
   /** Provider priority chain for translate tasks */
   ROUTER_TRANSLATE_PRIORITY: z.string().default("gemini,cerebras,mistral,openrouter"),
-  /** Provider priority chain for image prompt tasks (separate: Stability → Flux) */
-  ROUTER_IMAGE_PRIORITY: z.string().default("stability,flux"),
+  /** Provider priority chain for image prompt tasks (same text router: Gemini → Cerebras → Mistral → OpenRouter) */
+  ROUTER_IMAGE_PRIORITY: z.string().default("gemini,cerebras,mistral,openrouter"),
   /** Provider priority chain for video prompt tasks (uses TEXT AI router) */
   ROUTER_VIDEO_PRIORITY: z.string().default("gemini,cerebras,mistral,openrouter"),
   /** Default provider priority fallback */

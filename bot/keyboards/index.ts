@@ -268,8 +268,8 @@ export const helpKeyboard = addNavRow(
 // Premium hub keyboard — plan selection for non-premium users
 export const premiumKeyboard = addNavRow(
   new InlineKeyboard()
-    .text("🚀 Pro Monthly • $2.99", "premium:plan:pro_monthly")
-    .text("🌟 Pro Yearly • $24.99", "premium:plan:pro_yearly")
+    .text("🚀 Pro Monthly • $0.99", "premium:plan:pro_monthly")
+    .text("🌟 Pro Yearly • $9.99", "premium:plan:pro_yearly")
     .row()
     .text("👑 Lifetime • $299.99", "premium:plan:lifetime")
 );

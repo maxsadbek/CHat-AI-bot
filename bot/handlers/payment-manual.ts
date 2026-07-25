@@ -92,7 +92,7 @@ function formatCardNumber(raw: string): string {
 
 /**
  * Format a numeric amount with space as thousand separator.
- * 40000 → "40 000"
+ * 15000 → "15 000"
  */
 function formatUZS(amount: number): string {
   return amount.toLocaleString("en-US").replace(/,/g, " ");
@@ -143,14 +143,15 @@ export async function manualPaymentShowHandler(
     `💎 *${appName} Pro*`,
     divider,
     "",
-    `Unlock every premium feature.`,
+    `🔥 LIMITED LAUNCH OFFER`,
     "",
-    `*Price*`,
+    `Get full Premium access for only`,
     "",
-    `💰 *$${priceUSD}*`,
+    `💰 *$${priceUSD}/month*`,
     "",
-    `For users in Uzbekistan,`,
-    `a local payment method is available.`,
+    `🇺🇿 Local Payment`,
+    "",
+    `${formattedUZS} UZS`,
     "",
     divider,
     "",

@@ -50,8 +50,8 @@ const PLANS: Plan[] = [
     emoji: "⭐",
     badge: "Pro",
     description: "Unlock all AI features — unlimited access",
-    price: { amount: 299, label: "$2.99/mo" },
-    yearlyEquivalent: "$35.88/yr",
+    price: { amount: 99, label: "$0.99/mo" },
+    yearlyEquivalent: "$11.88/yr",
     features: [
       { key: "chat", label: "Unlimited AI Chat", included: true, emoji: "🤖" },
       { key: "image", label: "Unlimited Image AI", included: true, emoji: "🎨" },
@@ -75,9 +75,9 @@ const PLANS: Plan[] = [
     emoji: "🌟",
     badge: "Best Value 🔥",
     description: "All Pro features, save over 30% annually",
-    price: { amount: 2499, label: "$24.99/yr" },
-    yearlyEquivalent: "$24.99/yr",
-    savings: "Save $10.89/yr vs monthly",
+    price: { amount: 999, label: "$9.99/yr" },
+    yearlyEquivalent: "$9.99/yr",
+    savings: "Save $1.89/yr vs monthly",
     features: [
       { key: "chat", label: "Unlimited AI Chat", included: true, emoji: "🤖" },
       { key: "image", label: "Unlimited Image AI", included: true, emoji: "🎨" },

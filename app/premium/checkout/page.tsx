@@ -20,8 +20,8 @@ interface Plan {
 
 const PLANS: Record<string, Plan> = {
   free: { id: "free", name: "Free", emoji: "🆓", price: { amount: 0, label: "Free" }, description: "Basic AI features" },
-  pro_monthly: { id: "pro_monthly", name: "Pro Monthly", emoji: "⭐", price: { amount: 299, label: "$2.99/mo" }, description: "Unlimited AI access" },
-  pro_yearly: { id: "pro_yearly", name: "Pro Yearly", emoji: "🌟", price: { amount: 2499, label: "$24.99/yr" }, description: "Save over 30% — best value", savings: "🔥 Save $10.89/yr vs monthly" },
+  pro_monthly: { id: "pro_monthly", name: "Pro Monthly", emoji: "⭐", price: { amount: 99, label: "$0.99/mo" }, description: "Unlimited AI access" },
+  pro_yearly: { id: "pro_yearly", name: "Pro Yearly", emoji: "🌟", price: { amount: 999, label: "$9.99/yr" }, description: "Save over 15% — best value", savings: "🔥 Save $1.89/yr vs monthly" },
   lifetime: { id: "lifetime", name: "Lifetime", emoji: "👑", price: { amount: 29999, label: "$299.99" }, description: "Pay once, use forever" },
 };
 

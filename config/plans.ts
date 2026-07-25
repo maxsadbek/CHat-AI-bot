@@ -75,7 +75,7 @@ export const SUBSCRIPTION_PLANS: Record<PlanId, SubscriptionPlan> = {
     badge: "Pro",
     description: "Unlock all AI features — unlimited access",
     billingPeriod: "monthly",
-    price: { amount: 299, label: "$2.99/mo" },
+    price: { amount: 99, label: "$0.99/mo" },
     limits: {
       requestsPerDay: 999999,
       conversationsPerFeature: 999999,
@@ -106,7 +106,7 @@ export const SUBSCRIPTION_PLANS: Record<PlanId, SubscriptionPlan> = {
     badge: "Best Value 🔥",
     description: "All Pro features, save over 30% annually",
     billingPeriod: "yearly",
-    price: { amount: 2499, label: "$24.99/yr" },
+    price: { amount: 999, label: "$9.99/yr" },
     limits: {
       requestsPerDay: 999999,
       conversationsPerFeature: 999999,

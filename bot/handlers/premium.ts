@@ -151,9 +151,19 @@ export async function premiumHandler(ctx: BotContext): Promise<void> {
       .join("\n\n");
 
     const message = [
-      `✨ *Upgrade to Pro*`,
+      `━━━━━━━━━━━━━━━━━━━━━━`,
+      `🔥 LIMITED LAUNCH OFFER`,
       "",
-      `━━━━━━━━━━━━━━━━━━━━━`,
+      `Become one of the first Kayzel Pro users.`,
+      "",
+      `Current Launch Price`,
+      "",
+      `💎 Monthly — $0.99`,
+      `💎 Yearly — $9.99`,
+      "",
+      `⚠️ Prices may increase in future updates.`,
+      `━━━━━━━━━━━━━━━━━━━━━━`,
+      "",
       `${currentPlanLine}`,
       `━━━━━━━━━━━━━━━━━━━━━`,
       "",

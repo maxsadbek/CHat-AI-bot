@@ -97,20 +97,20 @@ export async function imageGenerateHandler(ctx: BotContext): Promise<void> {
 
         await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
         
-        const caption = `🎨 *${platform.toLowerCase() === "flux" ? "Flux AI" : "Stability AI"}*\n\n${text.slice(0, 500)}`;
+        const caption = `🎨 ${platform.toLowerCase() === "flux" ? "Flux AI" : "Stability AI"}\n\n${text.slice(0, 500)}`;
         
         // generatedImage can be a URL string or a Buffer
         if (typeof generatedImage === "string") {
           await ctx.replyWithPhoto(generatedImage, {
             caption: caption,
-            parse_mode: "Markdown",
+            parse_mode: undefined,
             reply_markup: imageKeyboard,
           });
         } else {
           const { InputFile } = await import("grammy");
           await ctx.replyWithPhoto(new InputFile(generatedImage, "image.jpg"), {
             caption: caption,
-            parse_mode: "Markdown",
+            parse_mode: undefined,
             reply_markup: imageKeyboard,
           });
         }
@@ -157,7 +157,7 @@ export async function imageGenerateHandler(ctx: BotContext): Promise<void> {
 
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
     await ctx.reply(response, {
-      parse_mode: "Markdown",
+      parse_mode: undefined,
       reply_markup: imageKeyboard,
     });
     log.info("[IMAGE_FLOW] Generated prompts successfully");
@@ -165,8 +165,8 @@ export async function imageGenerateHandler(ctx: BotContext): Promise<void> {
     log.error("[IMAGE_FLOW] Error during generation", { userId, error: String(error) });
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
     const friendlyMsg = error instanceof Error ? error.message : String(error);
-    await ctx.reply(`❌ *Image AI Error*\n\n*Reason:*\n${friendlyMsg}`, {
-      parse_mode: "Markdown",
+    await ctx.reply(`❌ Image AI Error\n\nReason:\n${friendlyMsg}`, {
+      parse_mode: undefined,
       reply_markup: imageKeyboard,
     });
   }
@@ -204,7 +204,7 @@ export async function imageHistoryHandler(ctx: BotContext): Promise<void> {
     const title = conv.title.length > 40
       ? conv.title.slice(0, 40) + "…"
       : conv.title;
-    lines.push(`• *${title}*`);
+    lines.push(`• ${title}`);
     lines.push(`  🕐 ${date}`);
     lines.push("");
 
@@ -219,7 +219,7 @@ export async function imageHistoryHandler(ctx: BotContext): Promise<void> {
   kb.text("🔙 Back to Image AI", "nav:back");
 
   await ctx.reply(lines.join("\n"), {
-    parse_mode: "Markdown",
+    parse_mode: undefined,
     reply_markup: kb,
   });
 }
@@ -250,10 +250,8 @@ export async function resumeImageHandler(ctx: BotContext): Promise<void> {
     .find((m) => m.role === "assistant");
 
   if (lastAssistantMsg) {
-    await ctx.reply(`📋 *Previously generated prompts:*
-
-${lastAssistantMsg.content}`, {
-      parse_mode: "Markdown",
+    await ctx.reply(`📋 Previously generated prompts:\n\n${lastAssistantMsg.content}`, {
+      parse_mode: undefined,
       reply_markup: imageKeyboard,
     });
   } else {

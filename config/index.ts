@@ -86,20 +86,20 @@ const envSchema = z.object({
   // NOTE: These are SECONDARY defaults used by the Zod schema for env validation.
   // The PRIMARY authoritative limits are in config/ai.ts tokenPolicies.
   // These values are only used if a service reads them directly from env.
-  /** Max tokens for AI Chat (default: 2000) */
-  AI_CHAT_MAX_TOKENS: z.coerce.number().default(2000),
-  /** Max tokens for Image prompts (default: 3000) */
-  AI_IMAGE_MAX_TOKENS: z.coerce.number().default(3000),
-  /** Max tokens for Video prompts (default: 8000) */
-  AI_VIDEO_MAX_TOKENS: z.coerce.number().default(8000),
-  /** Max tokens for Coding (default: 4000) */
-  AI_CODING_MAX_TOKENS: z.coerce.number().default(4000),
-  /** Max tokens for Business (default: 4000) */
-  AI_BUSINESS_MAX_TOKENS: z.coerce.number().default(4000),
-  /** Max tokens for Social (default: 3000) */
-  AI_SOCIAL_MAX_TOKENS: z.coerce.number().default(3000),
-  /** Max tokens for Translate (default: 2000) */
-  AI_TRANSLATE_MAX_TOKENS: z.coerce.number().default(2000),
+  /** Max tokens for AI Chat (default: 1000) */
+  AI_CHAT_MAX_TOKENS: z.coerce.number().default(1000),
+  /** Max tokens for Image prompts (default: 1500) */
+  AI_IMAGE_MAX_TOKENS: z.coerce.number().default(1500),
+  /** Max tokens for Video prompts (default: 3000) */
+  AI_VIDEO_MAX_TOKENS: z.coerce.number().default(3000),
+  /** Max tokens for Coding (default: 3000) */
+  AI_CODING_MAX_TOKENS: z.coerce.number().default(3000),
+  /** Max tokens for Business (default: 3000) */
+  AI_BUSINESS_MAX_TOKENS: z.coerce.number().default(3000),
+  /** Max tokens for Social (default: 2000) */
+  AI_SOCIAL_MAX_TOKENS: z.coerce.number().default(2000),
+  /** Max tokens for Translate (default: 1000) */
+  AI_TRANSLATE_MAX_TOKENS: z.coerce.number().default(1000),
 
   // ─── Stability AI (Image/Text) ────────
   STABILITY_API_KEY: z.string().optional(),

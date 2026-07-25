@@ -96,9 +96,12 @@ export class AIConfig {
     // AI_PROVIDER_ORDER from env: gemini,cerebras,mistral,openrouter
     defaultProvider: (process.env.AI_PROVIDER_ORDER?.split(",")[0]?.trim() as ProviderId) || "gemini",
     // Feature-based degradation: starts from requested limit, halves each step.
-    // With professional limits (video/coding up to 32000), 6 steps give graceful
-    // degradation from 32000 → 16000 → 8000 → 4000 → 2000 → 1000.
-    fallbackSteps: [32000, 16000, 8000, 4000, 2000, 1000],
+    // With coding PRO/ENTERPRISE limits up to 48000, 6 steps give graceful
+    // degradation: 48000 → 24000 → 12000 → 6000 → 3000 → 1500.
+    // The getDegradedMaxTokens() method finds the closest step <= requested
+    // and applies the attempt offset, so smaller requests degrade from
+    // the appropriate starting point.
+    fallbackSteps: [48000, 24000, 12000, 6000, 3000, 1500],
     retry: {
       maxRetries: 3,
       initialBackoffMs: 500,
@@ -129,48 +132,62 @@ export class AIConfig {
     //   Image & Social — medium
     //   Business — high (strategy docs need room)
     //
+    // ─── Feature-Specific Token Limits per Plan ────────────────────
+    //
+    // Each AI feature has different token requirements:
+    //   Chat — short responses, conversational (lowest)
+    //   Coding — long code blocks, full implementations (highest)
+    //   Business — detailed strategies, plans, analysis (high)
+    //   Video — cinematic scene descriptions with full detail (high)
+    //   Image — professional prompt engineering (medium)
+    //   Social — marketing content, campaigns (medium)
+    //   Translate — sentence-level, shorter output (lowest)
+    //
+    // These are the AUTHORITATIVE limits.  Env vars can ONLY RAISE them
+    // (see getMaxTokens for the 50% minimum floor clamp).
+    //
     tokenPolicies: {
       chat: {
-        FREE: { base: 1000, max: 2000 },
-        PREMIUM: { base: 4000, max: 8000 },
+        FREE: { base: 500, max: 1000 },
+        PREMIUM: { base: 2000, max: 4000 },
+        PRO: { base: 4000, max: 8000 },
+        ENTERPRISE: { base: 8000, max: 16000 },
+      },
+      business: {
+        FREE: { base: 1000, max: 3000 },
+        PREMIUM: { base: 5000, max: 8000 },
         PRO: { base: 8000, max: 16000 },
         ENTERPRISE: { base: 16000, max: 32000 },
       },
-      business: {
-        FREE: { base: 2000, max: 4000 },
+      coding: {
+        FREE: { base: 1500, max: 3000 },
         PREMIUM: { base: 6000, max: 12000 },
         PRO: { base: 12000, max: 24000 },
         ENTERPRISE: { base: 24000, max: 48000 },
       },
-      coding: {
-        FREE: { base: 2000, max: 4000 },
-        PREMIUM: { base: 8000, max: 16000 },
-        PRO: { base: 16000, max: 32000 },
-        ENTERPRISE: { base: 32000, max: 64000 },
-      },
       image: {
-        FREE: { base: 1500, max: 3000 },
-        PREMIUM: { base: 4000, max: 8000 },
-        PRO: { base: 8000, max: 16000 },
-        ENTERPRISE: { base: 16000, max: 32000 },
+        FREE: { base: 800, max: 1500 },
+        PREMIUM: { base: 2000, max: 4000 },
+        PRO: { base: 4000, max: 8000 },
+        ENTERPRISE: { base: 8000, max: 16000 },
       },
       video: {
-        FREE: { base: 4000, max: 8000 },
-        PREMIUM: { base: 8000, max: 12000 },
-        PRO: { base: 12000, max: 20000 },
-        ENTERPRISE: { base: 20000, max: 32000 },
-      },
-      translate: {
-        FREE: { base: 1000, max: 2000 },
-        PREMIUM: { base: 4000, max: 8000 },
-        PRO: { base: 8000, max: 16000 },
-        ENTERPRISE: { base: 16000, max: 32000 },
-      },
-      social: {
         FREE: { base: 1500, max: 3000 },
         PREMIUM: { base: 4000, max: 8000 },
         PRO: { base: 8000, max: 16000 },
         ENTERPRISE: { base: 16000, max: 32000 },
+      },
+      translate: {
+        FREE: { base: 500, max: 1000 },
+        PREMIUM: { base: 1500, max: 3000 },
+        PRO: { base: 3000, max: 6000 },
+        ENTERPRISE: { base: 6000, max: 12000 },
+      },
+      social: {
+        FREE: { base: 800, max: 2000 },
+        PREMIUM: { base: 3000, max: 5000 },
+        PRO: { base: 5000, max: 10000 },
+        ENTERPRISE: { base: 10000, max: 20000 },
       },
     },
     providers: {

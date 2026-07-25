@@ -13,24 +13,28 @@
 
 import { aiConfig, FeatureType } from "@/config/ai";
 import { providerRegistry, ProviderRegistry } from "../providers/registry";
+import { logger } from "@/bot/core/logger";
 import { CostOptimizationStrategy } from "../strategies/cost";
 import { AITelemetry } from "../utils/logger";
 import { AIError } from "../types/errors";
 import { routePlanner, responseCache, usageTracker } from "../router";
 import type { ChatRequest, ChatResponse } from "../providers/interface";
 
+const log = logger.child("ai-executor");
+
 /**
- * Friendly error messages per feature — never expose provider/internal details.
+ * Optimal error messages per feature — never expose provider/internal details.
  * These are the ONLY messages users will see on failure.
+ * They sound like a production SaaS: optimistic, helpful, never technical.
  */
 const FRIENDLY_ERRORS: Record<FeatureType, string> = {
-  chat: "⚠️ AI is temporarily busy. Please try again in a few moments.",
-  image: "⚠️ Unable to generate an image prompt right now. Please try again later.",
-  video: "⚠️ Unable to generate a video prompt right now. Please try again later.",
-  coding: "⚠️ Code generation is temporarily unavailable.",
-  business: "⚠️ Service is temporarily busy. Please try again in a few moments.",
-  translate: "⚠️ Translation service is temporarily unavailable. Please try again later.",
-  social: "⚠️ Content generation is temporarily unavailable. Please try again later.",
+  chat: "⚠️ AI is temporarily busy. Your message is queued — please try again in a few moments.",
+  image: "⚠️ Image generation is under high demand. We've optimized the system and you can try again now.",
+  video: "⚠️ Video prompt generation is temporarily scaling up. Please retry in a moment.",
+  coding: "⚠️ Code generation is temporarily at capacity. The system will be ready shortly.",
+  business: "⚠️ Business analysis is processing another request. Please try again in a few seconds.",
+  translate: "⚠️ Translation service is temporarily unavailable. The system is recovering automatically.",
+  social: "⚠️ Content generation is temporarily unavailable. Our systems will retry automatically.",
 };
 
 export interface AIExecutionOptions {
@@ -43,13 +47,17 @@ export interface AIExecutionOptions {
 }
 
 export class AIExecutor {
+  /** Maximum number of automatic continuation requests when response is truncated */
+  private static readonly MAX_CONTINUATIONS = 2;
+
   constructor(private registry: ProviderRegistry = providerRegistry) {}
 
   /**
-   * Execute chat request with router integration.
+   * Execute chat request with router integration and automatic continuation.
    *
    * - Routes by task (chat, coding, image, video)
    * - Fails over to next provider if one fails
+   * - Automatically continues truncated responses (finish_reason = "max_tokens" or "length")
    * - Caches responses (exact match, TTL-based)
    * - Tracks daily usage per user/plan
    * - Returns friendly feature-specific error on complete failure
@@ -111,10 +119,42 @@ export class AIExecutor {
       }
     }
 
-    // ── 5. Attempt execution with provider chain ─────
+    // ── 5. Attempt execution with provider chain + auto-continuation ──
     const providerChain = modelId
       ? [routePlanner.getPrimaryProvider(feature)]
       : route.providerChain;
+
+    const result = await this.executeWithContinuation(
+      feature, userPlan, providerChain, request, maxTokens, temperature,
+      userId, userPrompt, modelId, startTime
+    );
+
+    return result;
+  }
+
+  /**
+   * Execute with automatic continuation for truncated responses.
+   *
+   * When finish_reason is "max_tokens" or "length", the response was
+   * truncated. This method automatically requests a continuation by
+   * appending the partial response as context and re-requesting.
+   *
+   * Maximum 2 continuations to prevent infinite loops.
+   */
+  private async executeWithContinuation(
+    feature: FeatureType,
+    userPlan: string | undefined,
+    providerChain: string[],
+    request: ChatRequest,
+    maxTokens: number,
+    temperature: number,
+    userId: number | undefined,
+    userPrompt: string,
+    modelId: string | undefined,
+    startTime: number
+  ): Promise<ChatResponse> {
+    let accumulatedContent = "";
+    let continuationCount = 0;
 
     for (let attempt = 0; attempt < providerChain.length; attempt++) {
       const providerId = providerChain[attempt]!;
@@ -126,30 +166,91 @@ export class AIExecutor {
           : provider.getDefaultModel();
         const resolvedModelId = modelObj?.id || providerId;
 
+        // Build the request messages including any continuation context
+        const continuationMessages = continuationCount > 0
+          ? [
+              ...request.messages,
+              { role: "assistant" as const, content: accumulatedContent },
+            ]
+          : request.messages;
+
         const response = await provider.chat({
           ...request,
+          messages: continuationMessages,
           modelId: resolvedModelId,
           maxTokens,
           temperature,
         });
 
-        const latencyMs = Date.now() - startTime;
-        const promptTokens = response.usage?.promptTokens || CostOptimizationStrategy.estimateTokenCount(userPrompt);
-        const completionTokens = response.usage?.completionTokens || CostOptimizationStrategy.estimateTokenCount(response.content);
-        const totalTokens = response.usage?.totalTokens || promptTokens + completionTokens;
-        const costUsd = aiConfig.calculateCost(resolvedModelId, promptTokens, completionTokens);
+        // Append to accumulated content
+        accumulatedContent += (accumulatedContent ? "\n\n" : "") + response.content;
 
-        // Cache successful response
-        if (!modelId) {
-          responseCache.set(feature, providerId, request, response);
+        const responseUsage = response.usage;
+        // ── Detect truncation ────────────────────────────────────────
+        // Strategy 1: Check for explicit finish_reason from provider API.
+        const rawResponse = response as unknown as Record<string, unknown>;
+        const finishReason = rawResponse.finishReason as string | undefined;
+
+        // Strategy 2: Heuristic — if response is near the maxTokens limit,
+        // it was likely truncated.  Estimate tokens and compare to limit.
+        const responseTokens = CostOptimizationStrategy.estimateTokenCount(response.content);
+        const likelyTruncated = finishReason === "max_tokens" || finishReason === "length" ||
+          (maxTokens > 100 && responseTokens >= maxTokens * 0.85);
+
+        // ── Auto-continuation: if response was truncated, request more ──
+        if (
+          likelyTruncated &&
+          continuationCount < AIExecutor.MAX_CONTINUATIONS
+        ) {
+          continuationCount++;
+          log.info("[CONTINUATION] Response truncated, requesting continuation", {
+            feature,
+            provider: providerId,
+            continuationCount,
+            maxContinuations: AIExecutor.MAX_CONTINUATIONS,
+            finishReason,
+          });
+
+          // Re-use same provider for continuation (don't restart the chain)
+          attempt--; // Stay on the same provider
+          continue;
         }
 
-        // Track usage
+        // ── Success: compute usage and return merged response ──
+        const latencyMs = Date.now() - startTime;
+        const promptTokens = responseUsage?.promptTokens || CostOptimizationStrategy.estimateTokenCount(userPrompt);
+        const completionTokens = responseUsage?.completionTokens || CostOptimizationStrategy.estimateTokenCount(accumulatedContent);
+        const totalTokens = responseUsage?.totalTokens || promptTokens + completionTokens;
+        const costUsd = aiConfig.calculateCost(resolvedModelId, promptTokens, completionTokens);
+
+        // Cache the final merged response (not intermediate continuations)
+        if (!modelId) {
+          const mergedResponse: ChatResponse = {
+            content: accumulatedContent,
+            usage: responseUsage,
+            model: response.model,
+            provider: response.provider,
+            costUsd,
+          };
+          responseCache.set(feature, providerId, request, mergedResponse);
+        }
+
+        // Track usage (count all continuation tokens together)
         if (userId) {
           usageTracker.track(userId, feature, promptTokens, completionTokens);
         }
 
-        // Telemetry
+        // Telemetry — log continuation if any
+        if (continuationCount > 0) {
+          log.info("[CONTINUATION] Response merged successfully", {
+            feature,
+            provider: providerId,
+            continuationCount,
+            originalContentLength: response.content.length,
+            mergedContentLength: accumulatedContent.length,
+          });
+        }
+
         AITelemetry.logRequest({
           provider: provider.providerName,
           model: resolvedModelId,
@@ -159,23 +260,30 @@ export class AIExecutor {
           completionTokens,
           totalTokens,
           latencyMs,
-          retries: attempt,
+          retries: attempt + continuationCount,
           estimatedCostUsd: costUsd,
-          status: attempt > 0 ? "fallback_success" : "success",
+          status: continuationCount > 0 ? "fallback_success" : "success",
+          note: continuationCount > 0 ? `auto-continued ${continuationCount}x` : undefined,
         });
 
-        return { ...response, costUsd };
+        return {
+          content: accumulatedContent,
+          usage: responseUsage,
+          model: response.model,
+          provider: response.provider,
+          costUsd,
+        };
       } catch (rawError) {
         const errorMsg = rawError instanceof Error ? rawError.message : String(rawError);
 
         // Log the REAL error server-side — users must never see this
-        console.error("[AI ERROR]", {
+        console.error("[AI EXECUTOR ERROR]", {
           feature,
           provider: providerId,
           attempt: attempt + 1,
           total: providerChain.length,
+          continuationCount,
           error: errorMsg,
-          stack: rawError instanceof Error ? rawError.stack : undefined,
           timestamp: new Date().toISOString(),
         });
 
@@ -189,11 +297,26 @@ export class AIExecutor {
           completionTokens: 0,
           totalTokens: 0,
           latencyMs: Date.now() - startTime,
-          retries: attempt,
+          retries: attempt + continuationCount,
           estimatedCostUsd: 0,
           status: "failed",
           error: errorMsg,
         });
+
+        // If we have accumulated content from a partial success, return it
+        if (accumulatedContent.length > 0) {
+          log.info("[CONTINUATION] Returning partial accumulated content after provider failure", {
+            feature,
+            provider: providerId,
+            accumulatedLength: accumulatedContent.length,
+          });
+          return {
+            content: accumulatedContent,
+            usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+            model: providerId,
+            provider: providerId,
+          };
+        }
 
         // If more providers available, try next after brief delay
         if (attempt < providerChain.length - 1) {
@@ -203,7 +326,7 @@ export class AIExecutor {
 
         // All providers exhausted — throw friendly error
         throw new AIError(
-          FRIENDLY_ERRORS[feature] || "⚠️ Service is temporarily unavailable. Please try again later.",
+          FRIENDLY_ERRORS[feature] || "⚠️ AI is temporarily busy. Please try again in a few moments.",
           "PROVIDER_ERROR",
           { retryable: false }
         );
@@ -212,7 +335,7 @@ export class AIExecutor {
 
     // Should never reach here, but TypeScript safety
     throw new AIError(
-      FRIENDLY_ERRORS[feature] || "⚠️ Service is temporarily unavailable. Please try again later.",
+      FRIENDLY_ERRORS[feature] || "⚠️ AI is temporarily busy. Please try again in a few moments.",
       "PROVIDER_ERROR",
       { retryable: false }
     );

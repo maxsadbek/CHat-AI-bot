@@ -19,6 +19,7 @@ export interface AITelemetryPayload {
   estimatedCostUsd: number;
   status: "success" | "fallback_success" | "failed";
   error?: string;
+  note?: string;
 }
 
 export class AITelemetry {

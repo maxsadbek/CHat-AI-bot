@@ -26,7 +26,7 @@ import { routePlanner } from "./route-planner";
 import { healthChecker } from "./health";
 import { failoverHandler } from "./failover";
 import { responseCache } from "./cache";
-import { usageTracker } from "./usage-tracker";
+import { usageTracker, UsageTracker } from "./usage-tracker";
 import { AITelemetry } from "@/services/ai/utils/logger";
 import type { ChatRequest, ChatResponse } from "@/services/ai/providers/interface";
 import type { RouterOptions, RouterResult, RouterStats } from "./types";
@@ -89,13 +89,20 @@ export class AIRouter {
 
     this.stats.totalRequests++;
 
-    // ── 1. Check daily usage limits (per-feature) ──
+    // ── 1. Check daily usage limits (per-feature requests + total tokens) ──
     if (userId) {
+      // Check per-feature request count limit
       if (usageTracker.isLimitReached(userId, userPlan, feature)) {
         this.stats.totalFailed++;
         throw new Error(
           "⚠️ You've reached your daily limit for this feature. Please try again tomorrow or upgrade your plan."
         );
+      }
+
+      // Check total daily token limit (across all features)
+      if (usageTracker.isTokenLimitReached(userId, userPlan)) {
+        this.stats.totalFailed++;
+        throw new Error(UsageTracker.TOKEN_LIMIT_MESSAGE);
       }
     }
 
@@ -168,26 +175,32 @@ export class AIRouter {
       }
 
       // Track usage
+      let promptTokens = 0;
+      let completionTokens = 0;
       if (userId) {
-        const promptTokens = failoverResult.response.usage?.promptTokens || 0;
-        const completionTokens = failoverResult.response.usage?.completionTokens || 0;
+        promptTokens = failoverResult.response.usage?.promptTokens || 0;
+        completionTokens = failoverResult.response.usage?.completionTokens || 0;
         usageTracker.track(userId, feature, promptTokens, completionTokens);
       }
 
       const latencyMs = Date.now() - startTime;
+      const totalTokens = promptTokens + completionTokens;
+      const remainingTokens = userId ? usageTracker.getRemainingDailyTokens(userId, userPlan) : 0;
 
       // Update provider stats
       this.updateProviderStats(failoverResult.providerId, latencyMs, true);
 
-      // Telemetry
+      // Telemetry — enhanced logging with plan, feature, tokens, provider
       AITelemetry.logRequest({
         provider: failoverResult.providerId,
         model: failoverResult.modelId,
         feature,
         plan: userPlan || "FREE",
-        promptTokens: failoverResult.response.usage?.promptTokens || 0,
-        completionTokens: failoverResult.response.usage?.completionTokens || 0,
-        totalTokens: (failoverResult.response.usage?.promptTokens || 0) + (failoverResult.response.usage?.completionTokens || 0),
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        requestedTokens: maxTokens,
+        remainingTokens,
         latencyMs,
         retries: failoverResult.attempt,
         estimatedCostUsd: 0,
@@ -208,6 +221,7 @@ export class AIRouter {
       this.stats.totalFailed++;
       const errorMsg = err instanceof Error ? err.message : String(err);
 
+      const remainingTokens = userId ? usageTracker.getRemainingDailyTokens(userId, userPlan) : 0;
       AITelemetry.logRequest({
         provider: resolvedProviderChain.join(","),
         model: feature,
@@ -216,6 +230,8 @@ export class AIRouter {
         promptTokens: 0,
         completionTokens: 0,
         totalTokens: 0,
+        requestedTokens: maxTokens,
+        remainingTokens,
         latencyMs: Date.now() - startTime,
         retries: resolvedProviderChain.length,
         estimatedCostUsd: 0,

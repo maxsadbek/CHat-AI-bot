@@ -10,6 +10,7 @@ export type AIErrorCode =
   | "CREDITS_EXHAUSTED"
   | "NETWORK_ERROR"
   | "VALIDATION_ERROR"
+  | "DAILY_TOKEN_LIMIT"
   | "UNKNOWN";
 
 export class AIError extends Error {

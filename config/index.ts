@@ -137,11 +137,15 @@ const envSchema = z.object({
   AI_DAILY_BUSINESS_LIMIT_PREMIUM: z.coerce.number().default(300),
   AI_DAILY_TRANSLATE_LIMIT_PREMIUM: z.coerce.number().default(300),
 
-  // ─── Token Limits (per-plan env overrides — clamped to ≥50% of professional default) ──
-  FREE_MAX_TOKENS: z.coerce.number().default(1000),
-  PREMIUM_MAX_TOKENS: z.coerce.number().default(4000),
+  // ─── Token Limits (per-plan env overrides — fallback for features without specific policies) ──
+  FREE_MAX_TOKENS: z.coerce.number().default(600),
+  PREMIUM_MAX_TOKENS: z.coerce.number().default(1400),
   PRO_MAX_TOKENS: z.coerce.number().default(8000),
   ENTERPRISE_MAX_TOKENS: z.coerce.number().default(16000),
+
+  // ─── Daily Token Limits (total tokens per day across all features) ──
+  AI_DAILY_TOKEN_LIMIT_FREE: z.coerce.number().default(10000),
+  AI_DAILY_TOKEN_LIMIT_PREMIUM: z.coerce.number().default(50000),
 
   // ─── Stripe ───────────────────────────
   STRIPE_SECRET_KEY: z.string().optional(),

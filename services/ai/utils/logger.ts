@@ -14,6 +14,8 @@ export interface AITelemetryPayload {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  requestedTokens?: number;
+  remainingTokens?: number;
   latencyMs: number;
   retries: number;
   estimatedCostUsd: number;
@@ -34,6 +36,8 @@ export class AITelemetry {
         prompt: payload.promptTokens,
         completion: payload.completionTokens,
         total: payload.totalTokens,
+        requested: payload.requestedTokens ?? null,
+        remainingDaily: payload.remainingTokens ?? null,
       },
       latencyMs: payload.latencyMs,
       retries: payload.retries,
@@ -43,11 +47,11 @@ export class AITelemetry {
     };
 
     if (payload.status === "failed") {
-      log.error(`[AI-TELEMETRY] ${payload.provider}:${payload.model} failed after ${payload.retries} retries (${payload.latencyMs}ms)`, formattedLog);
+      log.error(`[AI-TELEMETRY] plan=${payload.plan} feature=${payload.feature} ${payload.provider}:${payload.model} failed after ${payload.retries} retries (${payload.latencyMs}ms)`, formattedLog);
     } else if (payload.status === "fallback_success") {
-      log.warn(`[AI-TELEMETRY] ${payload.provider}:${payload.model} succeeded with fallback after ${payload.retries} retries (${payload.latencyMs}ms, $${payload.estimatedCostUsd})`, formattedLog);
+      log.warn(`[AI-TELEMETRY] plan=${payload.plan} feature=${payload.feature} ${payload.provider}:${payload.model} succeeded with fallback after ${payload.retries} retries (${payload.latencyMs}ms, $${payload.estimatedCostUsd}, remaining=${payload.remainingTokens})`, formattedLog);
     } else {
-      log.info(`[AI-TELEMETRY] ${payload.provider}:${payload.model} completed in ${payload.latencyMs}ms (${payload.totalTokens} tokens, $${payload.estimatedCostUsd})`, formattedLog);
+      log.info(`[AI-TELEMETRY] plan=${payload.plan} feature=${payload.feature} ${payload.provider}:${payload.model} completed in ${payload.latencyMs}ms (${payload.totalTokens} tokens, $${payload.estimatedCostUsd}, remaining=${payload.remainingTokens})`, formattedLog);
     }
   }
 }

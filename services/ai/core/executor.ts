@@ -17,7 +17,7 @@ import { logger } from "@/bot/core/logger";
 import { CostOptimizationStrategy } from "../strategies/cost";
 import { AITelemetry } from "../utils/logger";
 import { AIError } from "../types/errors";
-import { routePlanner, responseCache, usageTracker } from "../router";
+import { routePlanner, responseCache, usageTracker, UsageTracker } from "../router";
 import type { ChatRequest, ChatResponse } from "../providers/interface";
 
 const log = logger.child("ai-executor");
@@ -66,13 +66,25 @@ export class AIExecutor {
     const startTime = Date.now();
     const { feature, userPlan, modelId, request, userId } = options;
 
-    // ── 1. Check daily usage limits (per-feature) ──
-    if (userId && usageTracker.isLimitReached(userId, userPlan, feature)) {
-      throw new AIError(
-        "⚠️ You've reached your daily limit for this feature. Please try again tomorrow or upgrade your plan.",
-        "RATE_LIMIT",
-        { retryable: false }
-      );
+    // ── 1. Check daily usage limits (per-feature requests + total tokens) ──
+    if (userId) {
+      // Check per-feature request count limit
+      if (usageTracker.isLimitReached(userId, userPlan, feature)) {
+        throw new AIError(
+          "⚠️ You've reached your daily limit for this feature. Please try again tomorrow or upgrade your plan.",
+          "RATE_LIMIT",
+          { retryable: false }
+        );
+      }
+
+      // Check total daily token limit (across all features)
+      if (usageTracker.isTokenLimitReached(userId, userPlan)) {
+        throw new AIError(
+          UsageTracker.TOKEN_LIMIT_MESSAGE,
+          "DAILY_TOKEN_LIMIT",
+          { retryable: false }
+        );
+      }
     }
 
     // ── 2. Resolve max tokens ───────────────────────
@@ -97,6 +109,7 @@ export class AIExecutor {
     if (!modelId) {
       const cached = responseCache.get(feature, primaryProvider, request);
       if (cached) {
+        const remainingTokens = userId ? usageTracker.getRemainingDailyTokens(userId, userPlan) : 0;
         AITelemetry.logRequest({
           provider: "cache",
           model: "cache",
@@ -105,6 +118,8 @@ export class AIExecutor {
           promptTokens: 0,
           completionTokens: cached.content.length,
           totalTokens: cached.content.length,
+          requestedTokens: 0,
+          remainingTokens,
           latencyMs: 0,
           retries: 0,
           estimatedCostUsd: 0,
@@ -251,6 +266,7 @@ export class AIExecutor {
           });
         }
 
+        const remainingTokens = userId ? usageTracker.getRemainingDailyTokens(userId, userPlan) : 0;
         AITelemetry.logRequest({
           provider: provider.providerName,
           model: resolvedModelId,
@@ -259,6 +275,8 @@ export class AIExecutor {
           promptTokens,
           completionTokens,
           totalTokens,
+          requestedTokens: maxTokens,
+          remainingTokens,
           latencyMs,
           retries: attempt + continuationCount,
           estimatedCostUsd: costUsd,
@@ -288,6 +306,7 @@ export class AIExecutor {
         });
 
         // Telemetry for failure
+        const remainingTokens = userId ? usageTracker.getRemainingDailyTokens(userId, userPlan) : 0;
         AITelemetry.logRequest({
           provider: providerId,
           model: feature,
@@ -296,6 +315,8 @@ export class AIExecutor {
           promptTokens: CostOptimizationStrategy.estimateTokenCount(userPrompt),
           completionTokens: 0,
           totalTokens: 0,
+          requestedTokens: maxTokens,
+          remainingTokens,
           latencyMs: Date.now() - startTime,
           retries: attempt + continuationCount,
           estimatedCostUsd: 0,

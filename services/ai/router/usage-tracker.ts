@@ -3,6 +3,10 @@
  * Tracks per-user daily usage across features with separate free/premium limits.
  * Integrates with the existing usageService for database-backed tracking.
  *
+ * Two layers of protection:
+ *   1. Per-feature request count limits (e.g., 30 chat requests/day)
+ *   2. Total daily token limits (10,000 tokens for FREE, 50,000 for PREMIUM)
+ *
  * Per-feature daily limits:
  *            Free    Premium
  *   chat      30      300
@@ -12,6 +16,10 @@
  *   social    30      300
  *   business  30      300
  *   translate 30      300
+ *
+ * Daily token limits:
+ *   FREE:     10,000 tokens/day
+ *   PREMIUM:  50,000 tokens/day
  */
 
 import { logger } from "@/bot/core/logger";
@@ -92,8 +100,12 @@ export class UsageTracker {
     return total;
   }
 
+  /** Daily token limit message in Uzbek */
+  static readonly TOKEN_LIMIT_MESSAGE =
+    "⚠️ Bugungi AI limit tugadi.\n\nErtaga yana bepul foydalanishingiz mumkin.\nPremium tarif orqali ko‘proq imkoniyat ochiladi 🚀";
+
   /**
-   * Per-feature daily limits for free users
+   * Per-feature daily request limits for free users
    */
   private readonly FREE_FEATURE_LIMITS: Record<string, number> = {
     chat: Number(process.env.AI_DAILY_CHAT_LIMIT_FREE) || 30,
@@ -106,7 +118,7 @@ export class UsageTracker {
   };
 
   /**
-   * Per-feature daily limits for premium users
+   * Per-feature daily request limits for premium users
    */
   private readonly PREMIUM_FEATURE_LIMITS: Record<string, number> = {
     chat: Number(process.env.AI_DAILY_CHAT_LIMIT_PREMIUM) || 300,
@@ -118,7 +130,51 @@ export class UsageTracker {
     translate: Number(process.env.AI_DAILY_TRANSLATE_LIMIT_PREMIUM) || 300,
   };
 
-  /** Get daily limit for a specific feature and plan */
+  /**
+   * Daily token limits (total across all features)
+   */
+  private getDailyTokenLimit(userPlan?: string): number {
+    const normalized = (userPlan || "FREE").toUpperCase();
+    if (normalized === "FREE" || normalized === "") {
+      return Number(process.env.AI_DAILY_TOKEN_LIMIT_FREE) || 10000;
+    }
+    return Number(process.env.AI_DAILY_TOKEN_LIMIT_PREMIUM) || 50000;
+  }
+
+  /**
+   * Get total tokens used today by a user (across all features)
+   */
+  getTotalTokensToday(userId: number): number {
+    const date = getTodayDate();
+    let totalTokens = 0;
+    for (const [key, entry] of DAILY_USAGE.entries()) {
+      if (key.startsWith(`${userId}:`) && key.endsWith(`:${date}`)) {
+        totalTokens += entry.tokensIn + entry.tokensOut;
+      }
+    }
+    return totalTokens;
+  }
+
+  /**
+   * Check if user has exceeded their daily TOKEN limit (across all features)
+   * Returns true if limit is reached.
+   */
+  isTokenLimitReached(userId: number, userPlan?: string): boolean {
+    const totalTokens = this.getTotalTokensToday(userId);
+    const limit = this.getDailyTokenLimit(userPlan);
+    return totalTokens >= limit;
+  }
+
+  /**
+   * Get remaining tokens for today
+   */
+  getRemainingDailyTokens(userId: number, userPlan?: string): number {
+    const totalTokens = this.getTotalTokensToday(userId);
+    const limit = this.getDailyTokenLimit(userPlan);
+    return Math.max(0, limit - totalTokens);
+  }
+
+  /** Get daily request limit for a specific feature and plan */
   getDailyLimit(feature?: FeatureType | string, userPlan?: string): number {
     const normalized = (userPlan || "FREE").toUpperCase();
 
@@ -136,7 +192,7 @@ export class UsageTracker {
     return Number(process.env.AI_DAILY_LIMIT_PREMIUM) || 500;
   }
 
-  /** Check if user has exceeded their daily limit (per-feature) */
+  /** Check if user has exceeded their daily request limit (per-feature) */
   isLimitReached(userId: number, userPlan?: string, feature?: FeatureType | string): boolean {
     if (feature) {
       const todayCount = this.getTodayCount(userId, feature as FeatureType);

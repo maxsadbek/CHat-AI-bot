@@ -431,9 +431,15 @@ export class AIExecutor {
           console.error(`[BUSINESS_ALL_FAILED] Chain: ${providerChain.join(" → ")} | Errors: ${errorSummary}`);
         }
 
-        // All providers exhausted — throw friendly error
+        // Build error message: include error pattern summary for debugging
+        const uniqueCodes = [...new Set(allProviderErrors.map((e) => e.code))];
+        const uniqueStatuses = [...new Set(allProviderErrors.map((e) => e.status).filter(Boolean))];
+        const errorDetail = allProviderErrors.length > 0
+          ? `\n\n📊 Error pattern: ${uniqueCodes.join(", ")}${uniqueStatuses.length > 0 ? ` (${uniqueStatuses.join(", ")})` : ""}`
+          : "";
+
         throw new AIError(
-          FRIENDLY_ERRORS[feature] || "⚠️ AI is temporarily busy. Please try again in a few moments.",
+          `${FRIENDLY_ERRORS[feature] || "⚠️ AI is temporarily busy. Please try again in a few moments."}${errorDetail}`,
           "PROVIDER_ERROR",
           { retryable: false }
         );

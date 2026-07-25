@@ -670,23 +670,58 @@ export async function manualPaymentApproveHandler(
 
     // ════════════════════════════════════════════════════════
     // STEP 6: Confirm action to the admin
+    // Cosmetic — failure is logged and does NOT re-throw, so the
+    // outer catch never fires for a message-send failure.
     // ════════════════════════════════════════════════════════
-    await ctx.reply(
-      `✅ *Payment approved!*\n\n` +
-      `User #${payment.userId} has been granted ${payment.plan} for 30 days.`,
-      { parse_mode: "Markdown" }
-    );
+    log.debug("APPROVE STEP 6: Replying to admin with success message");
+    try {
+      await ctx.reply(
+        `✅ *Payment approved!*\n\n` +
+        `User #${payment.userId} has been granted ${payment.plan} for 30 days.`,
+        { parse_mode: "Markdown" }
+      );
+      log.debug("APPROVE STEP 6: Admin reply sent successfully");
+    } catch (err) {
+      log.warn("APPROVE STEP 6: Could not reply to admin", {
+        paymentId,
+        errorDetails: extractErrorDetails(err),
+      });
+    }
 
     // ════════════════════════════════════════════════════════
-    // STEP 7: Notify the user
+    // STEP 7: Verify the user's premium status was actually updated
+    // ════════════════════════════════════════════════════════
+    log.debug("APPROVE STEP 7: Verifying premium status after upgrade", {
+      userId: payment.userId,
+    });
+    try {
+      const updatedUser = await prisma.user.findUnique({
+        where: { id: payment.userId },
+        select: { isPremium: true },
+      });
+      log.debug("APPROVE STEP 7: Premium verification result", {
+        userId: payment.userId,
+        isPremium: updatedUser?.isPremium,
+        expectedPremium: true,
+        match: updatedUser?.isPremium === true,
+      });
+    } catch (err) {
+      log.warn("APPROVE STEP 7: Could not verify premium status", {
+        userId: payment.userId,
+        errorDetails: extractErrorDetails(err),
+      });
+    }
+
+    // ════════════════════════════════════════════════════════
+    // STEP 8: Notify the user with the EXACT requested message
     // Non-critical — failure is logged but does not re-throw.
     // ════════════════════════════════════════════════════════
-    log.debug("APPROVE STEP 7: Sending approval notification to user", {
+    log.debug("APPROVE STEP 8: Sending approval notification to user", {
       telegramUserId: Number(payment.telegramUserId),
     });
     try {
-      const confirmMessage = [
-        `✅ *Premium Activated!* 🎉`,
+      const userNotification = [
+        `🎉 *Your Premium subscription has been activated!*`,
         "",
         `━━━━━━━━━━━━━━━━━━━━━`,
         `Your payment has been verified and approved.`,
@@ -700,12 +735,12 @@ export async function manualPaymentApproveHandler(
 
       await ctx.api.sendMessage(
         Number(payment.telegramUserId),
-        confirmMessage,
+        userNotification,
         { parse_mode: "Markdown" }
       );
-      log.debug("APPROVE STEP 7: User notified successfully");
+      log.debug("APPROVE STEP 8: User notified successfully");
     } catch (err) {
-      log.error("APPROVE STEP 7: Failed to send notification to user", {
+      log.error("APPROVE STEP 8: Failed to send notification to user", {
         telegramUserId: Number(payment.telegramUserId),
         errorDetails: extractErrorDetails(err),
       });
@@ -717,7 +752,16 @@ export async function manualPaymentApproveHandler(
       adminId,
       ...errorDetails,
     });
-    await ctx.reply("❌ *Error approving payment.*", { parse_mode: "Markdown" });
+    // Only send error message if the admin notification wasn't already updated
+    // (prevents double-response when a cosmetic step threw after the edit succeeded)
+    try {
+      await ctx.reply("❌ *Error approving payment.*", { parse_mode: "Markdown" });
+    } catch (err) {
+      log.error("APPROVE CATCH: Could not send error reply to admin", {
+        paymentId,
+        errorDetails: extractErrorDetails(err),
+      });
+    }
   }
 }
 

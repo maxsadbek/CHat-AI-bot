@@ -260,11 +260,21 @@ export class ImageAIService extends BaseAIService {
 
       return this.parseResponse(response.content, targetPlatforms, description, elements);
     } catch (error) {
-      log.error("[IMAGE_SERVICE] AI execution failed", {
-        error: String(error),
+      // Log AIError details then re-throw — handler shows the friendly message
+      const details: Record<string, unknown> = {
         description: description.slice(0, 50),
-      });
-      return targetPlatforms.map((p) => this.buildSafeFallback(p, description, elements));
+        platform,
+        modelId: modelId ?? "default",
+        error: String(error),
+      };
+      if (error instanceof Error && "code" in error) {
+        const aiErr = error as any;
+        details.errorCode = aiErr.code ?? "UNKNOWN";
+        details.statusCode = aiErr.statusCode;
+        details.provider = aiErr.provider;
+      }
+      log.error("[IMAGE_SERVICE] AI execution failed — re-throwing", details);
+      throw error;
     }
   }
 

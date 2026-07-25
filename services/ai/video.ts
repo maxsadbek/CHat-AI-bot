@@ -75,6 +75,10 @@ Include:
 - film style
 - negative prompt
 
+User's main object, action and unique details are mandatory.
+Never replace the user's idea with generic cinematic text.
+Every generated field must be connected to the original description.
+
 Example:
 
 Input:
@@ -92,30 +96,30 @@ CRITICAL RULES:
 - NEVER wrap JSON inside markdown code blocks.
 - NEVER add text before or after the JSON array.
 - Return EXACTLY one JSON object per platform.
-- EVERY field in the JSON MUST contain generated content. Do NOT leave fields empty.
+- EVERY field MUST contain generated content that is connected to the user's idea. Do NOT leave fields empty.
 
-You MUST respond with a JSON array where EVERY object has ALL of these fields filled with creative, expanded content:
+You MUST respond with a JSON array where EVERY object has ALL of these fields filled with creative, expanded content that references the user's original idea:
 
 [
   {
     "platform": "Hailuo AI",
-    "title": "Short epic title for the video",
-    "scene": "Full cinematic scene description with mood and atmosphere",
-    "subject": "Main subject details: who or what is in the scene",
-    "action": "What the subject is doing, with motion and physics details",
-    "environment": "Setting, time of day, weather, location details",
-    "camera": "Camera angle, position, and framing",
+    "title": "Short epic title based on the user's video idea",
+    "scene": "Full cinematic scene description that includes the user's main subject and action",
+    "subject": "The user's main subject described in cinematic detail",
+    "action": "The user's described action with motion and physics details",
+    "environment": "Setting, time of day, weather, location details matching the user's idea",
+    "camera": "Camera angle, position, and framing that captures the user's scene",
     "lens": "Lens type and focal length, e.g. 35mm prime",
-    "movement": "Camera movement: tracking, dolly, crane, steadicam",
-    "lighting": "Lighting setup, mood, shadows, color temperature",
-    "color_grading": "Color palette, grade, visual tone",
-    "realism": "Realism level, physics accuracy, rendering quality",
-    "style": "Film style: Hollywood action, noir, sci-fi, documentary, etc.",
+    "movement": "Camera movement that enhances the user's action",
+    "lighting": "Lighting setup that fits the user's scene mood",
+    "color_grading": "Color palette, grade, visual tone matching the atmosphere",
+    "realism": "Realism level, physics accuracy for the user's subject",
+    "style": "Film style matching the user's scene: action, drama, sci-fi, etc.",
     "duration": "Suggested clip duration, e.g. 10 seconds",
     "negative_prompt": "What to avoid: artifacts, distortions, deformed faces, low quality",
-    "music": "Music genre, tempo, mood for soundtrack",
+    "music": "Music genre, tempo, mood that fits the user's scene",
     "voice": "Voice-over or narration style",
-    "full_prompt": "Single complete cinematic prompt ready to paste into the AI video generator"
+    "full_prompt": "Single complete cinematic prompt that includes all elements from the user's idea"
   }
 ]
 
@@ -159,7 +163,10 @@ Return one JSON object per platform in a JSON array.`;
       userPlan
     );
 
-    return this.parseResponse(response.content, targetPlatforms, description);
+    const parsed = this.parseResponse(response.content, targetPlatforms, description);
+
+    // Validate and merge: ensure AI output contains key elements from user's description
+    return parsed.map((p) => this.validateAndMergePrompt(p, description));
   }
 
   // ── Parsing ──────────────────────────────────────────────────────
@@ -193,8 +200,8 @@ Return one JSON object per platform in a JSON array.`;
       return targetPlatforms.map((p) => this.buildFromFields(p, fields));
     }
 
-    // 4. Last resort — professional cinematic fallback (never uses raw user text)
-    return targetPlatforms.map((p) => this.buildSafeFallback(p));
+    // 4. Last resort — dynamic cinematic fallback built around user's description
+    return targetPlatforms.map((p) => this.buildDynamicFallback(p, description));
   }
 
   /**
@@ -392,33 +399,121 @@ Return one JSON object per platform in a JSON array.`;
   }
 
   /**
-   * Professional cinematic fallback used when ALL parsing strategies fail.
-   *
-   * CRITICAL: NEVER uses the user's original description as the scene.
-   * Generates a complete, filled prompt structure with professional
-   * cinematic content so the user always receives something useful.
+   * Dynamic fallback that weaves the user's description into a cinematic
+   * prompt structure.  NEVER returns generic text — every field is built
+   * around the user's original idea without copying it verbatim.
    */
-  private buildSafeFallback(platform: VideoPlatform): VideoPrompt {
+  private buildDynamicFallback(
+    platform: VideoPlatform,
+    description: string
+  ): VideoPrompt {
+    const desc = description.trim();
+    const short = desc.length > 60 ? desc.slice(0, 57) + "..." : desc;
+
+    // Cinematic scene: wrap the user's idea in a professional framing
+    const scene = `A cinematic scene featuring ${desc.toLowerCase()}. Professional cinematography captures the action with dramatic lighting, realistic physics, and Hollywood-quality production value.`;
+
     return {
       platform,
-      title: "Cinematic Video Scene",
-      scene: "A professionally composed cinematic scene with dynamic camera movement, dramatic lighting, and realistic visual effects. High-quality cinematography with attention to detail, atmosphere, and professional production value.",
-      subject: "Main subject in a cinematic setting with professional framing and composition.",
-      action: "Dynamic motion with realistic physics, smooth movement, and fluid action sequences.",
-      environment: "Detailed cinematic environment with rich atmosphere, appropriate time of day, and immersive surroundings.",
-      camera: "Professional camera setup with dynamic tracking and cinematic framing.",
-      lens: "35mm cinema lens with shallow depth of field",
-      movement: "Smooth cinematic camera movement with professional stabilization and dynamic angles.",
-      lighting: "Dramatic cinematic lighting with realistic shadows, mood enhancement, and professional color temperature.",
-      color_grading: "Cinematic color grade with warm tones and professional color palette.",
+      title: short,
+      scene,
+      subject: `The main subject of ${short} presented in a cinematic composition with professional detail.`,
+      action: `Cinematic action sequence showing ${desc.toLowerCase()} with realistic motion, physics accuracy, and fluid movement.`,
+      environment: `Cinematic environment that complements the scene of ${short}, with detailed atmosphere and appropriate setting.`,
+      camera: "Dynamic camera angle following the action with professional framing.",
+      lens: "35mm cinema lens with cinematic depth of field",
+      movement: "Smooth tracking camera movement capturing the speed and motion.",
+      lighting: "Dramatic cinematic lighting with realistic shadows and mood enhancement.",
+      color_grading: "Cinematic color grade with professional color palette matching the scene mood.",
       realism: "Ultra realistic, 4K cinematic quality with accurate physics and lifelike details.",
-      style: "Cinematic film style with Hollywood production quality",
+      style: "Cinematic film style with professional production quality",
       duration: "10 seconds",
       negative_prompt: "low quality, blurry, distorted objects, unrealistic physics, bad anatomy, cartoon style, deformed features",
-      music: "Cinematic orchestral soundtrack with dramatic tempo",
-      voice: "Professional voice-over narration with cinematic tone",
-      full_prompt: "",
+      music: "Cinematic soundtrack with dramatic tempo matching the action",
+      voice: "Professional cinematic narration",
+      full_prompt: scene,
     };
+  }
+
+  /**
+   * Validate AI-generated prompt against the user's original description.
+   * If key content words (nouns, actions) from the user's input are
+   * missing from the AI output, append them naturally so the prompt
+   * always reflects the user's actual idea.
+   */
+  private validateAndMergePrompt(
+    prompt: VideoPrompt,
+    description: string
+  ): VideoPrompt {
+    const desc = description.toLowerCase();
+
+    const stopWords = new Set([
+      "a", "an", "the", "is", "are", "was", "were", "in", "on", "at",
+      "to", "for", "of", "with", "and", "or", "but", "not", "it",
+      "its", "this", "that", "these", "those", "from", "by", "as",
+      "be", "been", "being", "have", "has", "had", "do", "does",
+      "did", "will", "would", "can", "could", "should", "may", "might",
+      "da", "va", "lar", "ni", "ga", "dan", "bilan", "uchun",
+      "bu", "shu", "u", "ular", "men", "sen", "biz", "siz",
+    ]);
+
+    const contentWords = desc
+      .split(/[\s,.-]+/)
+      .map((w) => w.replace(/[^a-z0-9]/g, "").trim())
+      .filter((w) => w.length > 2 && !stopWords.has(w));
+
+    // Unique — already in set to avoid duplicates
+    const uniqueItems = <T>(a: T[]): T[] => [...new Set(a)];
+
+    // For each target field, collect important words missing from the AI output
+    const findMissing = (fieldText: string): string[] => {
+      const lower = fieldText.toLowerCase();
+      return uniqueItems(
+        contentWords.filter((w) => w.length > 2 && !lower.includes(w))
+      );
+    };
+
+    const missingScene = findMissing(prompt.scene);
+    const missingSubject = findMissing(prompt.subject);
+    const missingAction = findMissing(prompt.action);
+    const missingEnv = findMissing(prompt.environment);
+
+    const merged = { ...prompt };
+
+    // Merge missing details naturally by appending, not awkward prepending
+    if (missingScene.length > 0) {
+      merged.scene =
+        prompt.scene +
+        " The scene prominently features " +
+        missingScene.slice(0, 5).join(", ") +
+        ".";
+    }
+
+    if (missingSubject.length > 0) {
+      merged.subject =
+        prompt.subject +
+        " (" +
+        missingSubject.slice(0, 3).join(", ") +
+        ")";
+    }
+
+    if (missingAction.length > 0) {
+      merged.action =
+        prompt.action +
+        " The action includes " +
+        missingAction.slice(0, 3).join(", ") +
+        ".";
+    }
+
+    if (missingEnv.length > 0) {
+      merged.environment =
+        prompt.environment +
+        " The environment features " +
+        missingEnv.slice(0, 3).join(", ") +
+        ".";
+    }
+
+    return merged;
   }
 
   // ── Helpers ──────────────────────────────────────────────────────

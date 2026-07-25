@@ -91,6 +91,7 @@ export interface VideoPrompt {
   lighting: string;
   color_grading: string;
   realism: string;
+  style: string;
   duration: string;
   negative_prompt: string;
   music: string;

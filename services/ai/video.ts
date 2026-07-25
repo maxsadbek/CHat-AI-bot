@@ -29,12 +29,15 @@ const CANONICAL_KEYS: Record<string, keyof VideoPrompt> = {
   color_grading: "color_grading",
   colour_grading: "color_grading",
   realism: "realism",
+  style: "style",
   duration: "duration",
   negative_prompt: "negative_prompt",
   negative: "negative_prompt",
   music: "music",
   voice: "voice",
   sound: "voice",
+  "film style": "style",
+  "film_style": "style",
   full_prompt: "full_prompt",
   fullprompt: "full_prompt",
   prompt: "full_prompt",
@@ -50,27 +53,37 @@ const HEADER_ALIASES = Object.keys(CANONICAL_KEYS).concat([
 
 // ─── System prompt ─────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a professional cinematic AI video prompt engineer.
+const SYSTEM_PROMPT = `You are an expert cinematic AI video prompt creator.
 
-You create prompts for Hailuo AI, Kling AI, Google Veo, Runway and PixVerse.
+Your job is NOT to repeat the user's sentence.
 
-Convert simple user ideas into cinematic production prompts.
+Expand every simple idea into a professional movie production prompt.
 
-Always include:
-- cinematic scene description
-- realistic characters
-- physics accuracy
-- camera movement
+Create prompts for Hailuo AI, Kling AI, Google Veo, Runway and PixVerse.
+
+Include:
+- main subject
+- detailed action
+- realistic physics
+- environment
+- cinematic camera movement
 - camera lens
 - lighting
-- environment details
-- motion effects
-- color grading
 - atmosphere
-- sound design
+- motion effects
+- realistic details
+- film style
 - negative prompt
 
-Make prompts compatible with AI video generators.
+Example:
+
+Input:
+Mototsiklda ketayotgan odam moto 300km tezlikda ketayapti
+
+Output:
+A cinematic high-speed motorcycle scene on an empty highway. A professional rider wearing a black racing suit controls a superbike moving at extreme speed. The camera follows from a low-angle tracking shot near the wheels, realistic motion blur, wind effects, dramatic sunset lighting, 35mm cinema lens, ultra realistic physics, 4K movie quality.
+
+Never copy the user's sentence directly.
 
 CRITICAL RULES:
 - Never repeat text.
@@ -79,28 +92,30 @@ CRITICAL RULES:
 - NEVER wrap JSON inside markdown code blocks.
 - NEVER add text before or after the JSON array.
 - Return EXACTLY one JSON object per platform.
+- EVERY field in the JSON MUST contain generated content. Do NOT leave fields empty.
 
-You MUST respond with a JSON array where EVERY object has ALL of these fields:
+You MUST respond with a JSON array where EVERY object has ALL of these fields filled with creative, expanded content:
 
 [
   {
     "platform": "Hailuo AI",
     "title": "Short epic title for the video",
-    "scene": "Detailed cinematic scene description",
-    "subject": "Main subject of the video",
-    "action": "What the subject is doing in detail",
-    "environment": "Setting, time of day, weather, atmosphere",
-    "camera": "Camera angle, position, framing",
+    "scene": "Full cinematic scene description with mood and atmosphere",
+    "subject": "Main subject details: who or what is in the scene",
+    "action": "What the subject is doing, with motion and physics details",
+    "environment": "Setting, time of day, weather, location details",
+    "camera": "Camera angle, position, and framing",
     "lens": "Lens type and focal length, e.g. 35mm prime",
-    "movement": "Camera movement description",
-    "lighting": "Lighting setup, mood, shadows, color temp",
+    "movement": "Camera movement: tracking, dolly, crane, steadicam",
+    "lighting": "Lighting setup, mood, shadows, color temperature",
     "color_grading": "Color palette, grade, visual tone",
     "realism": "Realism level, physics accuracy, rendering quality",
+    "style": "Film style: Hollywood action, noir, sci-fi, documentary, etc.",
     "duration": "Suggested clip duration, e.g. 10 seconds",
     "negative_prompt": "What to avoid: artifacts, distortions, deformed faces, low quality",
     "music": "Music genre, tempo, mood for soundtrack",
     "voice": "Voice-over or narration style",
-    "full_prompt": "Single complete prompt ready to paste into the AI video generator"
+    "full_prompt": "Single complete cinematic prompt ready to paste into the AI video generator"
   }
 ]
 
@@ -273,6 +288,9 @@ Return one JSON object per platform in a JSON array.`;
       realism: this.safeString(
         p["realism"] ?? p["realistic"] ?? empty()
       ),
+      style: this.safeString(
+        p["style"] ?? p["film_style"] ?? p["film style"] ?? empty()
+      ),
       duration: this.safeString(
         p["duration"] ?? p["dur"] ?? "10 seconds"
       ),
@@ -364,6 +382,7 @@ Return one JSON object per platform in a JSON array.`;
       lighting: empty("lighting"),
       color_grading: empty("color_grading"),
       realism: empty("realism"),
+      style: empty("style"),
       duration: empty("duration") || "10 seconds",
       negative_prompt: empty("negative_prompt"),
       music: empty("music"),
@@ -393,6 +412,7 @@ Return one JSON object per platform in a JSON array.`;
       lighting: "",
       color_grading: "",
       realism: "",
+      style: "",
       duration: "10 seconds",
       negative_prompt: "",
       music: "",

@@ -118,6 +118,12 @@ function formatVideoPrompts(prompts: VideoPrompt[]): string {
       block.push("");
     }
 
+    if (prompt.style) {
+      block.push("🎨 Style:");
+      block.push(prompt.style);
+      block.push("");
+    }
+
     if (prompt.negative_prompt) {
       block.push("🚫 Negative Prompt:");
       block.push(prompt.negative_prompt);

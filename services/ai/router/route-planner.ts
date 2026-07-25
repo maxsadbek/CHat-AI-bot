@@ -30,9 +30,9 @@ const PRIORITY_ENV_MAP: Record<FeatureType, string> = {
   coding: "ROUTER_CODING_PRIORITY",
   image: "ROUTER_IMAGE_PRIORITY",
   video: "ROUTER_VIDEO_PRIORITY",
-  business: "ROUTER_DEFAULT_PRIORITY",
-  translate: "ROUTER_DEFAULT_PRIORITY",
-  social: "ROUTER_DEFAULT_PRIORITY",
+  business: "ROUTER_BUSINESS_PRIORITY",
+  translate: "ROUTER_TRANSLATE_PRIORITY",
+  social: "ROUTER_SOCIAL_PRIORITY",
 };
 
 export class RoutePlanner {

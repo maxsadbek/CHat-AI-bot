@@ -204,6 +204,8 @@ export const settingsKeyboard = addNavRow(
 // ═══════════════════════════════════════════════════════
 // AI MODEL SELECTION
 // ═══════════════════════════════════════════════════════
+// Model IDs are loaded from environment variables.
+// The button callback data uses the actual model ID from the env.
 export const modelProviderKeyboard = addNavRow(
   new InlineKeyboard()
     .text("🤖 OpenAI", "model:provider:openai")
@@ -215,27 +217,38 @@ export const modelProviderKeyboard = addNavRow(
 
 export function modelSelectionKeyboard(provider: string): InlineKeyboard {
   const kb = new InlineKeyboard();
+
+  // All model IDs come from environment variables — no hardcoded IDs.
+  // Each provider shows its env-var-configured model as the selectable option.
   switch (provider) {
     case "openai":
-      kb.text("GPT-4o", "model:select:gpt-4o");
-      kb.text("GPT-4o Mini", "model:select:gpt-4o-mini");
-      kb.row();
-      kb.text("O1 Mini", "model:select:o1-mini");
-      kb.text("GPT-4 Turbo", "model:select:gpt-4-turbo");
+      const openaiModel = process.env.OPENAI_MODEL || "gpt-4o-mini";
+      kb.text(openaiModel, `model:select:${openaiModel}`);
       break;
     case "gemini":
-      kb.text("Gemini 2.0 Flash", "model:select:gemini-2.0-flash");
-      kb.text("Gemini 2.0 Pro", "model:select:gemini-2.0-pro");
-      kb.row();
-      kb.text("Gemini 1.5 Flash", "model:select:gemini-1.5-flash");
-      kb.text("Gemini 1.5 Pro", "model:select:gemini-1.5-pro");
+      const geminiModel = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+      kb.text(geminiModel, `model:select:${geminiModel}`);
       break;
     case "claude":
-      kb.text("Claude Sonnet 4", "model:select:claude-sonnet-4-20250514");
-      kb.text("Claude Haiku 3.5", "model:select:claude-haiku-3-5-20241022");
+      const claudeModel = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
+      kb.text(claudeModel, `model:select:${claudeModel}`);
       break;
     case "deepseek":
-      kb.text("DeepSeek Chat", "model:select:deepseek-chat");
+      const deepseekModel = process.env.DEEPSEEK_MODEL || "deepseek-chat";
+      kb.text(deepseekModel, `model:select:${deepseekModel}`);
+      break;
+    case "cerebras":
+      const cerebrasModel = process.env.CEREBRAS_MODEL || "gpt-oss-120b";
+      kb.text(cerebrasModel, `model:select:${cerebrasModel}`);
+      break;
+    case "mistral":
+      const mistralModel = process.env.MISTRAL_MODEL || "mistral-large-latest";
+      kb.text(mistralModel, `model:select:${mistralModel}`);
+      break;
+    default:
+      // Fallback: show the primary model ID from the env
+      const fallbackModel = process.env.OPENAI_MODEL || "gpt-4o-mini";
+      kb.text(fallbackModel, `model:select:${fallbackModel}`);
       break;
   }
   kb.row();

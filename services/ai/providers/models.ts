@@ -1,14 +1,25 @@
 /**
- * Unified AI Model Catalogue across 7 Providers
+ * Unified AI Model Catalogue
+ * ALL model IDs are loaded from environment variables — NO hardcoded model IDs.
+ *
+ * Each provider exports a single model entry whose `id` is read from its
+ * corresponding *_MODEL env var (e.g. OPENAI_MODEL, GEMINI_MODEL).
+ * Sensible fallback defaults are provided so the app works without env vars.
+ *
+ * The provider chain for TEXT tasks is: Gemini → Cerebras → Mistral → OpenRouter
+ * Video prompt generation uses the same TEXT AI router.
+ * Image generation remains separate with Stability → Flux.
  */
 
 import type { ProviderModel } from "./interface";
 
 // ─── OpenAI Models ────────────────────────────────────
+// Model ID from process.env.OPENAI_MODEL
+const openaiModelId = process.env.OPENAI_MODEL || "gpt-4o-mini";
 export const OPENAI_MODELS: ProviderModel[] = [
   {
-    id: "gpt-4o",
-    name: "GPT-4o",
+    id: openaiModelId,
+    name: `OpenAI (${openaiModelId})`,
     provider: "openai",
     default: true,
     capabilities: {
@@ -19,45 +30,7 @@ export const OPENAI_MODELS: ProviderModel[] = [
       maxOutputTokens: 4096,
     },
   },
-  {
-    id: "gpt-4o-mini",
-    name: "GPT-4o Mini",
-    provider: "openai",
-    default: false,
-    capabilities: {
-      streaming: true,
-      vision: true,
-      functionCalling: true,
-      maxContextTokens: 128000,
-      maxOutputTokens: 16384,
-    },
-  },
-  {
-    id: "o1-mini",
-    name: "O1 Mini",
-    provider: "openai",
-    default: false,
-    capabilities: {
-      streaming: false,
-      vision: true,
-      functionCalling: false,
-      maxContextTokens: 128000,
-      maxOutputTokens: 65536,
-    },
-  },
-  {
-    id: "gpt-4-turbo",
-    name: "GPT-4 Turbo",
-    provider: "openai",
-    default: false,
-    capabilities: {
-      streaming: true,
-      vision: true,
-      functionCalling: true,
-      maxContextTokens: 128000,
-      maxOutputTokens: 4096,
-    },
-  },
+  // openrouter/free is a special case — accessed through OpenAI-compatible endpoint
   {
     id: "openrouter/free",
     name: "OpenRouter Free",
@@ -74,38 +47,14 @@ export const OPENAI_MODELS: ProviderModel[] = [
 ];
 
 // ─── Google Gemini Models ─────────────────────────────
+// Model ID from process.env.GEMINI_MODEL
+const geminiModelId = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 export const GEMINI_MODELS: ProviderModel[] = [
   {
-    id: "gemini-2.0-flash",
-    name: "Gemini 2.0 Flash",
+    id: geminiModelId,
+    name: `Gemini (${geminiModelId})`,
     provider: "gemini",
     default: true,
-    capabilities: {
-      streaming: true,
-      vision: true,
-      functionCalling: true,
-      maxContextTokens: 1048576,
-      maxOutputTokens: 8192,
-    },
-  },
-  {
-    id: "gemini-2.0-pro",
-    name: "Gemini 2.0 Pro",
-    provider: "gemini",
-    default: false,
-    capabilities: {
-      streaming: true,
-      vision: true,
-      functionCalling: true,
-      maxContextTokens: 2097152,
-      maxOutputTokens: 8192,
-    },
-  },
-  {
-    id: "gemini-1.5-flash",
-    name: "Gemini 1.5 Flash",
-    provider: "gemini",
-    default: false,
     capabilities: {
       streaming: true,
       vision: true,
@@ -117,25 +66,14 @@ export const GEMINI_MODELS: ProviderModel[] = [
 ];
 
 // ─── Anthropic Claude Models ──────────────────────────
+// Model ID from process.env.ANTHROPIC_MODEL
+const claudeModelId = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
 export const CLAUDE_MODELS: ProviderModel[] = [
   {
-    id: "claude-sonnet-4-20250514",
-    name: "Claude Sonnet 4",
+    id: claudeModelId,
+    name: `Claude (${claudeModelId})`,
     provider: "claude",
     default: true,
-    capabilities: {
-      streaming: true,
-      vision: true,
-      functionCalling: true,
-      maxContextTokens: 200000,
-      maxOutputTokens: 8192,
-    },
-  },
-  {
-    id: "claude-haiku-3-5-20241022",
-    name: "Claude Haiku 3.5",
-    provider: "claude",
-    default: false,
     capabilities: {
       streaming: true,
       vision: true,
@@ -147,10 +85,12 @@ export const CLAUDE_MODELS: ProviderModel[] = [
 ];
 
 // ─── Groq Models ──────────────────────────────────────
+// Model ID from process.env.GROQ_MODEL (fallback: llama-3.3-70b-versatile)
+const groqModelId = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 export const GROQ_MODELS: ProviderModel[] = [
   {
-    id: "groq-llama-3.3-70b",
-    name: "Llama 3.3 70B (Groq)",
+    id: groqModelId,
+    name: `Groq (${groqModelId})`,
     provider: "groq",
     default: true,
     capabilities: {
@@ -161,41 +101,17 @@ export const GROQ_MODELS: ProviderModel[] = [
       maxOutputTokens: 8192,
     },
   },
-  {
-    id: "groq-mixtral-8x7b",
-    name: "Mixtral 8x7B (Groq)",
-    provider: "groq",
-    default: false,
-    capabilities: {
-      streaming: true,
-      vision: false,
-      functionCalling: true,
-      maxContextTokens: 32768,
-      maxOutputTokens: 4096,
-    },
-  },
 ];
 
 // ─── DeepSeek Models ──────────────────────────────────
+// Model ID from process.env.DEEPSEEK_MODEL
+const deepseekModelId = process.env.DEEPSEEK_MODEL || "deepseek-chat";
 export const DEEPSEEK_MODELS: ProviderModel[] = [
   {
-    id: "deepseek-chat",
-    name: "DeepSeek Chat",
+    id: deepseekModelId,
+    name: `DeepSeek (${deepseekModelId})`,
     provider: "deepseek",
     default: true,
-    capabilities: {
-      streaming: true,
-      vision: false,
-      functionCalling: true,
-      maxContextTokens: 128000,
-      maxOutputTokens: 4096,
-    },
-  },
-  {
-    id: "deepseek-coder",
-    name: "DeepSeek Coder",
-    provider: "deepseek",
-    default: false,
     capabilities: {
       streaming: true,
       vision: false,
@@ -207,25 +123,14 @@ export const DEEPSEEK_MODELS: ProviderModel[] = [
 ];
 
 // ─── OpenRouter Models ────────────────────────────────
+// Model ID from process.env.OPENROUTER_MODEL
+const openrouterModelId = process.env.OPENROUTER_MODEL || "openrouter/auto";
 export const OPENROUTER_MODELS: ProviderModel[] = [
   {
-    id: "openrouter-auto",
-    name: "OpenRouter Auto",
+    id: openrouterModelId,
+    name: `OpenRouter (${openrouterModelId})`,
     provider: "openrouter",
     default: true,
-    capabilities: {
-      streaming: true,
-      vision: true,
-      functionCalling: true,
-      maxContextTokens: 128000,
-      maxOutputTokens: 4096,
-    },
-  },
-  {
-    id: "openrouter-gpt-4o",
-    name: "OpenRouter GPT-4o",
-    provider: "openrouter",
-    default: false,
     capabilities: {
       streaming: true,
       vision: true,
@@ -237,10 +142,12 @@ export const OPENROUTER_MODELS: ProviderModel[] = [
 ];
 
 // ─── Ollama Models ────────────────────────────────────
+// Model ID from process.env.OLLAMA_MODEL
+const ollamaModelId = process.env.OLLAMA_MODEL || "llama3";
 export const OLLAMA_MODELS: ProviderModel[] = [
   {
-    id: "ollama-llama3",
-    name: "Llama 3 (Ollama Local)",
+    id: ollamaModelId,
+    name: `Ollama (${ollamaModelId})`,
     provider: "ollama",
     default: true,
     capabilities: {
@@ -251,26 +158,15 @@ export const OLLAMA_MODELS: ProviderModel[] = [
       maxOutputTokens: 2048,
     },
   },
-  {
-    id: "ollama-codellama",
-    name: "CodeLlama (Ollama Local)",
-    provider: "ollama",
-    default: false,
-    capabilities: {
-      streaming: true,
-      vision: false,
-      functionCalling: false,
-      maxContextTokens: 16384,
-      maxOutputTokens: 4096,
-    },
-  },
 ];
 
 // ─── Cerebras Models ────────────────────────────────
+// Model ID from process.env.CEREBRAS_MODEL
+const cerebrasModelId = process.env.CEREBRAS_MODEL || "gpt-oss-120b";
 export const CEREBRAS_MODELS: ProviderModel[] = [
   {
-    id: "cerebras-llama3.1-8b",
-    name: "Llama 3.1 8B (Cerebras)",
+    id: cerebrasModelId,
+    name: `Cerebras (${cerebrasModelId})`,
     provider: "cerebras",
     default: true,
     capabilities: {
@@ -284,25 +180,14 @@ export const CEREBRAS_MODELS: ProviderModel[] = [
 ];
 
 // ─── Mistral Models ──────────────────────────────────
+// Model ID from process.env.MISTRAL_MODEL
+const mistralModelId = process.env.MISTRAL_MODEL || "mistral-large-latest";
 export const MISTRAL_MODELS: ProviderModel[] = [
   {
-    id: "mistral-small-latest",
-    name: "Mistral Small",
+    id: mistralModelId,
+    name: `Mistral (${mistralModelId})`,
     provider: "mistral",
     default: true,
-    capabilities: {
-      streaming: true,
-      vision: true,
-      functionCalling: true,
-      maxContextTokens: 128000,
-      maxOutputTokens: 4096,
-    },
-  },
-  {
-    id: "mistral-large-latest",
-    name: "Mistral Large",
-    provider: "mistral",
-    default: false,
     capabilities: {
       streaming: true,
       vision: true,
@@ -314,10 +199,12 @@ export const MISTRAL_MODELS: ProviderModel[] = [
 ];
 
 // ─── Stability AI Models ────────────────────────────
+// Model ID from process.env.STABILITY_MODEL
+const stabilityModelId = process.env.STABILITY_MODEL || "stable-diffusion-xl-1024-v1-0";
 export const STABILITY_MODELS: ProviderModel[] = [
   {
-    id: "stable-diffusion-xl-1024-v1-0",
-    name: "Stable Diffusion XL 1.0",
+    id: stabilityModelId,
+    name: `Stability AI (${stabilityModelId})`,
     provider: "stability",
     default: true,
     capabilities: {
@@ -331,10 +218,12 @@ export const STABILITY_MODELS: ProviderModel[] = [
 ];
 
 // ─── Flux Models ──────────────────────────────────────
+// Model ID from process.env.FLUX_MODEL
+const fluxModelId = process.env.FLUX_MODEL || "FLUX.1-schnell";
 export const FLUX_MODELS: ProviderModel[] = [
   {
-    id: "FLUX.1-schnell",
-    name: "FLUX.1 Schnell",
+    id: fluxModelId,
+    name: `Flux AI (${fluxModelId})`,
     provider: "flux",
     default: true,
     capabilities: {

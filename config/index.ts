@@ -16,7 +16,7 @@ const envSchema = z.object({
 
   // ─── Google Gemini API ────────────────────
   GEMINI_API_KEY: z.string().optional(),
-  GEMINI_MODEL: z.string().default("gemini-2.0-flash"),
+  GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
 
   // ─── Anthropic Claude API ─────────────────
   ANTHROPIC_API_KEY: z.string().optional(),
@@ -30,28 +30,34 @@ const envSchema = z.object({
   // ─── Cerebras API (OpenAI-compatible) ──────
   CEREBRAS_API_KEY: z.string().optional(),
   CEREBRAS_BASE_URL: z.string().url().default("https://api.cerebras.ai/v1"),
-  CEREBRAS_MODEL: z.string().default("llama3.1-8b"),
+  CEREBRAS_MODEL: z.string().default("gpt-oss-120b"),
 
   // ─── Mistral API (OpenAI-compatible) ───────
   MISTRAL_API_KEY: z.string().optional(),
   MISTRAL_BASE_URL: z.string().url().default("https://api.mistral.ai/v1"),
-  MISTRAL_MODEL: z.string().default("mistral-small-latest"),
+  MISTRAL_MODEL: z.string().default("mistral-large-latest"),
 
   // ─── AI Router Configuration ────────────
   /** Daily limit for free users */
   AI_DAILY_LIMIT_FREE: z.coerce.number().default(50),
   /** Daily limit for premium users */
   AI_DAILY_LIMIT_PREMIUM: z.coerce.number().default(500),
-  /** Provider priority chain for each task (comma-separated, highest first) */
-  ROUTER_CHAT_PRIORITY: z.string().default("openai,groq,openrouter,cerebras,mistral,gemini,deepseek"),
+  /** Provider priority chain for text tasks: Gemini → Cerebras → Mistral → OpenRouter */
+  ROUTER_CHAT_PRIORITY: z.string().default("gemini,cerebras,mistral,openrouter"),
   /** Provider priority chain for coding tasks */
-  ROUTER_CODING_PRIORITY: z.string().default("openai,claude,gemini,groq,cerebras,mistral,deepseek"),
-  /** Provider priority chain for image prompt tasks */
-  ROUTER_IMAGE_PRIORITY: z.string().default("openai,gemini,openrouter"),
-  /** Provider priority chain for video prompt tasks */
-  ROUTER_VIDEO_PRIORITY: z.string().default("openai,gemini,openrouter"),
+  ROUTER_CODING_PRIORITY: z.string().default("gemini,cerebras,mistral,openrouter"),
+  /** Provider priority chain for business tasks */
+  ROUTER_BUSINESS_PRIORITY: z.string().default("gemini,cerebras,mistral,openrouter"),
+  /** Provider priority chain for social tasks */
+  ROUTER_SOCIAL_PRIORITY: z.string().default("gemini,cerebras,mistral,openrouter"),
+  /** Provider priority chain for translate tasks */
+  ROUTER_TRANSLATE_PRIORITY: z.string().default("gemini,cerebras,mistral,openrouter"),
+  /** Provider priority chain for image prompt tasks (separate: Stability → Flux) */
+  ROUTER_IMAGE_PRIORITY: z.string().default("stability,flux"),
+  /** Provider priority chain for video prompt tasks (uses TEXT AI router) */
+  ROUTER_VIDEO_PRIORITY: z.string().default("gemini,cerebras,mistral,openrouter"),
   /** Default provider priority fallback */
-  ROUTER_DEFAULT_PRIORITY: z.string().default("openai,groq,openrouter,cerebras,mistral,gemini,deepseek,claude"),
+  ROUTER_DEFAULT_PRIORITY: z.string().default("gemini,cerebras,mistral,openrouter"),
   /** Cache TTL in seconds (default: 5 minutes) */
   AI_CACHE_TTL: z.coerce.number().default(300),
 

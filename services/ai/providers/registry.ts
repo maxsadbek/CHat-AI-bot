@@ -111,7 +111,9 @@ export class ProviderRegistry {
   }
 
   getDefaultModel(): ProviderModel {
-    return ALL_MODELS.find((m) => m.id === "gpt-4o") ?? ALL_MODELS[0]!;
+    // Default model comes from OPENAI_MODEL env var
+    const defaultModelId = process.env.OPENAI_MODEL || "gpt-4o-mini";
+    return ALL_MODELS.find((m) => m.id === defaultModelId) ?? ALL_MODELS[0]!;
   }
 
   getModelName(modelId: string): string {

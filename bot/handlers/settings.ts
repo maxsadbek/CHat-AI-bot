@@ -48,7 +48,7 @@ export async function settingsLanguageHandler(ctx: BotContext): Promise<void> {
  */
 export async function settingsModelHandler(ctx: BotContext): Promise<void> {
   const lang = ctx.session.language;
-  const currentModel = ctx.session.selectedModel ?? "gpt-4o";
+  const currentModel = ctx.session.selectedModel || process.env.OPENAI_MODEL || "gpt-4o-mini";
 
   await ctx.reply(t(lang, "settings.model", { model: currentModel }), {
     parse_mode: "Markdown",

@@ -249,130 +249,84 @@ export class AIConfig {
         timeoutMs: 60000,
       },
     },
+    // ALL model IDs are loaded from environment variables — no hardcoded model IDs.
+    // The *_MODEL env vars (e.g. OPENAI_MODEL, GEMINI_MODEL, CEREBRAS_MODEL)
+    // define which model each provider uses.
     models: {
-      "gpt-4o": {
-        id: "gpt-4o",
-        name: "GPT-4o",
+      // OpenAI model from env
+      [process.env.OPENAI_MODEL || "gpt-4o-mini"]: {
+        id: process.env.OPENAI_MODEL || "gpt-4o-mini",
+        name: `OpenAI (${process.env.OPENAI_MODEL || "gpt-4o-mini"})`,
         provider: "openai",
         maxContextTokens: 128000,
         maxOutputTokens: 4096,
         pricing: { promptUsdPer1k: 0.0025, completionUsdPer1k: 0.01 },
         isDefault: true,
       },
-      "gpt-4o-mini": {
-        id: "gpt-4o-mini",
-        name: "GPT-4o Mini",
-        provider: "openai",
-        maxContextTokens: 128000,
-        maxOutputTokens: 16384,
+      // Gemini model from env
+      [process.env.GEMINI_MODEL || "gemini-2.5-flash"]: {
+        id: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+        name: `Gemini (${process.env.GEMINI_MODEL || "gemini-2.5-flash"})`,
+        provider: "gemini",
+        maxContextTokens: 1048576,
+        maxOutputTokens: 8192,
         pricing: { promptUsdPer1k: 0.00015, completionUsdPer1k: 0.0006 },
       },
-      "claude-sonnet-4-20250514": {
-        id: "claude-sonnet-4-20250514",
-        name: "Claude Sonnet 4",
+      // Claude model from env
+      [process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514"]: {
+        id: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
+        name: `Claude (${process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514"})`,
         provider: "anthropic",
         maxContextTokens: 200000,
         maxOutputTokens: 8192,
         pricing: { promptUsdPer1k: 0.003, completionUsdPer1k: 0.015 },
       },
-      "gemini-2.0-flash": {
-        id: "gemini-2.0-flash",
-        name: "Gemini 2.0 Flash",
-        provider: "gemini",
-        maxContextTokens: 1048576,
-        maxOutputTokens: 8192,
-        pricing: { promptUsdPer1k: 0.0001, completionUsdPer1k: 0.0004 },
-      },
-      "groq-llama-3.3-70b": {
-        id: "groq-llama-3.3-70b",
-        name: "Llama 3.3 70B (Groq)",
-        provider: "groq",
-        maxContextTokens: 128000,
-        maxOutputTokens: 8192,
-        pricing: { promptUsdPer1k: 0.00059, completionUsdPer1k: 0.00079 },
-      },
-      "deepseek-chat": {
-        id: "deepseek-chat",
-        name: "DeepSeek Chat",
-        provider: "deepseek",
-        maxContextTokens: 128000,
-        maxOutputTokens: 4096,
-        pricing: { promptUsdPer1k: 0.00014, completionUsdPer1k: 0.00028 },
-      },
-      "openrouter-auto": {
-        id: "openrouter-auto",
-        name: "OpenRouter Auto",
-        provider: "openrouter",
-        maxContextTokens: 128000,
-        maxOutputTokens: 4096,
-        pricing: { promptUsdPer1k: 0.002, completionUsdPer1k: 0.008 },
-      },
-      "ollama-llama3": {
-        id: "ollama-llama3",
-        name: "Llama 3 (Local)",
-        provider: "ollama",
-        maxContextTokens: 8192,
-        maxOutputTokens: 2048,
-        pricing: { promptUsdPer1k: 0, completionUsdPer1k: 0 },
-      },
-      "cerebras-llama3.1-8b": {
-        id: "cerebras-llama3.1-8b",
-        name: "Llama 3.1 8B (Cerebras)",
-        provider: "cerebras",
-        maxContextTokens: 8192,
-        maxOutputTokens: 4096,
-        pricing: { promptUsdPer1k: 0.0001, completionUsdPer1k: 0.0001 },
-      },
-      "mistral-small-latest": {
-        id: "mistral-small-latest",
-        name: "Mistral Small",
-        provider: "mistral",
-        maxContextTokens: 128000,
-        maxOutputTokens: 4096,
-        pricing: { promptUsdPer1k: 0.001, completionUsdPer1k: 0.003 },
-      },
-      "mistral-large-latest": {
-        id: "mistral-large-latest",
-        name: "Mistral Large",
-        provider: "mistral",
-        maxContextTokens: 128000,
-        maxOutputTokens: 8192,
-        pricing: { promptUsdPer1k: 0.002, completionUsdPer1k: 0.006 },
-      },
-      "stable-diffusion-xl-1024-v1-0": {
-        id: "stable-diffusion-xl-1024-v1-0",
-        name: "Stable Diffusion XL 1.0",
-        provider: "stability",
-        maxContextTokens: 8192,
-        maxOutputTokens: 2048,
-        pricing: { promptUsdPer1k: 0.001, completionUsdPer1k: 0.002 },
-      },
-      "FLUX.1-schnell": {
-        id: "FLUX.1-schnell",
-        name: "FLUX.1 Schnell",
-        provider: "flux",
-        maxContextTokens: 8192,
-        maxOutputTokens: 2048,
-        pricing: { promptUsdPer1k: 0.001, completionUsdPer1k: 0.002 },
-      },
-      "gemini-2.5-flash": {
-        id: "gemini-2.5-flash",
-        name: "Gemini 2.5 Flash",
-        provider: "gemini",
-        maxContextTokens: 1048576,
-        maxOutputTokens: 8192,
-        pricing: { promptUsdPer1k: 0.00015, completionUsdPer1k: 0.0006 },
-      },
-      // Cerebras GPT model alias
-      "gpt-oss-120b": {
-        id: "gpt-oss-120b",
-        name: "GPT OSS 120B",
+      // Cerebras model from env
+      [process.env.CEREBRAS_MODEL || "gpt-oss-120b"]: {
+        id: process.env.CEREBRAS_MODEL || "gpt-oss-120b",
+        name: `Cerebras (${process.env.CEREBRAS_MODEL || "gpt-oss-120b"})`,
         provider: "cerebras",
         maxContextTokens: 32000,
         maxOutputTokens: 4096,
         pricing: { promptUsdPer1k: 0.0001, completionUsdPer1k: 0.0001 },
       },
-      // OpenRouter free model (used with OpenAI-compatible endpoint)
+      // Mistral model from env
+      [process.env.MISTRAL_MODEL || "mistral-large-latest"]: {
+        id: process.env.MISTRAL_MODEL || "mistral-large-latest",
+        name: `Mistral (${process.env.MISTRAL_MODEL || "mistral-large-latest"})`,
+        provider: "mistral",
+        maxContextTokens: 128000,
+        maxOutputTokens: 8192,
+        pricing: { promptUsdPer1k: 0.002, completionUsdPer1k: 0.006 },
+      },
+      // OpenRouter model from env
+      [process.env.OPENROUTER_MODEL || "openrouter/auto"]: {
+        id: process.env.OPENROUTER_MODEL || "openrouter/auto",
+        name: `OpenRouter (${process.env.OPENROUTER_MODEL || "openrouter/auto"})`,
+        provider: "openrouter",
+        maxContextTokens: 128000,
+        maxOutputTokens: 4096,
+        pricing: { promptUsdPer1k: 0.002, completionUsdPer1k: 0.008 },
+      },
+      // Stability AI model from env
+      [process.env.STABILITY_MODEL || "stable-diffusion-xl-1024-v1-0"]: {
+        id: process.env.STABILITY_MODEL || "stable-diffusion-xl-1024-v1-0",
+        name: `Stability AI (${process.env.STABILITY_MODEL || "stable-diffusion-xl-1024-v1-0"})`,
+        provider: "stability",
+        maxContextTokens: 8192,
+        maxOutputTokens: 2048,
+        pricing: { promptUsdPer1k: 0.001, completionUsdPer1k: 0.002 },
+      },
+      // Flux model from env
+      [process.env.FLUX_MODEL || "FLUX.1-schnell"]: {
+        id: process.env.FLUX_MODEL || "FLUX.1-schnell",
+        name: `Flux AI (${process.env.FLUX_MODEL || "FLUX.1-schnell"})`,
+        provider: "flux",
+        maxContextTokens: 8192,
+        maxOutputTokens: 2048,
+        pricing: { promptUsdPer1k: 0.001, completionUsdPer1k: 0.002 },
+      },
+      // OpenRouter free model alias (used through OpenAI-compatible endpoint)
       "openrouter/free": {
         id: "openrouter/free",
         name: "OpenRouter Free",

@@ -27,7 +27,7 @@ export class SessionManager {
       selectedSocialPlatform: "all",
       selectedBusinessType: "startup_idea",
     selectedCodeLanguage: "Next.js",
-    selectedModel: "gpt-4o",
+    selectedModel: process.env.OPENAI_MODEL || "gpt-4o-mini",
     currentProjectId: null,
     pendingProjectName: "",
     ...overrides,

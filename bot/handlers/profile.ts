@@ -82,7 +82,7 @@ export async function profileHandler(ctx: BotContext): Promise<void> {
     const languageName =
       LANGUAGE_NAMES[userLangCode as keyof typeof LANGUAGE_NAMES] ?? "English";
 
-    const selectedModelId = ctx.session.selectedModel ?? "gpt-4o";
+    const selectedModelId = ctx.session.selectedModel || process.env.OPENAI_MODEL || "gpt-4o-mini";
     const modelName = providerRegistry.getModelName(selectedModelId);
 
     const isEffectivePremium = profile.isPremium || isAdminUser;

@@ -92,10 +92,30 @@ export abstract class BaseAIService {
 
       return result;
     } catch (error) {
+      // Extract details from AIError if available
+      let errorCode = "UNKNOWN";
+      let errorStatus: number | undefined;
+      let errorProvider: string | undefined;
+      let isRetryable = false;
+
+      if (error instanceof Error && "code" in error) {
+        const aiErr = error as any;
+        errorCode = aiErr.code ?? "UNKNOWN";
+        errorStatus = aiErr.statusCode;
+        errorProvider = aiErr.provider;
+        isRetryable = aiErr.retryable ?? false;
+      }
+
       log.error("[AI_PROVIDER] Execution failed", {
         feature: this.feature,
-        modelId,
+        modelId: modelId ?? "default",
+        userPlan: typeof userPlan === "string" ? userPlan : "none",
+        errorCode,
+        statusCode: errorStatus,
+        provider: errorProvider,
+        retryable: isRetryable,
         error: String(error),
+        timestamp: new Date().toISOString(),
       });
       throw error;
     }

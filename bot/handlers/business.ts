@@ -91,9 +91,16 @@ export async function businessGenerateHandler(ctx: BotContext): Promise<void> {
       reply_markup: businessKeyboard,
     });
   } catch (error) {
-    log.error("Business AI error", { userId, error: String(error) });
+    log.error("Business AI error", {
+      userId,
+      feature: "business",
+      type,
+      error: String(error),
+    });
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
-    await ctx.reply(t(lang, "business.error"), {
+    // Show the friendly error from AIError if available, otherwise localized fallback
+    const friendlyMsg = error instanceof Error ? error.message : null;
+    await ctx.reply(friendlyMsg || t(lang, "business.error"), {
       parse_mode: "Markdown",
       reply_markup: businessKeyboard,
     });

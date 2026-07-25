@@ -36,6 +36,16 @@ const log = logger.child("handler-video");
  * [scene text]
  * ...
  */
+/**
+ * Quick check: does text look like raw JSON (starts with [ or { and has quoted keys)?
+ */
+function looksLikeRawJson(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  const first = trimmed[0]!;
+  return (first === "[" || first === "{") && /"[a-zA-Z]+\s*":/.test(trimmed.slice(0, 200));
+}
+
 function formatVideoPrompts(prompts: VideoPrompt[]): string {
   const parts: string[] = [];
 
@@ -103,8 +113,12 @@ function formatVideoPrompts(prompts: VideoPrompt[]): string {
       block.push("");
     }
 
-    // Only show fullPrompt if it's non-empty and differs from scene (avoid duplication)
-    if (prompt.fullPrompt && prompt.fullPrompt !== prompt.scene) {
+    // Only show fullPrompt if it's non-empty, differs from scene, and is NOT raw JSON
+    if (
+      prompt.fullPrompt &&
+      prompt.fullPrompt !== prompt.scene &&
+      !looksLikeRawJson(prompt.fullPrompt)
+    ) {
       block.push("📝 <b>Full Prompt:</b>");
       block.push(escapeTelegramHTML(prompt.fullPrompt));
       block.push("");

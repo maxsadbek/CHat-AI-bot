@@ -144,79 +144,126 @@ Return one JSON object per platform in a JSON array.`;
    * Parse AI JSON response, with robust fallback to text-based extraction.
    *
    * Strategy:
-   * 1. Strip markdown fences
-   * 2. Attempt JSON.parse
-   * 3. If JSON fails, use `extractFieldsFromText` to parse "Field: value" lines
-   * 4. If even that yields nothing, pack the raw content into fullPrompt only
+   * 1. Strip ALL markdown code blocks from anywhere in the response
+   * 2. Extract JSON substring by finding the first `[` or `{`
+   * 3. Attempt JSON.parse with multiple fix-up strategies (single quotes, trailing commas)
+   * 4. If JSON fails, use `extractFieldsFromText` to parse "Field: value" lines
+   * 5. If even that yields nothing, pack the raw content into fullPrompt only
    */
   private parseResponse(
     rawContent: string,
     targetPlatforms: VideoPlatform[],
     description: string
   ): VideoPrompt[] {
-    // 1. Strip possible markdown code blocks
-    const cleaned = rawContent
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/\s*```\s*$/, "")
-      .trim();
+    // 1. Strip ALL markdown code blocks from anywhere in the response
+    const noCodeBlocks = rawContent.replace(/```[\s\S]*?```/g, "").trim();
 
-    // 2. Try JSON.parse
-    const jsonResult = this.tryParseJson(cleaned, targetPlatforms);
-    if (jsonResult) return jsonResult;
+    // 2. Extract JSON substring from surrounding text
+    const jsonStr = this.extractJsonString(noCodeBlocks);
+    if (jsonStr) {
+      const jsonResult = this.tryParseJson(jsonStr, targetPlatforms);
+      if (jsonResult) return jsonResult;
+    }
 
-    // 3. Fallback: text-based field extraction
-    const fields = this.extractFieldsFromText(cleaned);
+    // 3. Fallback: text-based field extraction on the full cleaned text
+    const fields = this.extractFieldsFromText(noCodeBlocks);
     if (Object.keys(fields).length > 0) {
       return targetPlatforms.map((p) => this.buildFromFields(p, fields, description));
     }
 
-    // 4. Last resort: pack everything into fullPrompt with a basic scene
+    // 4. Last resort: pack everything into fullPrompt
     return targetPlatforms.map((p) =>
-      this.buildEmptyFallback(p, cleaned, description)
+      this.buildEmptyFallback(p, noCodeBlocks, description)
     );
   }
 
   /**
-   * Attempt to parse the response as JSON. Returns null on failure.
+   * Locate the first JSON array or object within a text blob and return it.
+   * Returns null if no JSON-like structure is found.
+   */
+  private extractJsonString(text: string): string | null {
+    const firstBracket = text.indexOf("[");
+    const firstBrace = text.indexOf("{");
+
+    let startIdx = -1;
+    if (firstBracket >= 0 && (firstBrace < 0 || firstBracket < firstBrace)) {
+      startIdx = firstBracket;
+    } else if (firstBrace >= 0) {
+      startIdx = firstBrace;
+    }
+
+    if (startIdx < 0) return null;
+    return text.substring(startIdx).trim();
+  }
+
+  /**
+   * Attempt to parse the response as JSON. Tries multiple parsing strategies
+   * and returns structured VideoPrompt[] on success.
    */
   private tryParseJson(
     text: string,
     targetPlatforms: VideoPlatform[]
   ): VideoPrompt[] | null {
-    try {
-      const parsed = JSON.parse(text);
-      const arr: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
+    // Collect all attempts; first to succeed wins
+    const candidates = [
+      text,                                        // raw
+      text.replace(/'/g, '"'),                      // single -> double quotes
+      text.replace(/,([\s\n]*[}\]])/g, "$1"),       // trailing commas
+      text.replace(/'/g, '"').replace(/,([\s\n]*[}\]])/g, "$1"), // both fixes
+    ];
 
-      const results: VideoPrompt[] = arr
-        .map((item, idx) => {
-          const p = item as Record<string, unknown>;
-          const platform =
-            (p["platform"] as VideoPlatform) ??
-            targetPlatforms[idx] ??
-            targetPlatforms[0]!;
+    for (const candidate of candidates) {
+      try {
+        const parsed = JSON.parse(candidate);
+        const arr: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
 
-          return {
-            platform,
-            scene: this.safeString(p["scene"]),
-            lighting: this.safeString(p["lighting"]),
-            cameraMovement: this.safeString(p["cameraMovement"]),
-            lens: this.safeString(p["lens"]),
-            environment: this.safeString(p["environment"]),
-            negativePrompt: this.safeString(p["negativePrompt"]),
-            voice: this.safeString(p["voice"]),
-            music: this.safeString(p["music"]),
-            duration: this.safeString(p["duration"]),
-            style: this.safeString(p["style"]),
-            fullPrompt: this.safeString(p["fullPrompt"]) || text,
-          };
-        })
-        .filter((r): r is VideoPrompt => !!r.platform);
+        const results: VideoPrompt[] = arr
+          .map((item, idx) => {
+            const p = item as Record<string, unknown>;
+            const platform =
+              (p["platform"] as VideoPlatform) ??
+              targetPlatforms[idx] ??
+              targetPlatforms[0]!;
 
-      if (results.length > 0) return results;
-    } catch {
-      // JSON parse failed
+            return {
+              platform,
+              scene: this.safeString(p["scene"]),
+              lighting: this.safeString(p["lighting"]),
+              cameraMovement: this.safeString(p["cameraMovement"]),
+              lens: this.safeString(p["lens"]),
+              environment: this.safeString(p["environment"]),
+              negativePrompt: this.safeString(p["negativePrompt"]),
+              voice: this.safeString(p["voice"]),
+              music: this.safeString(p["music"]),
+              duration: this.safeString(p["duration"]),
+              style: this.safeString(p["style"]),
+              fullPrompt: this.safeString(p["fullPrompt"]) || text,
+            };
+          })
+          .filter((r): r is VideoPrompt => !!r.platform);
+
+        if (results.length > 0) return results;
+      } catch {
+        // Try next candidate
+      }
     }
+
     return null;
+  }
+
+  /**
+   * Skip fullPrompt text that looks like raw JSON to avoid showing
+   * unparsed JSON to the end user.
+   */
+  private looksLikeRawJson(text: string): boolean {
+    const trimmed = text.trim();
+    if (!trimmed) return false;
+    const first = trimmed[0]!;
+    // Starts with [ or { and contains typical JSON patterns
+    if (first === "[" || first === "{") {
+      return /"[a-zA-Z]+\s*":/.test(trimmed.slice(0, 200));
+    }
+    return false;
   }
 
   /**
@@ -308,16 +355,18 @@ Return one JSON object per platform in a JSON array.`;
   }
 
   /**
-   * Absolute last-resort fallback: empty scene, raw content as fullPrompt.
+   * Absolute last-resort fallback: uses the user's description as the scene
+   * and hides fullPrompt if it looks like raw JSON.
    */
   private buildEmptyFallback(
     platform: VideoPlatform,
     rawContent: string,
-    _description: string
+    description: string
   ): VideoPrompt {
+    const isRawJson = this.looksLikeRawJson(rawContent);
     return {
       platform,
-      scene: "",
+      scene: isRawJson ? description : "",
       lighting: "",
       cameraMovement: "",
       lens: "",
@@ -327,7 +376,7 @@ Return one JSON object per platform in a JSON array.`;
       music: "",
       duration: "",
       style: "",
-      fullPrompt: rawContent,
+      fullPrompt: isRawJson ? "" : rawContent,
     };
   }
 

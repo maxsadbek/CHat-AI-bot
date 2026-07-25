@@ -39,7 +39,9 @@ export type ProviderId =
   | "groq"
   | "deepseek"
   | "openrouter"
-  | "ollama";
+  | "ollama"
+  | "cerebras"
+  | "mistral";
 
 export interface ProviderSetting {
   id: ProviderId;
@@ -107,48 +109,50 @@ export class AIConfig {
       translate: 0.3,
       social: 0.8,
     },
+    // Per-feature max tokens read from environment variables with sensible defaults
+    // FREE tier uses minimal tokens to reduce costs; premium tiers get more.
     tokenPolicies: {
       chat: {
-        FREE: { base: 1024, max: 2048 },
-        PREMIUM: { base: 4096, max: 8192 },
-        PRO: { base: 8192, max: 16384 },
-        ENTERPRISE: { base: 16384, max: 32768 },
+        FREE: { base: Number(process.env.AI_CHAT_MAX_TOKENS) || 400, max: Number(process.env.AI_CHAT_MAX_TOKENS) || 400 },
+        PREMIUM: { base: 1024, max: 2048 },
+        PRO: { base: 2048, max: 4096 },
+        ENTERPRISE: { base: 4096, max: 8192 },
       },
       business: {
-        FREE: { base: 1500, max: 3000 },
-        PREMIUM: { base: 4096, max: 8192 },
-        PRO: { base: 8192, max: 16384 },
-        ENTERPRISE: { base: 16384, max: 32768 },
+        FREE: { base: Number(process.env.AI_BUSINESS_MAX_TOKENS) || 500, max: Number(process.env.AI_BUSINESS_MAX_TOKENS) || 500 },
+        PREMIUM: { base: 1024, max: 2048 },
+        PRO: { base: 2048, max: 4096 },
+        ENTERPRISE: { base: 4096, max: 8192 },
       },
       coding: {
-        FREE: { base: 2048, max: 4096 },
-        PREMIUM: { base: 8192, max: 16384 },
-        PRO: { base: 16384, max: 32768 },
-        ENTERPRISE: { base: 32768, max: 65536 },
+        FREE: { base: Number(process.env.AI_CODING_MAX_TOKENS) || 600, max: Number(process.env.AI_CODING_MAX_TOKENS) || 600 },
+        PREMIUM: { base: 2048, max: 4096 },
+        PRO: { base: 4096, max: 8192 },
+        ENTERPRISE: { base: 8192, max: 16384 },
       },
       image: {
-        FREE: { base: 1024, max: 2048 },
-        PREMIUM: { base: 4096, max: 8192 },
-        PRO: { base: 8192, max: 16384 },
-        ENTERPRISE: { base: 16384, max: 32768 },
+        FREE: { base: Number(process.env.AI_IMAGE_MAX_TOKENS) || 350, max: Number(process.env.AI_IMAGE_MAX_TOKENS) || 350 },
+        PREMIUM: { base: 1024, max: 2048 },
+        PRO: { base: 2048, max: 4096 },
+        ENTERPRISE: { base: 4096, max: 8192 },
       },
       video: {
-        FREE: { base: 1024, max: 2048 },
-        PREMIUM: { base: 4096, max: 8192 },
-        PRO: { base: 8192, max: 16384 },
-        ENTERPRISE: { base: 16384, max: 32768 },
+        FREE: { base: Number(process.env.AI_VIDEO_MAX_TOKENS) || 450, max: Number(process.env.AI_VIDEO_MAX_TOKENS) || 450 },
+        PREMIUM: { base: 1024, max: 2048 },
+        PRO: { base: 2048, max: 4096 },
+        ENTERPRISE: { base: 4096, max: 8192 },
       },
       translate: {
-        FREE: { base: 1024, max: 2048 },
-        PREMIUM: { base: 4096, max: 8192 },
-        PRO: { base: 8192, max: 16384 },
-        ENTERPRISE: { base: 16384, max: 32768 },
+        FREE: { base: Number(process.env.AI_TRANSLATE_MAX_TOKENS) || 400, max: Number(process.env.AI_TRANSLATE_MAX_TOKENS) || 400 },
+        PREMIUM: { base: 1024, max: 2048 },
+        PRO: { base: 2048, max: 4096 },
+        ENTERPRISE: { base: 4096, max: 8192 },
       },
       social: {
-        FREE: { base: 1500, max: 3000 },
-        PREMIUM: { base: 4096, max: 8192 },
-        PRO: { base: 8192, max: 16384 },
-        ENTERPRISE: { base: 16384, max: 32768 },
+        FREE: { base: Number(process.env.AI_SOCIAL_MAX_TOKENS) || 500, max: Number(process.env.AI_SOCIAL_MAX_TOKENS) || 500 },
+        PREMIUM: { base: 1024, max: 2048 },
+        PRO: { base: 2048, max: 4096 },
+        ENTERPRISE: { base: 4096, max: 8192 },
       },
     },
     providers: {
@@ -207,6 +211,22 @@ export class AIConfig {
         envKey: "OLLAMA_API_KEY",
         enabled: true,
         timeoutMs: 120000,
+      },
+      cerebras: {
+        id: "cerebras",
+        name: "Cerebras",
+        baseUrl: process.env.CEREBRAS_BASE_URL || "https://api.cerebras.ai/v1",
+        envKey: "CEREBRAS_API_KEY",
+        enabled: true,
+        timeoutMs: 60000,
+      },
+      mistral: {
+        id: "mistral",
+        name: "Mistral AI",
+        baseUrl: process.env.MISTRAL_BASE_URL || "https://api.mistral.ai/v1",
+        envKey: "MISTRAL_API_KEY",
+        enabled: true,
+        timeoutMs: 60000,
       },
     },
     models: {
@@ -275,11 +295,31 @@ export class AIConfig {
         maxOutputTokens: 2048,
         pricing: { promptUsdPer1k: 0, completionUsdPer1k: 0 },
       },
+      "cerebras-llama3.1-8b": {
+        id: "cerebras-llama3.1-8b",
+        name: "Llama 3.1 8B (Cerebras)",
+        provider: "cerebras",
+        maxContextTokens: 8192,
+        maxOutputTokens: 4096,
+        pricing: { promptUsdPer1k: 0.0001, completionUsdPer1k: 0.0001 },
+      },
+      "mistral-small-latest": {
+        id: "mistral-small-latest",
+        name: "Mistral Small",
+        provider: "mistral",
+        maxContextTokens: 128000,
+        maxOutputTokens: 4096,
+        pricing: { promptUsdPer1k: 0.001, completionUsdPer1k: 0.003 },
+      },
     },
   };
 
   /**
    * Resolve maximum output tokens dynamically based on feature, plan tier, and prompt size.
+   */
+  /**
+   * Resolve maximum output tokens dynamically based on feature, plan tier, and prompt size.
+   * Uses env-var-configured defaults to avoid hardcoding.
    */
   static getMaxTokens(
     feature: FeatureType,
@@ -289,7 +329,12 @@ export class AIConfig {
     const planType = normalizePlanType(plan);
     const policy =
       this.configData.tokenPolicies[feature]?.[planType] ??
-      this.configData.tokenPolicies[feature]?.FREE ?? { base: 1024, max: 2048 };
+      this.configData.tokenPolicies[feature]?.FREE ?? { base: 400, max: 400 };
+
+    // For FREE plan, always use the env-var base value (no dynamic scaling)
+    if (planType === "FREE") {
+      return policy.base;
+    }
 
     // Dynamic cost optimization: scale limit based on prompt length
     if (promptLength > 4000) {

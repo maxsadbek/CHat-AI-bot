@@ -38,7 +38,7 @@
     "no_history": "📋 *No conversations yet*\n\nStart chatting and your history will appear here!",
     "history_entry": "{index}. {title}\n   💬 {count} messages\n   🕐 {date}",
     "error_no_user": "❌ *Error*\n\nCould not identify your account. Please use /start first.",
-    "error_generic": "❌ *Error*\n\nSorry, I encountered an error. Please try again.\n\nMake sure your OpenAI API key is configured correctly.",
+    "error_generic": "⚠️ AI is temporarily busy. Please try again in a few moments.",
     "clear_done": "🧹 *Chat cleared!*\n\nAll messages in this conversation have been removed.",
     "clear_confirm": "🧹 *Clear this conversation?*\n\nThis will delete all messages permanently.",
     "resumed": "💬 *Conversation resumed*\n\nYou can continue where you left off.",
@@ -55,7 +55,7 @@
     "resumed": "🎬 *Video prompt reopened*\n\nYou can view the previous prompts again.",
     "regenerated": "🔄 *Video prompts regenerated!*\n\nNew prompts generated from your original description.",
     "limit_reached": "⚠️ *Conversation limit reached*\n\nYou have reached the maximum of 10 saved video prompt sessions.\n\nPlease delete an old one or upgrade to Premium for unlimited.",
-    "error": "❌ *Error generating video prompts*\n\nPlease try again with a different description."
+    "error": "⚠️ Unable to generate a video prompt right now. Please try again later."
   },
   "image": {
     "welcome": "🎨 *Image AI Studio*\n\nGenerate stunning prompts for:\n• GPT Image\n• Flux\n• Midjourney\n• Leonardo\n• Ideogram\n\n_Choose a platform or describe your image idea below:_",
@@ -67,7 +67,7 @@
     "history_entry": "{index}. {title}\n   🕐 {date}",
     "resumed": "🎨 *Image prompt reopened*\n\nYou can view the previous prompts again.",
     "limit_reached": "⚠️ *Conversation limit reached*\n\nYou have reached the maximum of 10 saved image prompt sessions.\n\nPlease delete an old one or upgrade to Premium for unlimited.",
-    "error": "❌ *Error generating image prompts*\n\nPlease try again with a different description."
+    "error": "⚠️ Unable to generate an image prompt right now. Please try again later."
   },
   "social": {
     "welcome": "📱 *Social Media Studio*\n\nGenerate engaging content for:\n• Instagram 📸\n• TikTok 🎵\n• Telegram ✈️\n• Facebook 📘\n• LinkedIn 💼\n• YouTube 🎥\n\n_Choose a platform or describe your content idea below:_",
@@ -98,7 +98,7 @@
     "history_entry": "{index}. {title}\n   🕐 {date}",
     "resumed": "💻 *Coding conversation resumed*\n\nYou can continue where you left off.",
     "limit_reached": "⚠️ *Conversation limit reached*\n\nYou have reached the maximum of 10 saved conversations for Coding.\n\nPlease delete an old conversation or upgrade to Premium for unlimited.",
-    "error": "❌ *Error generating code*\n\nPlease try again with a different description."
+    "error": "⚠️ Code generation is temporarily unavailable."
   },
   "translate": {
     "welcome": "🌍 *AI Translator*\n\nTranslate text between any languages.\n\n_Send me text to translate in this format:_\n\n```\nTranslate to [language]:\n[your text here]\n```\n\n_Or just send text and I'll ask you the target language._\n\nExamples:\n• `Translate to Spanish: Hello, how are you?`\n• `Translate to Japanese: I love programming`\n• `Translate to French: What time is it?`",

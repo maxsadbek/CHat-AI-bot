@@ -2,6 +2,8 @@
  * Enterprise AI Chat Service
  * Provides ChatGPT-like conversational AI with memory.
  * Uses Central Executor, Dependency Injection, and Dynamic Token Allocation.
+ *
+ * Optimized: concise system prompt, reduced token usage.
  */
 
 import { BaseAIService } from "./base";
@@ -11,13 +13,11 @@ import type { AIChatResponse } from "@/types";
 import type { PlanType } from "@/config/ai";
 
 export class AIChatService extends BaseAIService {
-  private readonly systemPrompt = `You are AI Creator Studio, a premium AI assistant.
-You are helpful, creative, and professional.
-You respond in clear markdown format.
-You support conversations, code generation, and creative tasks.
-Keep responses concise but comprehensive.
-Use emojis occasionally to make responses engaging.
-Current date: ${new Date().toISOString().split("T")[0] ?? "unknown"}.`;
+  // Optimized: concise system prompt, trimmed whitespace
+  private readonly systemPrompt = [
+    `You are AI Creator Studio, a helpful AI assistant.`,
+    `Current date: ${new Date().toISOString().split("T")[0] ?? "unknown"}.`,
+  ].join(" ");
 
   constructor() {
     super("chat");

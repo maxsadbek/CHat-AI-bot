@@ -27,6 +27,34 @@ const envSchema = z.object({
   DEEPSEEK_BASE_URL: z.string().url().default("https://api.deepseek.com/v1"),
   DEEPSEEK_MODEL: z.string().default("deepseek-chat"),
 
+  // ─── Cerebras API (OpenAI-compatible) ──────
+  CEREBRAS_API_KEY: z.string().optional(),
+  CEREBRAS_BASE_URL: z.string().url().default("https://api.cerebras.ai/v1"),
+  CEREBRAS_MODEL: z.string().default("llama3.1-8b"),
+
+  // ─── Mistral API (OpenAI-compatible) ───────
+  MISTRAL_API_KEY: z.string().optional(),
+  MISTRAL_BASE_URL: z.string().url().default("https://api.mistral.ai/v1"),
+  MISTRAL_MODEL: z.string().default("mistral-small-latest"),
+
+  // ─── AI Router Configuration ────────────
+  /** Daily limit for free users */
+  AI_DAILY_LIMIT_FREE: z.coerce.number().default(50),
+  /** Daily limit for premium users */
+  AI_DAILY_LIMIT_PREMIUM: z.coerce.number().default(500),
+  /** Provider priority chain for each task (comma-separated, highest first) */
+  ROUTER_CHAT_PRIORITY: z.string().default("openai,groq,openrouter,cerebras,mistral,gemini,deepseek"),
+  /** Provider priority chain for coding tasks */
+  ROUTER_CODING_PRIORITY: z.string().default("openai,claude,gemini,groq,cerebras,mistral,deepseek"),
+  /** Provider priority chain for image prompt tasks */
+  ROUTER_IMAGE_PRIORITY: z.string().default("openai,gemini,openrouter"),
+  /** Provider priority chain for video prompt tasks */
+  ROUTER_VIDEO_PRIORITY: z.string().default("openai,gemini,openrouter"),
+  /** Default provider priority fallback */
+  ROUTER_DEFAULT_PRIORITY: z.string().default("openai,groq,openrouter,cerebras,mistral,gemini,deepseek,claude"),
+  /** Cache TTL in seconds (default: 5 minutes) */
+  AI_CACHE_TTL: z.coerce.number().default(300),
+
   // Database
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
 
@@ -47,6 +75,22 @@ const envSchema = z.object({
   // App
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
   NEXT_PUBLIC_APP_NAME: z.string().default("AI Creator Studio"),
+
+  // ─── Per-Feature Max Tokens ────────────
+  /** Max tokens for AI Chat (default: 400) */
+  AI_CHAT_MAX_TOKENS: z.coerce.number().default(400),
+  /** Max tokens for Image prompts (default: 350) */
+  AI_IMAGE_MAX_TOKENS: z.coerce.number().default(350),
+  /** Max tokens for Video prompts (default: 450) */
+  AI_VIDEO_MAX_TOKENS: z.coerce.number().default(450),
+  /** Max tokens for Coding (default: 600) */
+  AI_CODING_MAX_TOKENS: z.coerce.number().default(600),
+  /** Max tokens for Business (default: 500) */
+  AI_BUSINESS_MAX_TOKENS: z.coerce.number().default(500),
+  /** Max tokens for Social (default: 500) */
+  AI_SOCIAL_MAX_TOKENS: z.coerce.number().default(500),
+  /** Max tokens for Translate (default: 400) */
+  AI_TRANSLATE_MAX_TOKENS: z.coerce.number().default(400),
 
   // ─── Stripe ───────────────────────────
   STRIPE_SECRET_KEY: z.string().optional(),

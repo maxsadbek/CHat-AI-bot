@@ -1,5 +1,7 @@
 /**
  * Enterprise Image AI Prompt Service
+ *
+ * Optimized: concise prompts, trimmed whitespace, reduced token usage.
  */
 
 import { BaseAIService } from "./base";
@@ -27,24 +29,15 @@ export class ImageAIService extends BaseAIService {
   ): Promise<ImagePrompt[]> {
     const targetPlatforms = platform ? [platform] : this.platforms;
 
-    const systemPrompt = `You are a professional AI image prompt engineer.
-You craft stunning, detailed prompts for AI image generation platforms.
-Each prompt must include: composition, lighting, camera type, mood, quality parameters, and negative prompts.
-Be artistic and precise.`;
+    // Optimized: concise system prompt, reduced token usage
+    const systemPrompt = "You are an AI image prompt engineer. Craft detailed, artistic prompts including composition, lighting, camera, mood, and quality parameters.";
 
+    // Optimized: trimmed unnecessary formatting instructions
     const userPrompt = `Generate image prompts for: "${description}"
-
-For each platform, provide structured prompts with:
-- Composition: Framing, rule of thirds, perspective
-- Lighting: Light source, type, mood
-- Camera: Camera type, lens, settings
-- Mood: Emotional tone and atmosphere
-- Quality: Resolution, style, render quality
-- Negative Prompt: What to exclude
 
 Platforms: ${targetPlatforms.join(", ")}
 
-Return the response as structured text with clear sections for each platform.`;
+Include: composition, lighting, camera, mood, quality, negative prompt.`;
 
     const response = await this.executeAI(
       [{ role: "user", content: userPrompt }],

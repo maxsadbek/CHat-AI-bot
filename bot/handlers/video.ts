@@ -126,7 +126,8 @@ export async function videoGenerateHandler(ctx: BotContext): Promise<void> {
   } catch (error) {
     log.error("Video AI error", { userId, error: String(error) });
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
-    await ctx.reply(t(lang, "video.error"), {
+    const friendlyMsg = error instanceof Error ? error.message : null;
+    await ctx.reply(friendlyMsg || t(lang, "video.error"), {
       parse_mode: "Markdown",
       reply_markup: videoKeyboard,
     });
@@ -316,7 +317,8 @@ export async function regenerateVideoHandler(ctx: BotContext): Promise<void> {
   } catch (error) {
     log.error("Video regenerate error", { userId, error: String(error) });
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
-    await ctx.reply(t(lang, "video.error"), {
+    const friendlyMsg = error instanceof Error ? error.message : null;
+    await ctx.reply(friendlyMsg || t(lang, "video.error"), {
       parse_mode: "Markdown",
       reply_markup: videoKeyboard,
     });

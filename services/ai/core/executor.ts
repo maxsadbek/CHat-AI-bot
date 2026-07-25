@@ -1,18 +1,37 @@
 /**
  * Enterprise AI Core Executor Pipeline
- * Central orchestrator combining Provider DI, Retry Backoff, Fallback Token Degradation,
- * Cost Optimization, Error Normalization, and Telemetry Logging.
+ * Now integrates the AI Router for provider failover, caching, health checks,
+ * and usage tracking. The executor is the bridge between AI services and the router.
+ *
+ * Key improvements:
+ * - Provider failover: tries next provider in priority chain on failure
+ * - Health-aware routing: skips unhealthy providers
+ * - Response caching: exact-match with TTL
+ * - Daily usage tracking: per-user, per-feature
+ * - Friendly error messages: never expose provider/internal details
  */
 
 import { aiConfig, FeatureType } from "@/config/ai";
 import { providerRegistry, ProviderRegistry } from "../providers/registry";
-import { RetryStrategy } from "../strategies/retry";
 import { CostOptimizationStrategy } from "../strategies/cost";
-import { FallbackStrategy } from "../strategies/fallback";
-import { normalizeAIError } from "../utils/errors";
 import { AITelemetry } from "../utils/logger";
 import { AIError } from "../types/errors";
+import { routePlanner, responseCache, usageTracker } from "../router";
 import type { ChatRequest, ChatResponse } from "../providers/interface";
+
+/**
+ * Friendly error messages per feature — never expose provider/internal details.
+ * These are the ONLY messages users will see on failure.
+ */
+const FRIENDLY_ERRORS: Record<FeatureType, string> = {
+  chat: "⚠️ AI is temporarily busy. Please try again in a few moments.",
+  image: "⚠️ Unable to generate an image prompt right now. Please try again later.",
+  video: "⚠️ Unable to generate a video prompt right now. Please try again later.",
+  coding: "⚠️ Code generation is temporarily unavailable.",
+  business: "⚠️ Service is temporarily busy. Please try again in a few moments.",
+  translate: "⚠️ Translation service is temporarily unavailable. Please try again later.",
+  social: "⚠️ Content generation is temporarily unavailable. Please try again later.",
+};
 
 export interface AIExecutionOptions {
   feature: FeatureType;
@@ -20,56 +39,97 @@ export interface AIExecutionOptions {
   modelId?: string;
   request: ChatRequest;
   customRegistry?: ProviderRegistry;
+  userId?: number;
 }
 
 export class AIExecutor {
   constructor(private registry: ProviderRegistry = providerRegistry) {}
 
   /**
-   * Execute chat request with enterprise resilience pipeline.
+   * Execute chat request with router integration.
+   *
+   * - Routes by task (chat, coding, image, video)
+   * - Fails over to next provider if one fails
+   * - Caches responses (exact match, TTL-based)
+   * - Tracks daily usage per user/plan
+   * - Returns friendly feature-specific error on complete failure
    */
   async execute(options: AIExecutionOptions): Promise<ChatResponse> {
     const startTime = Date.now();
-    const { feature, userPlan, modelId, request } = options;
-    const activeRegistry = options.customRegistry || this.registry;
+    const { feature, userPlan, modelId, request, userId } = options;
 
-    // Resolve Provider
-    const provider = activeRegistry.getProvider(modelId);
-    const modelObj = provider.getModel(modelId || "") || provider.getDefaultModel();
-    const resolvedModelId = modelObj.id;
+    // ── 1. Check daily usage limits ────────────────
+    if (userId && usageTracker.isLimitReached(userId, userPlan)) {
+      throw new AIError(
+        "⚠️ You've reached your daily limit. Please try again tomorrow or upgrade your plan.",
+        "RATE_LIMIT",
+        { retryable: false }
+      );
+    }
 
-    // Determine initial max tokens via Cost Optimization strategy
+    // ── 2. Resolve max tokens ───────────────────────
     const userPrompt = request.messages.map((m) => m.content).join("\n");
-    const initialMaxTokens =
+    const maxTokens =
       request.maxTokens ||
       CostOptimizationStrategy.resolveMaxTokens(
         feature,
         userPlan,
         userPrompt,
-        modelObj.capabilities.maxContextTokens
+        128000
       );
-
     const temperature = request.temperature ?? aiConfig.getTemperature(feature);
 
-    const maxRetries = aiConfig.getRetryPolicy().maxRetries;
-    let lastError: AIError | null = null;
+    // ── 3. Get provider routing chain ──────────────
+    const route = routePlanner.getRoute(feature);
+    const primaryProvider = modelId
+      ? routePlanner.getPrimaryProvider(feature)
+      : route.providerChain[0]!;
 
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      if (attempt > 0) {
-        await RetryStrategy.wait(attempt - 1);
+    // ── 4. Check cache ──────────────────────────────
+    if (!modelId) {
+      const cached = responseCache.get(feature, primaryProvider, request);
+      if (cached) {
+        AITelemetry.logRequest({
+          provider: "cache",
+          model: "cache",
+          feature,
+          plan: userPlan || "FREE",
+          promptTokens: 0,
+          completionTokens: cached.content.length,
+          totalTokens: cached.content.length,
+          latencyMs: 0,
+          retries: 0,
+          estimatedCostUsd: 0,
+          status: "success",
+        });
+
+        if (userId) {
+          usageTracker.track(userId, feature, 0, cached.content.length);
+        }
+
+        return cached;
       }
+    }
 
-      // Compute step-degraded tokens for current attempt
-      const currentMaxTokens = FallbackStrategy.getDegradedMaxTokens(
-        initialMaxTokens,
-        attempt
-      );
+    // ── 5. Attempt execution with provider chain ─────
+    const providerChain = modelId
+      ? [routePlanner.getPrimaryProvider(feature)]
+      : route.providerChain;
+
+    for (let attempt = 0; attempt < providerChain.length; attempt++) {
+      const providerId = providerChain[attempt]!;
 
       try {
+        const provider = this.registry.getProviderById(providerId);
+        const modelObj = modelId
+          ? provider.getModel(modelId) || provider.getDefaultModel()
+          : provider.getDefaultModel();
+        const resolvedModelId = modelObj?.id || providerId;
+
         const response = await provider.chat({
           ...request,
           modelId: resolvedModelId,
-          maxTokens: currentMaxTokens,
+          maxTokens,
           temperature,
         });
 
@@ -77,10 +137,19 @@ export class AIExecutor {
         const promptTokens = response.usage?.promptTokens || CostOptimizationStrategy.estimateTokenCount(userPrompt);
         const completionTokens = response.usage?.completionTokens || CostOptimizationStrategy.estimateTokenCount(response.content);
         const totalTokens = response.usage?.totalTokens || promptTokens + completionTokens;
-
         const costUsd = aiConfig.calculateCost(resolvedModelId, promptTokens, completionTokens);
 
-        // Structured Telemetry Log
+        // Cache successful response
+        if (!modelId) {
+          responseCache.set(feature, providerId, request, response);
+        }
+
+        // Track usage
+        if (userId) {
+          usageTracker.track(userId, feature, promptTokens, completionTokens);
+        }
+
+        // Telemetry
         AITelemetry.logRequest({
           provider: provider.providerName,
           model: resolvedModelId,
@@ -95,18 +164,25 @@ export class AIExecutor {
           status: attempt > 0 ? "fallback_success" : "success",
         });
 
-        return {
-          ...response,
-          costUsd,
-        };
+        return { ...response, costUsd };
       } catch (rawError) {
-        const error = normalizeAIError(rawError, provider.providerName);
-        lastError = error;
+        const errorMsg = rawError instanceof Error ? rawError.message : String(rawError);
 
-        // Log attempt warning
+        // Log the REAL error server-side — users must never see this
+        console.error("[AI ERROR]", {
+          feature,
+          provider: providerId,
+          attempt: attempt + 1,
+          total: providerChain.length,
+          error: errorMsg,
+          stack: rawError instanceof Error ? rawError.stack : undefined,
+          timestamp: new Date().toISOString(),
+        });
+
+        // Telemetry for failure
         AITelemetry.logRequest({
-          provider: provider.providerName,
-          model: resolvedModelId,
+          provider: providerId,
+          model: feature,
           feature,
           plan: userPlan || "FREE",
           promptTokens: CostOptimizationStrategy.estimateTokenCount(userPrompt),
@@ -116,17 +192,30 @@ export class AIExecutor {
           retries: attempt,
           estimatedCostUsd: 0,
           status: "failed",
-          error: error.message,
+          error: errorMsg,
         });
 
-        if (!FallbackStrategy.isFallbackTrigger(error)) {
-          // Non-retryable error (e.g. 400 validation error)
-          throw error;
+        // If more providers available, try next after brief delay
+        if (attempt < providerChain.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          continue;
         }
+
+        // All providers exhausted — throw friendly error
+        throw new AIError(
+          FRIENDLY_ERRORS[feature] || "⚠️ Service is temporarily unavailable. Please try again later.",
+          "PROVIDER_ERROR",
+          { retryable: false }
+        );
       }
     }
 
-    throw lastError || new AIError("AI Execution failed after all fallback attempts");
+    // Should never reach here, but TypeScript safety
+    throw new AIError(
+      FRIENDLY_ERRORS[feature] || "⚠️ Service is temporarily unavailable. Please try again later.",
+      "PROVIDER_ERROR",
+      { retryable: false }
+    );
   }
 }
 

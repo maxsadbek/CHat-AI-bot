@@ -11,6 +11,8 @@ import { DeepSeekProviderImpl } from "./deepseek";
 import { GroqProviderImpl } from "./groq";
 import { OpenRouterProviderImpl } from "./openrouter";
 import { OllamaProviderImpl } from "./ollama";
+import { CerebrasProviderImpl } from "./cerebras";
+import { MistralProviderImpl } from "./mistral";
 import { ALL_MODELS, findModel, getSelectableModels } from "./models";
 import type { AIProvider, ProviderModel } from "./interface";
 
@@ -63,6 +65,12 @@ export class ProviderRegistry {
           break;
         case "ollama":
           this.providers.set(key, new OllamaProviderImpl());
+          break;
+        case "cerebras":
+          this.providers.set(key, new CerebrasProviderImpl());
+          break;
+        case "mistral":
+          this.providers.set(key, new MistralProviderImpl());
           break;
         default:
           log.warn(`Unrecognized provider "${providerId}", defaulting to OpenAI`);

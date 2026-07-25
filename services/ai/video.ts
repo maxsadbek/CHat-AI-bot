@@ -1,5 +1,7 @@
 /**
  * Enterprise Video AI Prompt Service
+ *
+ * Optimized: concise prompts, trimmed whitespace, reduced token usage.
  */
 
 import { BaseAIService } from "./base";
@@ -27,28 +29,15 @@ export class VideoAIService extends BaseAIService {
   ): Promise<VideoPrompt[]> {
     const targetPlatforms = platform ? [platform] : this.platforms;
 
-    const systemPrompt = `You are a professional video prompt engineer.
-Generate detailed, production-ready video prompts for AI video platforms.
-Each prompt must include: scene description, lighting, camera movement, lens type, environment, negative prompt, voice style, music style, duration, and visual style.
-Be specific and cinematic.`;
+    // Optimized: concise system prompt, reduced token usage
+    const systemPrompt = "You are a video prompt engineer. Generate detailed, production-ready video prompts including scene, lighting, camera movement, and visual style.";
 
+    // Optimized: trimmed unnecessary formatting instructions
     const userPrompt = `Generate video prompts for: "${description}"
-
-For each platform, provide a structured prompt with ALL of these elements:
-- Scene: Detailed visual description
-- Lighting: Lighting setup and mood
-- Camera Movement: Camera motion details
-- Lens: Lens type and focal length
-- Environment: Setting and atmosphere
-- Negative Prompt: What to avoid
-- Voice: Voice style and tone
-- Music: Music genre and mood
-- Duration: Recommended length
-- Style: Overall visual style
 
 Platforms: ${targetPlatforms.join(", ")}
 
-Return the response as structured text with clear sections for each platform.`;
+Include: scene, lighting, camera movement, lens, environment, negative prompt, voice, music, duration, style.`;
 
     const response = await this.executeAI(
       [{ role: "user", content: userPrompt }],

@@ -110,7 +110,8 @@ export async function imageGenerateHandler(ctx: BotContext): Promise<void> {
   } catch (error) {
     log.error("Image AI error", { userId, error: String(error) });
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
-    await ctx.reply(t(lang, "image.error"), {
+    const friendlyMsg = error instanceof Error ? error.message : null;
+    await ctx.reply(friendlyMsg || t(lang, "image.error"), {
       parse_mode: "Markdown",
       reply_markup: imageKeyboard,
     });

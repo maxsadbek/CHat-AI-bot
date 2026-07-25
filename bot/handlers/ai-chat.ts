@@ -86,7 +86,9 @@ export async function aiChatHandler(ctx: BotContext): Promise<void> {
     }
   } catch (error) {
     log.error("AI Chat error", { userId, error: String(error) });
-    await ctx.reply(t(lang, "chat.error_generic"), {
+    // Use the error's friendly message if available (set by executor), otherwise fall back to localized generic
+    const friendlyMsg = error instanceof Error ? error.message : null;
+    await ctx.reply(friendlyMsg || t(lang, "chat.error_generic"), {
       parse_mode: "Markdown",
       reply_markup: chatKeyboard,
     });

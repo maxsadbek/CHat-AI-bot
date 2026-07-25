@@ -1,6 +1,8 @@
 /**
  * Enterprise Coding AI Service
  * Generates, debugs, and explains code using central AI execution pipeline.
+ *
+ * Optimized: concise prompts, trimmed whitespace, reduced token usage.
  */
 
 import { BaseAIService } from "./base";
@@ -23,23 +25,12 @@ export class CodingAIService extends BaseAIService {
     modelId?: string,
     userPlan?: string | PlanType
   ): Promise<CodeGeneration> {
-    const systemPrompt = `You are an expert software engineer.
-You write clean, production-ready code.
-You follow best practices and design patterns.
-You provide explanations with your code.`;
-
+    // Optimized: concise system prompt, reduced token usage
+    const systemPrompt = "You are an expert software engineer. Write clean, production-ready code following best practices.";
+    // Optimized: trimmed unnecessary bullet points
     const userPrompt = `Generate ${language} code for: "${description}"
 
-Provide:
-1. The complete code with proper formatting
-2. Explanation of how the code works
-3. Usage instructions
-
-Make sure the code is:
-- Production-ready
-- Well-commented
-- Following best practices
-- Error-handled`;
+Provide the complete code with explanation and usage instructions. Ensure it is production-ready, well-commented, and includes error handling.`;
 
     const response = await this.executeAI(
       [{ role: "user", content: userPrompt }],
@@ -62,7 +53,7 @@ Make sure the code is:
     userPlan?: string | PlanType
   ): Promise<CodeGeneration> {
     const systemPrompt = "You are an expert debugger. Find and fix issues in code.";
-    const userPrompt = `Debug this ${language} code and explain the issues:\n\n${code}\n\nProvide:\n1. The fixed code\n2. List of issues found\n3. Explanation of fixes\n4. Prevention tips`;
+    const userPrompt = `Debug this ${language} code:\n\n${code}\n\nProvide: fixed code, issues found, fixes explanation, prevention tips.`;
 
     const response = await this.executeAI(
       [{ role: "user", content: userPrompt }],
@@ -85,7 +76,7 @@ Make sure the code is:
     userPlan?: string | PlanType
   ): Promise<string> {
     const systemPrompt = "You are an expert programming teacher. Explain code clearly and thoroughly.";
-    const userPrompt = `Explain this ${language} code in detail:\n\n${code}\n\nCover:\n- What the code does\n- How it works (line by line)\n- Key concepts used\n- Potential improvements`;
+    const userPrompt = `Explain this ${language} code:\n\n${code}\n\nCover: what it does, how it works, key concepts, potential improvements.`;
 
     const response = await this.executeAI(
       [{ role: "user", content: userPrompt }],

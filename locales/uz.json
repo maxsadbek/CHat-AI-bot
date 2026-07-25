@@ -38,7 +38,7 @@
     "no_history": "📋 *Suhbatlar mavjud emas*\n\nSuhbatlashing va tarix shu yerda ko'rinadi!",
     "history_entry": "{index}. {title}\n   💬 {count} ta xabar\n   🕐 {date}",
     "error_no_user": "❌ *Xatolik*\n\nHisobingizni aniqlab bo'lmadi. Iltimos, /start buyrug'idan foydalaning.",
-    "error_generic": "❌ *Xatolik*\n\nKechirasiz, xatolik yuz berdi. Iltimos, qayta urinib ko'ring.",
+    "error_generic": "⚠️ AI vaqtincha band. Iltimos, bir necha daqiqadan so'ng qayta urinib ko'ring.",
     "clear_done": "🧹 *Suhbat tozalandi!*\n\nBarcha xabarlar o'chirildi.",
     "clear_confirm": "🧹 *Suhbatni tozalash?*\n\nBarcha xabarlar butunlay o'chiriladi.",
     "resumed": "💬 *Suhbat qayta tiklandi*\n\nDavom etishingiz mumkin.",
@@ -55,7 +55,7 @@
     "resumed": "🎬 *Video prompti qayta ochildi*",
     "regenerated": "🔄 *Video promptlari qayta yaratildi!*",
     "limit_reached": "⚠️ *Limitga erishildi*\n\nMaksimal 10 ta video promptini saqlashingiz mumkin.\n\nPremium-ga o'ting yoki eskisini o'chiring.",
-    "error": "❌ *Video prompt yaratishda xatolik*\n\nIltimos, boshqa ta'rif bilan qayta urinib ko'ring."
+    "error": "⚠️ Video promtni yaratish mumkin emas. Iltimos, keyinroq qayta urinib ko'ring."
   },
   "image": {
     "welcome": "🎨 *Image AI Studio*\n\nQuyidagi platformalar uchun ajoyib tasvirlar yaratish:\n• GPT Image\n• Flux\n• Midjourney\n• Leonardo\n• Ideogram\n\n_Platformani tanlang yoki rasm g'oyangizni tasvirlab bering:_",
@@ -67,7 +67,7 @@
     "history_entry": "{index}. {title}\n   🕐 {date}",
     "resumed": "🎨 *Rasm prompti qayta ochildi*",
     "limit_reached": "⚠️ *Limitga erishildi*\n\nMaksimal 10 ta rasm prompti saqlashingiz mumkin.\n\nPremium-ga o'ting yoki eskisini o'chiring.",
-    "error": "❌ *Rasm prompti yaratishda xatolik*\n\nIltimos, boshqa ta'rif bilan qayta urinib ko'ring."
+    "error": "⚠️ Rasm promtni yaratish mumkin emas. Iltimos, keyinroq qayta urinib ko'ring."
   },
   "social": {
     "welcome": "📱 *Social Media Studio*\n\nQuyidagi platformalar uchun kontent yaratish:\n• Instagram 📸\n• TikTok 🎵\n• Telegram ✈️\n• Facebook 📘\n• LinkedIn 💼\n• YouTube 🎥\n\n_Platformani tanlang yoki kontent g'oyangizni tasvirlab bering:_",
@@ -98,7 +98,7 @@
     "history_entry": "{index}. {title}\n   🕐 {date}",
     "resumed": "💻 *Kod yozish suhbati qayta tiklandi*",
     "limit_reached": "⚠️ *Suhbat limitiga erishildi*\n\nMaksimal 10 ta kod suhbatini saqlashingiz mumkin.\n\nPremium-ga o'ting yoki eskisini o'chiring.",
-    "error": "❌ *Kod yaratishda xatolik*\n\nIltimos, boshqa ta'rif bilan qayta urinib ko'ring."
+    "error": "⚠️ Kod yaratish vaqtincha mavjud emas."
   },
   "translate": {
     "welcome": "🌍 *AI Tarjimon*\n\nMatnlarni istalgan tilga tarjima qilish.\n\n_Matnni quyidagi formatda yuboring:_\n\n```\n[tilga] tarjima qil:\n[matningiz]\n```\n\n_Yoki matnni yuboring, men tilni so'rayman._\n\nMisollar:\n• `Ispan tiliga tarjima qil: Salom, qandaysiz?`\n• `Yapon tiliga tarjima qil: Men dasturlashni yaxshi ko'raman`",

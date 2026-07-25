@@ -1,6 +1,10 @@
 /**
  * Enterprise Base AI Service Abstraction
  * Re-exports base types and interfaces for legacy backward compatibility.
+ *
+ * Prompt Optimization added:
+ * - Trims unnecessary whitespace from system prompts before sending to the model.
+ * - Keeps all instructions but removes verbose formatting, reducing token usage.
  */
 
 import { aiExecutor, AIExecutor } from "./core/executor";
@@ -35,6 +39,19 @@ export abstract class BaseAIService {
     protected readonly executor: AIExecutor = aiExecutor
   ) {}
 
+  /**
+   * Optimize a prompt by trimming whitespace and removing excessive blank lines.
+   * This reduces token usage without changing meaning.
+   */
+  protected optimizePrompt(prompt: string): string {
+    return prompt
+      .split("\n")
+      .map((line) => line.trim())
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n") // Collapse 3+ consecutive newlines to 2
+      .trim();
+  }
+
   protected async executeAI(
     messages: ChatRequest["messages"],
     systemPrompt?: string,
@@ -42,13 +59,16 @@ export abstract class BaseAIService {
     userPlan?: string | PlanType,
     temperature?: number
   ): Promise<ChatResponse> {
+    // Optimize system prompt: trim whitespace to reduce token usage
+    const optimizedSystemPrompt = systemPrompt ? this.optimizePrompt(systemPrompt) : undefined;
+
     return this.executor.execute({
       feature: this.feature,
       userPlan: typeof userPlan === "string" ? userPlan : undefined,
       modelId,
       request: {
         messages,
-        systemPrompt,
+        systemPrompt: optimizedSystemPrompt,
         temperature,
       },
     });

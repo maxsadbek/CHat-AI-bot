@@ -253,6 +253,53 @@ export const OLLAMA_MODELS: ProviderModel[] = [
   },
 ];
 
+// ─── Cerebras Models ────────────────────────────────
+export const CEREBRAS_MODELS: ProviderModel[] = [
+  {
+    id: "cerebras-llama3.1-8b",
+    name: "Llama 3.1 8B (Cerebras)",
+    provider: "cerebras",
+    default: true,
+    capabilities: {
+      streaming: true,
+      vision: false,
+      functionCalling: false,
+      maxContextTokens: 8192,
+      maxOutputTokens: 4096,
+    },
+  },
+];
+
+// ─── Mistral Models ──────────────────────────────────
+export const MISTRAL_MODELS: ProviderModel[] = [
+  {
+    id: "mistral-small-latest",
+    name: "Mistral Small",
+    provider: "mistral",
+    default: true,
+    capabilities: {
+      streaming: true,
+      vision: true,
+      functionCalling: true,
+      maxContextTokens: 128000,
+      maxOutputTokens: 4096,
+    },
+  },
+  {
+    id: "mistral-large-latest",
+    name: "Mistral Large",
+    provider: "mistral",
+    default: false,
+    capabilities: {
+      streaming: true,
+      vision: true,
+      functionCalling: true,
+      maxContextTokens: 128000,
+      maxOutputTokens: 8192,
+    },
+  },
+];
+
 export const ALL_MODELS: ProviderModel[] = [
   ...OPENAI_MODELS,
   ...GEMINI_MODELS,
@@ -261,6 +308,8 @@ export const ALL_MODELS: ProviderModel[] = [
   ...DEEPSEEK_MODELS,
   ...OPENROUTER_MODELS,
   ...OLLAMA_MODELS,
+  ...CEREBRAS_MODELS,
+  ...MISTRAL_MODELS,
 ];
 
 export function findModel(modelId: string): ProviderModel | undefined {

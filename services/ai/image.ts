@@ -7,6 +7,7 @@
 import { BaseAIService } from "./base";
 import type { ImagePrompt, ImagePlatform } from "@/types";
 import type { PlanType } from "@/config/ai";
+import { providerRegistry } from "./providers/registry";
 
 export class ImageAIService extends BaseAIService {
   private readonly platforms: ImagePlatform[] = [
@@ -60,6 +61,18 @@ Include: composition, lighting, camera, mood, quality, negative prompt.`;
 
   getPlatforms(): ImagePlatform[] {
     return [...this.platforms];
+  }
+
+  async generateImage(
+    prompt: string,
+    platform: string,
+    modelId?: string
+  ): Promise<string | Buffer> {
+    const provider = providerRegistry.getProviderById(platform);
+    if (!provider.generateImage) {
+      throw new Error(`The provider ${platform} does not support direct image generation.`);
+    }
+    return await provider.generateImage(prompt, modelId);
   }
 }
 

@@ -126,4 +126,39 @@ export class StabilityProviderImpl implements AIProvider {
       }
     }
   }
+
+  async generateImage(prompt: string, modelId?: string): Promise<string | Buffer> {
+    const apiKey = process.env.STABILITY_API_KEY;
+    if (!apiKey) {
+      throw new Error("STABILITY_API_KEY is not configured");
+    }
+
+    const formData = new FormData();
+    formData.append("prompt", prompt);
+    formData.append("output_format", "jpeg");
+
+    const response = await fetch(
+      "https://api.stability.ai/v2beta/stable-image/generate/core",
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Accept": "application/json",
+        },
+        body: formData as any,
+      }
+    );
+
+    if (!response.ok) {
+      const errText = await response.text();
+      log.error("Stability API error", { status: response.status, body: errText });
+      throw new Error(`Stability API error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    if (data && data.image) {
+      return Buffer.from(data.image, "base64");
+    }
+    throw new Error("Stability API did not return an image");
+  }
 }

@@ -74,39 +74,81 @@ export async function imageGenerateHandler(ctx: BotContext): Promise<void> {
   });
 
   try {
-    const prompts = await imageAIService.generatePrompt(
-      text,
-      platform === "all" ? undefined : platform,
-      ctx.session.selectedModel
-    );
+    if (platform.toLowerCase() === "flux" || platform.toLowerCase() === "stability") {
+      const generatedImage = await imageAIService.generateImage(
+        text,
+        platform.toLowerCase(),
+        ctx.session.selectedModel
+      );
 
-    // Build structured response with prompt details
-    let response = t(lang, "image.result_title");
-    for (const prompt of prompts) {
-      response += "🖼️ *" + prompt.platform + "*\n";
-      response += prompt.fullPrompt + "\n\n";
-      response += "━━━━━━━━━━━━━━━━━━━━━\n\n";
+      // Track usage
+      const selectedModel = ctx.session.selectedModel;
+      const providerName = selectedModel
+        ? providerRegistry.getModel(selectedModel)?.provider
+        : platform.toLowerCase();
+      usageService.track(userId, "image", 0, 0, providerName, selectedModel);
+
+      await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
+      
+      const caption = `🎨 *${platform.toLowerCase() === "flux" ? "Flux AI" : "Stability AI"}*\n\n${text.slice(0, 500)}`;
+      
+      // generatedImage can be a URL string or a Buffer
+      if (typeof generatedImage === "string") {
+        await ctx.replyWithPhoto(generatedImage, {
+          caption: caption,
+          parse_mode: "Markdown",
+          reply_markup: imageKeyboard,
+        });
+      } else {
+        import("grammy").then(({ InputFile }) => {
+          ctx.replyWithPhoto(new InputFile(generatedImage, "image.jpg"), {
+            caption: caption,
+            parse_mode: "Markdown",
+            reply_markup: imageKeyboard,
+          });
+        });
+      }
+
+      // Store in session and db
+      ctx.session.messages.push({ role: "user", content: text });
+      ctx.session.messages.push({ role: "assistant", content: `[Image Generated: ${caption}]` });
+      await saveMessagesToDb(ctx, "image");
+
+    } else {
+      const prompts = await imageAIService.generatePrompt(
+        text,
+        platform === "all" ? undefined : platform,
+        ctx.session.selectedModel
+      );
+
+      // Build structured response with prompt details
+      let response = t(lang, "image.result_title");
+      for (const prompt of prompts) {
+        response += "🖼️ *" + prompt.platform + "*\n";
+        response += prompt.fullPrompt + "\n\n";
+        response += "━━━━━━━━━━━━━━━━━━━━━\n\n";
+      }
+
+      // Store in session
+      ctx.session.messages.push({ role: "user", content: text });
+      ctx.session.messages.push({ role: "assistant", content: response });
+
+      // Save to database
+      await saveMessagesToDb(ctx, "image");
+
+      // Track usage (non-blocking)
+      const selectedModel = ctx.session.selectedModel;
+      const providerName = selectedModel
+        ? providerRegistry.getModel(selectedModel)?.provider
+        : undefined;
+      usageService.track(userId, "image", 0, 0, providerName, selectedModel);
+
+      await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
+      await ctx.reply(response, {
+        parse_mode: "Markdown",
+        reply_markup: imageKeyboard,
+      });
     }
-
-    // Store in session
-    ctx.session.messages.push({ role: "user", content: text });
-    ctx.session.messages.push({ role: "assistant", content: response });
-
-    // Save to database
-    await saveMessagesToDb(ctx, "image");
-
-    // Track usage (non-blocking)
-    const selectedModel = ctx.session.selectedModel;
-    const providerName = selectedModel
-      ? providerRegistry.getModel(selectedModel)?.provider
-      : undefined;
-    usageService.track(userId, "image", 0, 0, providerName, selectedModel);
-
-    await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
-    await ctx.reply(response, {
-      parse_mode: "Markdown",
-      reply_markup: imageKeyboard,
-    });
   } catch (error) {
     log.error("Image AI error", { userId, error: String(error) });
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});

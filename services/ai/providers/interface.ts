@@ -54,6 +54,7 @@ export interface AIProvider {
 
   chat(request: ChatRequest): Promise<ChatResponse>;
   streamChat?(request: ChatRequest): AsyncGenerator<string>;
+  generateImage?(prompt: string, modelId?: string): Promise<string | Buffer>;
   getModel(modelId: string): ProviderModel | undefined;
   getDefaultModel(): ProviderModel;
 }

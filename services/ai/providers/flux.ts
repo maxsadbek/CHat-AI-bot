@@ -126,4 +126,79 @@ export class FluxProviderImpl implements AIProvider {
       }
     }
   }
+
+  async generateImage(prompt: string, modelId?: string): Promise<string> {
+    const resolvedModel =
+      (modelId ? this.getModel(modelId) : undefined) ?? this.getDefaultModel();
+    const apiKey = process.env.FLUX_API_KEY;
+    if (!apiKey) {
+      throw new Error("FLUX_API_KEY is not configured");
+    }
+
+    const baseUrl = process.env.FLUX_BASE_URL || "https://api.bfl.ml/v1";
+    // We assume the modelId matches the endpoint path, e.g. "flux-pro-1.1" or "flux-dev"
+    // However, if the modelId doesn't match BFL's endpoint, we could default to flux-pro-1.1
+    // The current ai.ts has FLUX.1-schnell, let's normalize or use it directly.
+    const endpointModel = resolvedModel.id.toLowerCase().replace(/\./g, "-");
+
+    // 1. Submit Request
+    const submitUrl = `${baseUrl}/${endpointModel}`;
+    const submitRes = await fetch(submitUrl, {
+      method: "POST",
+      headers: {
+        "accept": "application/json",
+        "x-key": apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        prompt,
+        width: 1024,
+        height: 768,
+      }),
+    });
+
+    if (!submitRes.ok) {
+      const errText = await submitRes.text();
+      log.error("BFL submit error", { status: submitRes.status, body: errText });
+      throw new Error(`Flux API error: ${submitRes.statusText}`);
+    }
+
+    const submitData = await submitRes.json();
+    const requestId = submitData.id;
+    if (!requestId) {
+      throw new Error("Flux API did not return an ID");
+    }
+
+    // 2. Poll for Result
+    const pollUrl = `${baseUrl}/get_result?id=${requestId}`;
+    const maxAttempts = 30; // Max 60 seconds
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise((res) => setTimeout(res, 2000)); // wait 2 seconds
+
+      const pollRes = await fetch(pollUrl, {
+        headers: {
+          "accept": "application/json",
+          "x-key": apiKey,
+        },
+      });
+
+      if (!pollRes.ok) {
+        throw new Error(`Flux polling failed: ${pollRes.statusText}`);
+      }
+
+      const pollData = await pollRes.json();
+      if (pollData.status === "Ready") {
+        const imageUrl = pollData.result?.sample;
+        if (!imageUrl) {
+          throw new Error("Flux API returned Ready but no sample image URL");
+        }
+        return imageUrl;
+      } else if (pollData.status === "Failed" || pollData.status === "Error") {
+        throw new Error(`Flux image generation failed: ${pollData.error || "Unknown error"}`);
+      }
+      // Otherwise, status is likely "Pending"
+    }
+
+    throw new Error("Flux image generation timed out");
+  }
 }

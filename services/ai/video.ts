@@ -64,6 +64,19 @@ RULES:
 4. Every field must contain specific details related to the user's idea.
 5. No generic phrases like "main subject in cinematic setting", "dynamic motion", or "professional composition" unless they include specific details from the user's idea.
 
+IMPORTANT SUBJECT RULES:
+- Always keep the exact main object from user input.
+- Never replace motorcycle with vehicle.
+- Never replace person/rider with driver.
+- Never remove numbers, speeds, brands, colors or unique details.
+- Expand details, don't generalize.
+
+Bad example: "A vehicle moves at extreme velocity"
+Good example: "A professional motorcycle racer rides a black superbike at 300 km/h on an empty highway."
+
+Bad example: "A driver controls a high-performance vehicle"
+Good example: "A rider wearing a racing suit controls a powerful motorcycle while reaching extreme speed."
+
 Example:
 
 Input:
@@ -94,6 +107,7 @@ Include:
 CRITICAL RULES:
 - NEVER include the user's exact sentence in any field.
 - Extract the meaning and rewrite it as a professional cinematic description.
+- Always preserve the user's specific objects (motorcycle, car, person, etc.). Never generalize.
 - Never repeat text.
 - Never return incomplete sentences.
 - Return ONLY valid JSON.
@@ -108,9 +122,9 @@ You MUST respond with a JSON array where EVERY object has ALL of these fields:
   {
     "platform": "Hailuo AI",
     "title": "Short epic title based on the user's video idea",
-    "scene": "Transformed cinematic scene description (never user's exact words)",
-    "subject": "Main subject described in cinematic detail",
-    "action": "Action with motion and physics details",
+    "scene": "Transformed cinematic scene description (never user's exact words, always preserve specific objects)",
+    "subject": "Main subject described in cinematic detail (keep the original object type, e.g. motorcycle not vehicle)",
+    "action": "Action with motion and physics details (keep the original action type, e.g. riding not driving)",
     "environment": "Setting, time of day, weather, location details",
     "camera": "Camera angle, position, and framing",
     "lens": "Lens type and focal length, e.g. 35mm prime",
@@ -144,6 +158,69 @@ export class VideoAIService extends BaseAIService {
     super("video");
   }
 
+  /**
+   * Extract key semantic elements from the user's description:
+   * subject, object, action, and speed.  This helps the AI
+   * preserve specific details rather than generalizing.
+   */
+  private extractKeyElements(description: string): {
+    subject: string;
+    object: string;
+    action: string;
+    speed: string;
+  } {
+    const lower = description.toLowerCase();
+
+    // Detect object first (what is being used), then derive subject from it
+    let object = lower;
+    if (/moto|motorcycle|bike|scooter/gi.test(description))
+      object = "a superbike motorcycle";
+    else if (/car|auto|sedan|suv|coupe/gi.test(description))
+      object = "a sports car";
+    else if (/truck|lorry/gi.test(description)) object = "a powerful truck";
+    else if (/plane|airplane|jet/gi.test(description)) object = "an aircraft";
+    else if (/boat|ship|yacht/gi.test(description)) object = "a boat";
+
+    // Detect subject based on object type
+    let subject = "a person";
+    const isMotorcycle =
+      /moto|motorcycle|bike|scooter/gi.test(description);
+    const isCar = /car|auto|sedan|suv|coupe|truck|lorry/gi.test(description);
+
+    if (isMotorcycle) {
+      if (/odam|rider|motorcyclist/gi.test(description))
+        subject = "a motorcycle rider";
+      else subject = "a professional rider";
+    } else if (isCar) {
+      if (/driver|man|woman|person/gi.test(description))
+        subject = "a driver";
+      else subject = "a professional driver";
+    } else {
+      if (/woman|girl|lady/gi.test(description)) subject = "a woman";
+      else if (/man|guy|boy|gentleman/gi.test(description)) subject = "a man";
+    }
+
+    // Detect action
+    let action = "moving at speed";
+    if (/ketayotgan|riding|driving|racing|chasing/gi.test(description))
+      action = isMotorcycle ? "riding at extreme speed" : "driving at high speed";
+    else if (/uchayotgan|flying|soaring/gi.test(description))
+      action = "flying";
+    else if (/yugurayotgan|running|sprinting/gi.test(description))
+      action = "running at full speed";
+    else if (/suzayotgan|swimming|diving/gi.test(description))
+      action = "swimming rapidly";
+
+    // Detect speed
+    let speed = "extreme speed";
+    const speedMatch = description.match(/(\d+)\s*(km|km\/h|kph|mph|kmh)/gi);
+    if (speedMatch) {
+      speed = speedMatch[0]!;
+    }
+
+    return { subject, object, action, speed };
+  }
+
   async generatePrompt(
     description: string,
     platform?: VideoPlatform,
@@ -151,10 +228,19 @@ export class VideoAIService extends BaseAIService {
     userPlan?: string | PlanType
   ): Promise<VideoPrompt[]> {
     const targetPlatforms = platform ? [platform] : this.platforms;
+    const elements = this.extractKeyElements(description);
 
     const userPrompt = `Generate professional cinematic video prompts for the following idea:
 
 "${description}"
+
+Key elements identified:
+- Subject: ${elements.subject}
+- Object: ${elements.object}
+- Action: ${elements.action}
+- Speed: ${elements.speed}
+
+IMPORTANT: Keep these specific elements in your output. Do NOT replace ${elements.object} with a generic term like "vehicle" or "machine". Do NOT replace ${elements.subject} with a generic term like "driver" or "person". Use these exact objects in your cinematic descriptions.
 
 Target platforms: ${targetPlatforms.join(", ")}
 
@@ -422,14 +508,14 @@ Return one JSON object per platform in a JSON array.`;
   /** Templates keyed by scene type — never contain user text. */
   private readonly fallbackTemplates: Record<string, Omit<VideoPrompt, "platform">> = {
     vehicle: {
-      title: "High-Speed Chase",
-      scene: "A breathtaking high-speed vehicle scene on an open road. A powerful machine moves at extreme velocity while the camera captures every detail of the motion. Realistic wind effects, tire movement, road vibration, and cinematic action atmosphere create an intense viewing experience.",
-      subject: "A professional driver controlling a high-performance vehicle with precision and skill.",
-      action: "The vehicle accelerates at extreme speed with realistic physics, wheel rotation, wind resistance, and dynamic body movement.",
+      title: "High-Speed Motorcycle Chase",
+      scene: "A breathtaking high-speed motorcycle scene on an open road. A powerful superbike moves at extreme velocity while the camera captures every detail of the motion. Realistic wind effects, tire movement, road vibration, and cinematic action atmosphere create an intense viewing experience.",
+      subject: "A professional motorcycle rider controlling a powerful superbike with precision and skill.",
+      action: "The motorcycle accelerates at extreme speed with realistic physics, wheel rotation, wind resistance, and dynamic body movement while the rider leans into the turns.",
       environment: "An open road during golden hour with dramatic sky, atmospheric particles, and realistic lighting conditions.",
-      camera: "Low-angle tracking shot following the vehicle, capturing speed and motion from a dynamic perspective.",
+      camera: "Low-angle tracking shot following the motorcycle, capturing speed and motion from a dynamic perspective near the wheels.",
       lens: "35mm cinema lens with shallow depth of field",
-      movement: "Fast cinematic tracking movement with motion blur and dynamic camera angles.",
+      movement: "Fast cinematic tracking movement with motion blur and dynamic camera angles following the motorcycle.",
       lighting: "Dramatic golden hour lighting with realistic shadows, lens flares, and cinematic contrast.",
       color_grading: "Warm cinematic color grade with high contrast and professional color palette.",
       realism: "Ultra realistic, 4K cinematic quality with accurate physics and lifelike motion details.",
@@ -513,46 +599,40 @@ Return one JSON object per platform in a JSON array.`;
   }
 
   /**
-   * Validates that the AI output contains key concepts from the user's
-   * description.  If critical elements are missing, merges them gracefully
-   * without using the user's exact words.
+   * Validates that the AI output contains the user's specific objects
+   * (motorcycle, rider, speed, etc.) rather than generic replacements.
+   * If the output generalized, it adds a natural clarifying sentence.
    */
   private validateAndMergePrompt(
     prompt: VideoPrompt,
     description: string
   ): VideoPrompt {
-    const desc = description.toLowerCase();
-    const scene = prompt.scene.toLowerCase();
-    const subject = prompt.subject.toLowerCase();
-
-    // Detect scene type for natural merge phrasing
-    const type = this.detectSceneType(description);
-
-    // Keyword lists that should be present based on scene type
-    const requiredHints: Record<string, string> = {
-      vehicle: "high-speed vehicle motion",
-      nature: "natural environment atmosphere",
-      people: "character presence movement",
-      action: "dynamic action intensity",
-    };
-
-    const hint = requiredHints[type] || requiredHints.action;
+    const elements = this.extractKeyElements(description);
     const merged = { ...prompt };
 
-    // Check scene for type-appropriate keywords
-    const typeWords: Record<ReturnType<typeof this.detectSceneType>, string[]> = {
-      vehicle: ["speed", "vehicle", "motion", "road", "drive"],
-      nature: ["landscape", "nature", "light", "scene", "environment"],
-      people: ["character", "subject", "presence", "expression"],
-      action: ["action", "motion", "dynamic", "intense", "energy"],
-    };
+    const sceneLower = prompt.scene.toLowerCase();
+    const subjectLower = prompt.subject.toLowerCase();
 
-    const words = typeWords[type] || typeWords.action;
-    const hasTypeContent = words.some((w) => scene.includes(w) || subject.includes(w));
+    // Extract the key specific noun from elements (e.g. "a superbike motorcycle" -> "motorcycle")
+    const objWords = elements.object
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && w !== "a" && w !== "an");
 
-    if (!hasTypeContent) {
-      // Graceful merge: add a single natural sentence, no raw user words
-      merged.scene = `${prompt.scene} The scene captures ${hint} with professional cinematic quality.`.trim();
+    // Skip validation if object is the raw description (no specific type detected)
+    if (elements.object === description.toLowerCase()) {
+      return merged;
+    }
+
+    // Check if specific object words are missing from output (AI generalized)
+    const missingObj = objWords.filter(
+      (w) => !sceneLower.includes(w) && !subjectLower.includes(w)
+    );
+
+    if (missingObj.length > 0 && objWords.length > 0) {
+      // AI generalized — add a natural detail sentence
+      const specificObj = elements.object.replace(/^a |^an /, "");
+      merged.scene = `${prompt.scene} A ${specificObj} dominates the scene with powerful presence and dynamic energy.`.trim();
     }
 
     return merged;

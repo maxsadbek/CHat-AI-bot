@@ -11,6 +11,7 @@ export type AIErrorCode =
   | "NETWORK_ERROR"
   | "VALIDATION_ERROR"
   | "DAILY_TOKEN_LIMIT"
+  | "CONFIG_ERROR"
   | "UNKNOWN";
 
 export class AIError extends Error {

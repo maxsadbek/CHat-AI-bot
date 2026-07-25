@@ -69,7 +69,6 @@ export class GeminiProviderImpl implements AIProvider {
       const genRequest: Record<string, unknown> = { contents };
       if (systemInstruction) {
         genRequest.systemInstruction = {
-          role: "user",
           parts: [{ text: systemInstruction }],
         };
       }

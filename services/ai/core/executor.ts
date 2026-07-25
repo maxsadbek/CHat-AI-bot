@@ -447,6 +447,14 @@ export class AIExecutor {
     }
 
     // Should never reach here, but TypeScript safety
+    // Also handles the case where all providers were skipped in pre-flight (never entered catch block)
+    if (allProviderErrors.length === 0) {
+      throw new AIError(
+        `⚠️ No AI providers are configured. Please set at least one API key (GEMINI_API_KEY, CEREBRAS_API_KEY, MISTRAL_API_KEY, or OPENROUTER_API_KEY).`,
+        "CONFIG_ERROR",
+        { retryable: false }
+      );
+    }
     throw new AIError(
       FRIENDLY_ERRORS[feature] || "⚠️ AI is temporarily busy. Please try again in a few moments.",
       "PROVIDER_ERROR",

@@ -77,6 +77,17 @@ Good example: "A professional motorcycle racer rides a black superbike at 300 km
 Bad example: "A driver controls a high-performance vehicle"
 Good example: "A rider wearing a racing suit controls a powerful motorcycle while reaching extreme speed."
 
+CRITICAL DETAIL PRESERVATION:
+- Always preserve numbers from user input.
+- Always preserve speed values, measurements, colors, brands, locations and unique attributes.
+- Never replace exact values with generic descriptions.
+
+Bad: "The motorcycle moves at extreme speed."
+Good: "The superbike reaches 300 km/h speed while the rider maintains control."
+
+Bad: "Fast vehicle action scene."
+Good: "A motorcycle rider accelerates a superbike to 300 km/h on an open highway."
+
 Example:
 
 Input:

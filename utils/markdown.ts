@@ -1,6 +1,6 @@
 /**
  * Telegram markdown formatting utilities
- * Supports MarkdownV2 and HTML parse modes
+ * Supports Markdown, MarkdownV2, and HTML parse modes
  */
 
 /**
@@ -8,6 +8,29 @@
  */
 export function escapeMarkdown(text: string): string {
   return text.replace(/[_*[\]()~`>#+\-=|{}.!\\]/g, "\\$&");
+}
+
+/**
+ * Escape special characters for Telegram legacy Markdown mode.
+ *
+ * Legacy Markdown only supports:
+ *   *bold*  _italic_  `code`
+ *
+ * Characters to escape: * _ `
+ */
+export function escapeMarkdownLegacy(text: string): string {
+  return text.replace(/([\*_`])/g, "\\$1");
+}
+
+/**
+ * Escape HTML entities for Telegram HTML parse mode.
+ * Escapes: & < >
+ */
+export function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 /**

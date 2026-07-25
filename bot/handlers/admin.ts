@@ -25,6 +25,7 @@ import { sessionManager } from "@/bot/core/session-manager";
 import { logger } from "@/bot/core/logger";
 import { addNavRow } from "@/bot/keyboards";
 import { formatDate } from "@/utils/helpers";
+import { escapeMarkdownLegacy } from "@/utils/markdown";
 import { prisma } from "@/lib/prisma";
 
 const log = logger.child("admin-handler");
@@ -355,9 +356,11 @@ export async function adminPaymentsHandler(ctx: BotContext): Promise<void> {
       `💰 Revenue: $${revenue.toFixed(2)}`,
       "",
       pendingPayments.length > 0 ? "*Recent Pending:*" : "*No pending payments*",
-      ...pendingPayments.map((p, i) => {
-        const userName = p.user ? `${p.user.firstName} ${p.user.username ?? ""}`.trim() : `User #${p.userId}`;
-        return `${i + 1}. ${userName} — ${p.plan} (${p.provider})\n   ID: ${p.id.slice(0, 8)}... · ${formatDate(p.createdAt)}`;
+      ...      pendingPayments.map((p, i) => {
+        const rawUserName = p.user ? `${p.user.firstName} ${p.user.username ?? ""}`.trim() : `User #${p.userId}`;
+        const userName = escapeMarkdownLegacy(rawUserName);
+        const safePlan = escapeMarkdownLegacy(p.plan);
+        return `${i + 1}. ${userName} — ${safePlan} (${p.provider})\n   ID: ${p.id.slice(0, 8)}... · ${formatDate(p.createdAt)}`;
       }),
     ].join("\n");
 
@@ -392,7 +395,9 @@ export async function adminPaymentDetailHandler(ctx: BotContext, paymentId: stri
       where: { id: payment.userId },
       select: { firstName: true, username: true },
     });
-    const userName = user ? `${user.firstName} ${user.username ?? ""}`.trim() : `User #${payment.userId}`;
+    const rawUserName = user ? `${user.firstName} ${user.username ?? ""}`.trim() : `User #${payment.userId}`;
+    const userName = escapeMarkdownLegacy(rawUserName);
+    const safePlan = escapeMarkdownLegacy(payment.plan);
 
     await ctx.reply(
       [
@@ -400,7 +405,7 @@ export async function adminPaymentDetailHandler(ctx: BotContext, paymentId: stri
         "",
         `👤 User: ${userName}`,
         `🆔 User ID: ${payment.userId}`,
-        `📋 Plan: ${payment.plan}`,
+        `📋 Plan: ${safePlan}`,
         `💳 Method: ${payment.provider}`,
         `💰 Amount: $${(payment.amount / 100).toFixed(2)}`,
         `📌 Status: *${payment.status}*`,

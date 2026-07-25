@@ -31,6 +31,7 @@ import { SUBSCRIPTION_PLANS } from "@/config/plans";
 import type { PlanId } from "@/config/plans";
 import { subscriptionService } from "@/services/subscription";
 import { adminGuard } from "@/bot/middleware/admin";
+import { escapeMarkdownLegacy } from "@/utils/markdown";
 
 const log = logger.child("handler-manual-payment");
 
@@ -348,20 +349,25 @@ export async function manualPaymentProcessPhotoHandler(
     const planName = plan?.name ?? "Pro Monthly";
 
     // Build admin notification message
+    const safeUsername = username ? escapeMarkdownLegacy(username) : null;
+    const safeFirstName = escapeMarkdownLegacy(firstName);
+    const safeLastName = lastName ? escapeMarkdownLegacy(lastName) : "";
+    const safePlanName = escapeMarkdownLegacy(planName);
+
     const adminMessage = [
       `💰 *New Premium Payment*`,
       "",
       `👤 *User:*`,
-      username ? `@${username}` : "—",
+      safeUsername ? `@${safeUsername}` : "—",
       "",
       `📛 *Name:*`,
-      `${firstName} ${lastName}`,
+      `${safeFirstName} ${safeLastName}`,
       "",
       `🆔 *Telegram ID:*`,
       `\`${telegramId}\``,
       "",
       `📋 *Plan:*`,
-      `${planName}`,
+      `${safePlanName}`,
       "",
       `💰 *Amount:*`,
       `${formatUZS(paymentAmount)} ${paymentCurrency}`,
@@ -378,6 +384,11 @@ export async function manualPaymentProcessPhotoHandler(
 
     for (const adminId of adminIds) {
       try {
+        log.debug("Sending receipt notification to admin", {
+          adminId,
+          captionPreview: adminMessage.slice(0, 200) + (adminMessage.length > 200 ? "..." : ""),
+        });
+
         // Send the receipt photo with details as caption
         await ctx.api.sendPhoto(adminId, fileId, {
           caption: adminMessage,
@@ -402,7 +413,7 @@ export async function manualPaymentProcessPhotoHandler(
       `⏳ An administrator will verify it shortly.`,
       "",
       `━━━━━━━━━━━━━━━━━━━━━`,
-      `📋 *Plan:* ${planName}`,
+      `📋 *Plan:* ${safePlanName}`,
       `💰 *Amount:* ${formatUZS(paymentAmount)} ${paymentCurrency}`,
       `━━━━━━━━━━━━━━━━━━━━━`,
       "",
@@ -410,6 +421,11 @@ export async function manualPaymentProcessPhotoHandler(
         ? `✅ Receipt forwarded to ${forwardedCount} administrator(s) for review.`
         : `⚠️ Could not forward to administrators. Please contact support.`,
     ].join("\n");
+
+    log.debug("Sending receipt confirmation to user", {
+      telegramId,
+      confirmMessage: confirmMessage.slice(0, 200) + (confirmMessage.length > 200 ? "..." : ""),
+    });
 
     await ctx.reply(confirmMessage, {
       parse_mode: "Markdown",
@@ -631,29 +647,38 @@ export async function manualPaymentApproveHandler(
     // ════════════════════════════════════════════════════════
     log.debug("APPROVE STEP 5: Updating admin notification message");
     try {
-      const planName = SUBSCRIPTION_PLANS[payment.plan as PlanId]?.name ?? payment.plan;
+      const rawPlanName = SUBSCRIPTION_PLANS[payment.plan as PlanId]?.name ?? payment.plan;
+      const safePlanName2 = escapeMarkdownLegacy(rawPlanName);
+      const safeUsername2 = payment.user?.username ? escapeMarkdownLegacy(payment.user.username) : null;
+      const safeFirstName2 = payment.user?.firstName ? escapeMarkdownLegacy(payment.user.firstName) : "User";
+      const safeLastName2 = payment.user?.lastName ? escapeMarkdownLegacy(payment.user.lastName) : "";
+      const safeAdminLabel = adminUsername ? `@${escapeMarkdownLegacy(adminUsername)}` : `#${adminId}`;
       const updatedCaption = [
         `💰 *New Premium Payment*`,
         "",
         `👤 *User:*`,
-        payment.user?.username ? `@${payment.user.username}` : "—",
+        safeUsername2 ? `@${safeUsername2}` : "—",
         "",
         `📛 *Name:*`,
-        `${payment.user?.firstName ?? "User"} ${payment.user?.lastName ?? ""}`,
+        `${safeFirstName2} ${safeLastName2}`,
         "",
         `🆔 *Telegram ID:*`,
         `\`${String(payment.telegramUserId)}\``,
         "",
         `📋 *Plan:*`,
-        `${planName}`,
+        `${safePlanName2}`,
         "",
         `💰 *Amount:*`,
         `${formatUZS(payment.amount)} ${payment.currency}`,
         "",
         `─── ─ ─ ─ ─ ─ ─ ───`,
-        `✅ *Approved by* ${adminLabel}`,
+        `✅ *Approved by* ${safeAdminLabel}`,
         `📅 ${new Date().toLocaleString()}`,
       ].join("\n");
+
+      log.debug("APPROVE STEP 5: Updating admin notification caption", {
+        captionPreview: updatedCaption.slice(0, 200) + (updatedCaption.length > 200 ? "..." : ""),
+      });
 
       await ctx.editMessageCaption({
         caption: updatedCaption,
@@ -675,9 +700,11 @@ export async function manualPaymentApproveHandler(
     // ════════════════════════════════════════════════════════
     log.debug("APPROVE STEP 6: Replying to admin with success message");
     try {
+      const safePlan = escapeMarkdownLegacy(payment.plan);
+      const approvedMsg = `✅ *Payment approved!*\n\nUser #${payment.userId} has been granted ${safePlan} for 30 days.`;
+      log.debug("APPROVE STEP 6: Message to admin", { adminId, approvedMsg });
       await ctx.reply(
-        `✅ *Payment approved!*\n\n` +
-        `User #${payment.userId} has been granted ${payment.plan} for 30 days.`,
+        approvedMsg,
         { parse_mode: "Markdown" }
       );
       log.debug("APPROVE STEP 6: Admin reply sent successfully");
@@ -732,6 +759,11 @@ export async function manualPaymentApproveHandler(
         "",
         `🚀 Enjoy unlimited access to all AI tools!`,
       ].join("\n");
+
+      log.debug("APPROVE STEP 8: Sending approval notification to user", {
+        telegramUserId: Number(payment.telegramUserId),
+        userNotification: userNotification.slice(0, 300) + (userNotification.length > 300 ? "..." : ""),
+      });
 
       await ctx.api.sendMessage(
         Number(payment.telegramUserId),
@@ -893,29 +925,38 @@ export async function manualPaymentRejectHandler(
     // ════════════════════════════════════════════════════════
     log.debug("REJECT STEP 4: Updating admin notification message");
     try {
-      const planName = SUBSCRIPTION_PLANS[payment.plan as PlanId]?.name ?? payment.plan;
+      const rawPlanName = SUBSCRIPTION_PLANS[payment.plan as PlanId]?.name ?? payment.plan;
+      const safePlanName2 = escapeMarkdownLegacy(rawPlanName);
+      const safeUsername2 = payment.user?.username ? escapeMarkdownLegacy(payment.user.username) : null;
+      const safeFirstName2 = payment.user?.firstName ? escapeMarkdownLegacy(payment.user.firstName) : "User";
+      const safeLastName2 = payment.user?.lastName ? escapeMarkdownLegacy(payment.user.lastName) : "";
+      const safeAdminLabel = adminUsername ? `@${escapeMarkdownLegacy(adminUsername)}` : `#${adminId}`;
       const updatedCaption = [
         `💰 *New Premium Payment*`,
         "",
         `👤 *User:*`,
-        payment.user?.username ? `@${payment.user.username}` : "—",
+        safeUsername2 ? `@${safeUsername2}` : "—",
         "",
         `📛 *Name:*`,
-        `${payment.user?.firstName ?? "User"} ${payment.user?.lastName ?? ""}`,
+        `${safeFirstName2} ${safeLastName2}`,
         "",
         `🆔 *Telegram ID:*`,
         `\`${String(payment.telegramUserId)}\``,
         "",
         `📋 *Plan:*`,
-        `${planName}`,
+        `${safePlanName2}`,
         "",
         `💰 *Amount:*`,
         `${formatUZS(payment.amount)} ${payment.currency}`,
         "",
         `─── ─ ─ ─ ─ ─ ─ ───`,
-        `❌ *Rejected by* ${adminLabel}`,
+        `❌ *Rejected by* ${safeAdminLabel}`,
         `📅 ${new Date().toLocaleString()}`,
       ].join("\n");
+
+      log.debug("REJECT STEP 4: Updating admin notification caption", {
+        captionPreview: updatedCaption.slice(0, 200) + (updatedCaption.length > 200 ? "..." : ""),
+      });
 
       await ctx.editMessageCaption({
         caption: updatedCaption,
@@ -933,9 +974,11 @@ export async function manualPaymentRejectHandler(
     // ════════════════════════════════════════════════════════
     // STEP 5: Confirm action to the admin
     // ════════════════════════════════════════════════════════
+    const safePlan = escapeMarkdownLegacy(payment.plan);
+    const rejectedMsg = `❌ *Payment rejected.*\n\nUser #${payment.userId}'s payment for ${safePlan} has been rejected.`;
+    log.debug("REJECT STEP 5: Message to admin", { adminId, rejectedMsg });
     await ctx.reply(
-      `❌ *Payment rejected.*\n\n` +
-      `User #${payment.userId}'s payment for ${payment.plan} has been rejected.`,
+      rejectedMsg,
       { parse_mode: "Markdown" }
     );
 
@@ -961,6 +1004,11 @@ export async function manualPaymentRejectHandler(
         `📩 Please contact support for assistance.`,
         `━━━━━━━━━━━━━━━━━━━━━`,
       ].join("\n");
+
+      log.debug("REJECT STEP 6: Sending rejection notification to user", {
+        telegramUserId: Number(payment.telegramUserId),
+        rejectMessage: rejectMessage.slice(0, 300) + (rejectMessage.length > 300 ? "..." : ""),
+      });
 
       await ctx.api.sendMessage(
         Number(payment.telegramUserId),

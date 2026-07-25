@@ -5,7 +5,7 @@
  * conversation limit enforcement, and platform info in titles.
  */
 
-import type { BotContext } from "@/types";
+import type { BotContext, VideoPrompt } from "@/types";
 import { BotStep } from "@/types";
 import { videoAIService } from "@/services/ai/video";
 import { videoKeyboard } from "@/bot/keyboards";
@@ -23,6 +23,100 @@ import {
 import { InlineKeyboard } from "grammy";
 
 const log = logger.child("handler-video");
+
+/**
+ * Format an array of VideoPrompt objects into a Telegram-friendly string.
+ * Only includes fields that have content. Never duplicates text.
+ * Matches the expected output format:
+ *
+ * 🎬 Hailuo AI
+ *
+ * 🎭 Scene:
+ * [scene text]
+ * ...
+ */
+function formatVideoPrompts(prompts: VideoPrompt[]): string {
+  const parts: string[] = [];
+
+  for (const prompt of prompts) {
+    const block: string[] = [];
+    block.push("🎬 *" + prompt.platform + "*");
+    block.push("");
+
+    if (prompt.scene) {
+      block.push("🎭 *Scene:*");
+      block.push(prompt.scene);
+      block.push("");
+    }
+
+    if (prompt.lighting) {
+      block.push("💡 *Lighting:*");
+      block.push(prompt.lighting);
+      block.push("");
+    }
+
+    if (prompt.cameraMovement || prompt.lens) {
+      block.push("🎥 *Camera:*");
+      const cameraDesc = prompt.cameraMovement
+        ? prompt.lens
+          ? prompt.cameraMovement + " (" + prompt.lens + ")"
+          : prompt.cameraMovement
+        : prompt.lens || "";
+      block.push(cameraDesc);
+      block.push("");
+    }
+
+    if (prompt.environment) {
+      block.push("🌎 *Environment:*");
+      block.push(prompt.environment);
+      block.push("");
+    }
+
+    if (prompt.negativePrompt) {
+      block.push("🚫 *Negative:*");
+      block.push(prompt.negativePrompt);
+      block.push("");
+    }
+
+    if (prompt.voice) {
+      block.push("🎙️ *Voice:*");
+      block.push(prompt.voice);
+      block.push("");
+    }
+
+    if (prompt.music) {
+      block.push("🎵 *Music:*");
+      block.push(prompt.music);
+      block.push("");
+    }
+
+    if (prompt.duration) {
+      block.push("⏱ *Duration:*");
+      block.push(prompt.duration);
+      block.push("");
+    }
+
+    if (prompt.style) {
+      block.push("*Style:*");
+      block.push(prompt.style);
+      block.push("");
+    }
+
+    // Only show fullPrompt if it's non-empty and differs from scene (avoid duplication)
+    if (prompt.fullPrompt && prompt.fullPrompt !== prompt.scene) {
+      block.push("📝 *Full Prompt:*");
+      block.push(prompt.fullPrompt);
+      block.push("");
+    }
+
+    block.push("━━━━━━━━━━━━━━━━━━━━━");
+    block.push("");
+
+    parts.push(block.join("\n"));
+  }
+
+  return parts.join("\n");
+}
 
 /**
  * Video AI handler
@@ -90,24 +184,7 @@ export async function videoGenerateHandler(ctx: BotContext): Promise<void> {
     );
 
     // Build structured response with prompt details
-    let response = t(lang, "video.result_title");
-    for (const prompt of prompts) {
-      response += "🎬 *" + prompt.platform + "*\n";
-      // Show structured fields: Camera, Lighting, Scene (if available)
-      if (prompt.cameraMovement || prompt.lens) {
-        response += "📷 *Camera:* " + prompt.cameraMovement;
-        if (prompt.lens) response += " (" + prompt.lens + ")";
-        response += "\n";
-      }
-      if (prompt.lighting) {
-        response += "💡 *Lighting:* " + prompt.lighting + "\n";
-      }
-      if (prompt.scene) {
-        response += "🎭 *Scene:* " + prompt.scene + "\n";
-      }
-      response += "\n" + prompt.fullPrompt + "\n\n";
-      response += "━━━━━━━━━━━━━━━━━━━━━\n\n";
-    }
+    const response = t(lang, "video.result_title") + formatVideoPrompts(prompts);
 
     // Store current description in tempData for regeneration
     ctx.session.tempData.lastPromptDescription = text;
@@ -285,32 +362,17 @@ export async function regenerateVideoHandler(ctx: BotContext): Promise<void> {
   await ctx.replyWithChatAction("typing");
   const startMsg = await ctx.reply(t(lang, "video.generating"), {
     parse_mode: "Markdown",
-  });
+  });    try {
+      const prompts = await videoAIService.generatePrompt(
+        userDescription,
+        platform === "all" ? undefined : platform,
+        ctx.session.selectedModel
+      );
 
-  try {
-    const prompts = await videoAIService.generatePrompt(
-      userDescription,
-      platform === "all" ? undefined : platform,
-      ctx.session.selectedModel
-    );
+      // Build structured response
+      const response = t(lang, "video.result_title") + formatVideoPrompts(prompts);
 
-    // Build structured response
-    let response = t(lang, "video.result_title");
-    for (const prompt of prompts) {
-      response += "🎬 *" + prompt.platform + "*\n";
-      if (prompt.cameraMovement || prompt.lens) {
-        response += "📷 *Camera:* " + prompt.cameraMovement;
-        if (prompt.lens) response += " (" + prompt.lens + ")";
-        response += "\n";
-      }
-      if (prompt.lighting) {
-        response += "💡 *Lighting:* " + prompt.lighting + "\n";
-      }
-      response += "\n" + prompt.fullPrompt + "\n\n";
-      response += "━━━━━━━━━━━━━━━━━━━━━\n\n";
-    }
-
-    // Store in session and save to DB
+      // Store in session and save to DB
     ctx.session.tempData.lastPromptDescription = userDescription;
     ctx.session.messages.push({ role: "user", content: userDescription });
     ctx.session.messages.push({ role: "assistant", content: response });

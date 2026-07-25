@@ -95,14 +95,14 @@ export async function socialGenerateHandler(ctx: BotContext): Promise<void> {
 
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
     await ctx.reply(response, {
-      parse_mode: "Markdown",
+      parse_mode: undefined,
       reply_markup: socialKeyboard,
     });
   } catch (error) {
     log.error("Social Media AI error", { userId, error: String(error) });
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
     await ctx.reply(t(lang, "social.error"), {
-      parse_mode: "Markdown",
+      parse_mode: undefined,
       reply_markup: socialKeyboard,
     });
   }

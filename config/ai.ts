@@ -95,7 +95,10 @@ export class AIConfig {
   private static configData: AIConfigData = {
     // AI_PROVIDER_ORDER from env: gemini,cerebras,mistral,openrouter
     defaultProvider: (process.env.AI_PROVIDER_ORDER?.split(",")[0]?.trim() as ProviderId) || "gemini",
-    fallbackSteps: [6000, 4000, 3000, 2000, 1200, 800],
+    // Feature-based degradation: starts from requested limit, halves each step.
+    // With professional limits (video/coding up to 32000), 6 steps give graceful
+    // degradation from 32000 → 16000 → 8000 → 4000 → 2000 → 1000.
+    fallbackSteps: [32000, 16000, 8000, 4000, 2000, 1000],
     retry: {
       maxRetries: 3,
       initialBackoffMs: 500,
@@ -112,51 +115,62 @@ export class AIConfig {
       translate: 0.3,
       social: 0.8,
     },
-    // Per-feature max tokens read from environment variables with sensible defaults
-    // FREE tier uses minimal tokens (FREE_MAX_TOKENS=250) to reduce costs;
-    // premium tiers get more (PREMIUM_MAX_TOKENS=700).
+    // ─── Professional Token Limits per Feature and Plan ───────────
+    //
+    // These are the AUTHORITATIVE limits.  The FREE_MAX_TOKENS / 
+    // PREMIUM_MAX_TOKENS / PRO_MAX_TOKENS / ENTERPRISE_MAX_TOKENS env
+    // vars can ONLY RAISE these values (see getMaxTokens for the 50%
+    // minimum floor clamp).  They can never reduce quality below the
+    // professional defaults.
+    //
+    // Feature-based differentiation:
+    //   Video & Coding — highest (prompt engineering needs many tokens)
+    //   Chat & Translate — moderate
+    //   Image & Social — medium
+    //   Business — high (strategy docs need room)
+    //
     tokenPolicies: {
       chat: {
-        FREE: { base: Number(process.env.FREE_MAX_TOKENS) || 250, max: Number(process.env.FREE_MAX_TOKENS) || 250 },
-        PREMIUM: { base: Number(process.env.PREMIUM_MAX_TOKENS) || 700, max: 1024 },
-        PRO: { base: 2048, max: 4096 },
-        ENTERPRISE: { base: 4096, max: 8192 },
+        FREE: { base: 1000, max: 2000 },
+        PREMIUM: { base: 4000, max: 8000 },
+        PRO: { base: 8000, max: 16000 },
+        ENTERPRISE: { base: 16000, max: 32000 },
       },
       business: {
-        FREE: { base: Number(process.env.FREE_MAX_TOKENS) || 250, max: Number(process.env.FREE_MAX_TOKENS) || 250 },
-        PREMIUM: { base: Number(process.env.PREMIUM_MAX_TOKENS) || 700, max: 1024 },
-        PRO: { base: 2048, max: 4096 },
-        ENTERPRISE: { base: 4096, max: 8192 },
+        FREE: { base: 2000, max: 4000 },
+        PREMIUM: { base: 6000, max: 12000 },
+        PRO: { base: 12000, max: 24000 },
+        ENTERPRISE: { base: 24000, max: 48000 },
       },
       coding: {
-        FREE: { base: Number(process.env.FREE_MAX_TOKENS) || 250, max: Number(process.env.FREE_MAX_TOKENS) || 250 },
-        PREMIUM: { base: Number(process.env.PREMIUM_MAX_TOKENS) || 700, max: 2048 },
-        PRO: { base: 4096, max: 8192 },
-        ENTERPRISE: { base: 8192, max: 16384 },
+        FREE: { base: 2000, max: 4000 },
+        PREMIUM: { base: 8000, max: 16000 },
+        PRO: { base: 16000, max: 32000 },
+        ENTERPRISE: { base: 32000, max: 64000 },
       },
       image: {
-        FREE: { base: Number(process.env.FREE_MAX_TOKENS) || 250, max: Number(process.env.FREE_MAX_TOKENS) || 250 },
-        PREMIUM: { base: Number(process.env.PREMIUM_MAX_TOKENS) || 700, max: 1024 },
-        PRO: { base: 2048, max: 4096 },
-        ENTERPRISE: { base: 4096, max: 8192 },
+        FREE: { base: 1500, max: 3000 },
+        PREMIUM: { base: 4000, max: 8000 },
+        PRO: { base: 8000, max: 16000 },
+        ENTERPRISE: { base: 16000, max: 32000 },
       },
       video: {
-        FREE: { base: Number(process.env.FREE_MAX_TOKENS) || 250, max: Number(process.env.FREE_MAX_TOKENS) || 250 },
-        PREMIUM: { base: Number(process.env.PREMIUM_MAX_TOKENS) || 700, max: 1024 },
-        PRO: { base: 2048, max: 4096 },
-        ENTERPRISE: { base: 4096, max: 8192 },
+        FREE: { base: 4000, max: 8000 },
+        PREMIUM: { base: 8000, max: 12000 },
+        PRO: { base: 12000, max: 20000 },
+        ENTERPRISE: { base: 20000, max: 32000 },
       },
       translate: {
-        FREE: { base: Number(process.env.FREE_MAX_TOKENS) || 250, max: Number(process.env.FREE_MAX_TOKENS) || 250 },
-        PREMIUM: { base: Number(process.env.PREMIUM_MAX_TOKENS) || 700, max: 1024 },
-        PRO: { base: 2048, max: 4096 },
-        ENTERPRISE: { base: 4096, max: 8192 },
+        FREE: { base: 1000, max: 2000 },
+        PREMIUM: { base: 4000, max: 8000 },
+        PRO: { base: 8000, max: 16000 },
+        ENTERPRISE: { base: 16000, max: 32000 },
       },
       social: {
-        FREE: { base: Number(process.env.FREE_MAX_TOKENS) || 250, max: Number(process.env.FREE_MAX_TOKENS) || 250 },
-        PREMIUM: { base: Number(process.env.PREMIUM_MAX_TOKENS) || 700, max: 1024 },
-        PRO: { base: 2048, max: 4096 },
-        ENTERPRISE: { base: 4096, max: 8192 },
+        FREE: { base: 1500, max: 3000 },
+        PREMIUM: { base: 4000, max: 8000 },
+        PRO: { base: 8000, max: 16000 },
+        ENTERPRISE: { base: 16000, max: 32000 },
       },
     },
     providers: {
@@ -339,8 +353,14 @@ export class AIConfig {
   };
 
   /**
-   * Resolve maximum output tokens dynamically based on feature, plan tier, and prompt size.
-   * Uses env-var-configured defaults to avoid hardcoding.
+   * Resolve maximum output tokens dynamically based on feature, plan tier,
+   * and prompt size.
+   *
+   * Env-var safety:
+   *   FREE_MAX_TOKENS / PREMIUM_MAX_TOKENS / PRO_MAX_TOKENS / ENTERPRISE_MAX_TOKENS
+   *   can ONLY INCREASE the base limits — they are clamped to at least 50%
+   *   of the professional default. This prevents accidental misconfiguration
+   *   from crippling AI generation quality.
    */
   static getMaxTokens(
     feature: FeatureType,
@@ -352,18 +372,32 @@ export class AIConfig {
       this.configData.tokenPolicies[feature]?.[planType] ??
       this.configData.tokenPolicies[feature]?.FREE ?? { base: 400, max: 400 };
 
-    // For FREE plan, always use the env-var base value (no dynamic scaling)
+    // ── Env-var safety: clamp env overrides to at least 50% of professional default ──
+    // This prevents FREE_MAX_TOKENS=50 from crippling the system.
+    const envOverrides: Record<string, number | undefined> = {
+      FREE: process.env.FREE_MAX_TOKENS ? Number(process.env.FREE_MAX_TOKENS) : undefined,
+      PREMIUM: process.env.PREMIUM_MAX_TOKENS ? Number(process.env.PREMIUM_MAX_TOKENS) : undefined,
+      PRO: process.env.PRO_MAX_TOKENS ? Number(process.env.PRO_MAX_TOKENS) : undefined,
+      ENTERPRISE: process.env.ENTERPRISE_MAX_TOKENS ? Number(process.env.ENTERPRISE_MAX_TOKENS) : undefined,
+    };
+
+    // Clamped effective base: env value if set AND >= 50% of professional default, else professional default
+    const minFloor = Math.max(Math.round(policy.base * 0.5), 1);
+    const envBase = envOverrides[planType];
+    const effectiveBase = (envBase !== undefined && envBase >= minFloor) ? envBase : policy.base;
+
+    // For FREE plan, return the effective base (no dynamic scaling — keep costs predictable)
     if (planType === "FREE") {
-      return policy.base;
+      return effectiveBase;
     }
 
-    // Dynamic cost optimization: scale limit based on prompt length
+    // Dynamic scaling: longer prompts get more output tokens
     if (promptLength > 4000) {
       return policy.max;
     } else if (promptLength > 1000) {
-      return Math.min(policy.max, Math.round(policy.base * 1.5));
+      return Math.min(policy.max, Math.round(effectiveBase * 1.5));
     }
-    return policy.base;
+    return effectiveBase;
   }
 
   /**

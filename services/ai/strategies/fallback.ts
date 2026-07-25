@@ -25,20 +25,32 @@ export class FallbackStrategy {
 
   /**
    * Get degraded maxTokens allocation for attempt step.
+   *
+   * With the new professional limits, the fallback steps are:
+   *   [32000, 16000, 8000, 4000, 2000, 1000]
+   *
+   * The function finds the first step <= requestedMaxTokens, then
+   * applies the attempt offset to degrade further. If requested
+   * tokens are below the smallest step, the smallest step is returned
+   * unchanged (no point degrading below 1000 tokens for quality generation).
    */
   static getDegradedMaxTokens(requestedMaxTokens: number, attempt: number): number {
-    const steps = aiConfig.getFallbackSteps(); // [6000, 4000, 3000, 2000, 1200, 800]
+    const steps = aiConfig.getFallbackSteps();
     
-    // Find closest step <= requestedMaxTokens, or start from initial matching step
+    // Find the first step that is <= requested tokens
     let startIndex = steps.findIndex((step) => step <= requestedMaxTokens);
-    if (startIndex === -1) startIndex = 0;
+    
+    // If requested is lower than all steps, start from smallest step and don't degrade
+    if (startIndex === -1) {
+      return steps[steps.length - 1]!;
+    }
 
     const targetIndex = startIndex + attempt;
     if (targetIndex < steps.length) {
       return steps[targetIndex]!;
     }
 
-    // Return smallest step if attempts exceed array length
+    // Don't degrade below the minimum step — preserve generation quality
     return steps[steps.length - 1]!;
   }
 }

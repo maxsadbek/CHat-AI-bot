@@ -53,12 +53,28 @@ const HEADER_ALIASES = Object.keys(CANONICAL_KEYS).concat([
 
 // ─── System prompt ─────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are an expert cinematic AI video prompt creator.
+const SYSTEM_PROMPT = `You are a Hollywood professional cinematic AI video prompt engineer.
 
-Your job is NOT to repeat the user's sentence.
+Your job is to transform user ideas into professional movie prompts.
 
-Expand every simple idea into a professional movie production prompt.
+RULES:
+1. NEVER include the user's exact sentence inside output fields.
+2. Extract meaning from user text and rewrite it professionally.
+3. Replace simple words with cinematic descriptions.
+4. Every field must contain specific details related to the user's idea.
+5. No generic phrases like "main subject in cinematic setting", "dynamic motion", or "professional composition" unless they include specific details from the user's idea.
 
+Example:
+
+Input:
+Mototsiklda ketayotgan odam moto 300km tezlikda ketayapti
+
+Correct output format:
+Scene: A breathtaking high-speed motorcycle chase scene on an empty highway. A professional rider accelerates a superbike at extreme 300 km/h speed with realistic wind effects and cinematic action atmosphere.
+Subject: A professional rider wearing a black racing suit controlling a powerful superbike.
+Action: The motorcycle reaches extreme speed with realistic body movement and physics.
+
+Never copy the user's sentence directly.
 Create prompts for Hailuo AI, Kling AI, Google Veo, Runway and PixVerse.
 
 Include:
@@ -75,51 +91,39 @@ Include:
 - film style
 - negative prompt
 
-User's main object, action and unique details are mandatory.
-Never replace the user's idea with generic cinematic text.
-Every generated field must be connected to the original description.
-
-Example:
-
-Input:
-Mototsiklda ketayotgan odam moto 300km tezlikda ketayapti
-
-Output:
-A cinematic high-speed motorcycle scene on an empty highway. A professional rider wearing a black racing suit controls a superbike moving at extreme speed. The camera follows from a low-angle tracking shot near the wheels, realistic motion blur, wind effects, dramatic sunset lighting, 35mm cinema lens, ultra realistic physics, 4K movie quality.
-
-Never copy the user's sentence directly.
-
 CRITICAL RULES:
+- NEVER include the user's exact sentence in any field.
+- Extract the meaning and rewrite it as a professional cinematic description.
 - Never repeat text.
 - Never return incomplete sentences.
 - Return ONLY valid JSON.
 - NEVER wrap JSON inside markdown code blocks.
 - NEVER add text before or after the JSON array.
 - Return EXACTLY one JSON object per platform.
-- EVERY field MUST contain generated content that is connected to the user's idea. Do NOT leave fields empty.
+- EVERY field MUST contain generated content connected to the user's idea.
 
-You MUST respond with a JSON array where EVERY object has ALL of these fields filled with creative, expanded content that references the user's original idea:
+You MUST respond with a JSON array where EVERY object has ALL of these fields:
 
 [
   {
     "platform": "Hailuo AI",
     "title": "Short epic title based on the user's video idea",
-    "scene": "Full cinematic scene description that includes the user's main subject and action",
-    "subject": "The user's main subject described in cinematic detail",
-    "action": "The user's described action with motion and physics details",
-    "environment": "Setting, time of day, weather, location details matching the user's idea",
-    "camera": "Camera angle, position, and framing that captures the user's scene",
+    "scene": "Transformed cinematic scene description (never user's exact words)",
+    "subject": "Main subject described in cinematic detail",
+    "action": "Action with motion and physics details",
+    "environment": "Setting, time of day, weather, location details",
+    "camera": "Camera angle, position, and framing",
     "lens": "Lens type and focal length, e.g. 35mm prime",
-    "movement": "Camera movement that enhances the user's action",
-    "lighting": "Lighting setup that fits the user's scene mood",
-    "color_grading": "Color palette, grade, visual tone matching the atmosphere",
-    "realism": "Realism level, physics accuracy for the user's subject",
-    "style": "Film style matching the user's scene: action, drama, sci-fi, etc.",
+    "movement": "Camera movement description",
+    "lighting": "Lighting setup, mood, shadows",
+    "color_grading": "Color palette and visual tone",
+    "realism": "Realism level and physics accuracy",
+    "style": "Film style matching the scene",
     "duration": "Suggested clip duration, e.g. 10 seconds",
-    "negative_prompt": "What to avoid: artifacts, distortions, deformed faces, low quality",
-    "music": "Music genre, tempo, mood that fits the user's scene",
+    "negative_prompt": "What to avoid: artifacts, distortions, low quality",
+    "music": "Music genre and mood",
     "voice": "Voice-over or narration style",
-    "full_prompt": "Single complete cinematic prompt that includes all elements from the user's idea"
+    "full_prompt": "Single complete cinematic prompt"
   }
 ]
 
@@ -399,118 +403,156 @@ Return one JSON object per platform in a JSON array.`;
   }
 
   /**
-   * Dynamic fallback that weaves the user's description into a cinematic
-   * prompt structure.  NEVER returns generic text — every field is built
-   * around the user's original idea without copying it verbatim.
+   * Detect the general scene type from keywords in the description
+   * and return a pre-written cinematic template.  NEVER includes
+   * the user's raw text.
+   */
+  private detectSceneType(description: string): "vehicle" | "nature" | "people" | "action" {
+    const lower = description.toLowerCase();
+    const vehicleWords = ["moto", "car", "bike", "drive", "speed", "race", "vehicle", "auto", "road", "highway", "truck"];
+    const natureWords = ["nature", "landscape", "forest", "mountain", "ocean", "sea", "river", "sky", "sunset", "sunrise", "garden", "park", "field"];
+    const peopleWords = ["person", "people", "man", "woman", "child", "human", "character", "actor", "dance", "walk", "run", "fight"];
+
+    if (vehicleWords.some((w) => lower.includes(w))) return "vehicle";
+    if (natureWords.some((w) => lower.includes(w))) return "nature";
+    if (peopleWords.some((w) => lower.includes(w))) return "people";
+    return "action";
+  }
+
+  /** Templates keyed by scene type — never contain user text. */
+  private readonly fallbackTemplates: Record<string, Omit<VideoPrompt, "platform">> = {
+    vehicle: {
+      title: "High-Speed Chase",
+      scene: "A breathtaking high-speed vehicle scene on an open road. A powerful machine moves at extreme velocity while the camera captures every detail of the motion. Realistic wind effects, tire movement, road vibration, and cinematic action atmosphere create an intense viewing experience.",
+      subject: "A professional driver controlling a high-performance vehicle with precision and skill.",
+      action: "The vehicle accelerates at extreme speed with realistic physics, wheel rotation, wind resistance, and dynamic body movement.",
+      environment: "An open road during golden hour with dramatic sky, atmospheric particles, and realistic lighting conditions.",
+      camera: "Low-angle tracking shot following the vehicle, capturing speed and motion from a dynamic perspective.",
+      lens: "35mm cinema lens with shallow depth of field",
+      movement: "Fast cinematic tracking movement with motion blur and dynamic camera angles.",
+      lighting: "Dramatic golden hour lighting with realistic shadows, lens flares, and cinematic contrast.",
+      color_grading: "Warm cinematic color grade with high contrast and professional color palette.",
+      realism: "Ultra realistic, 4K cinematic quality with accurate physics and lifelike motion details.",
+      style: "Hollywood action film style with high-octane energy",
+      duration: "10 seconds",
+      negative_prompt: "low quality, blurry, distorted objects, unrealistic physics, bad anatomy, cartoon style, deformed features, slow motion, static shot",
+      music: "High-energy cinematic soundtrack with intense drum beats and orchestral swells",
+      voice: "Deep cinematic voice-over with dramatic tone",
+      full_prompt: "",
+    },
+    nature: {
+      title: "Cinematic Landscape",
+      scene: "A breathtaking cinematic landscape captured in stunning natural light. The camera glides through the scene revealing majestic views, atmospheric depth, and the raw beauty of the natural world. Realistic environmental effects and immersive sound design create a powerful visual experience.",
+      subject: "The natural landscape presented as the main subject with dramatic composition and depth.",
+      action: "Slow cinematic revelation of the landscape with natural movement of elements like wind, water, and light.",
+      environment: "A pristine natural environment with realistic atmospheric conditions, natural lighting, and immersive details.",
+      camera: "Smooth cinematic dolly shot moving through the landscape with professional framing.",
+      lens: "Wide-angle cinema lens capturing the full scope of the environment",
+      movement: "Slow controlled camera movement revealing the landscape with cinematic grace.",
+      lighting: "Natural cinematic lighting using golden hour conditions with soft shadows and warm tones.",
+      color_grading: "Natural color grade with enhanced saturation and cinematic warmth.",
+      realism: "Ultra realistic, 8K cinematic quality with photorealistic environmental details.",
+      style: "Cinematic documentary style with National Geographic quality",
+      duration: "15 seconds",
+      negative_prompt: "low quality, blurry, artificial look, flat lighting, cartoon style, overexposed, underexposed",
+      music: "Ambient cinematic soundtrack with soft orchestral tones and nature sounds",
+      voice: "Calm cinematic narration with thoughtful tone",
+      full_prompt: "",
+    },
+    people: {
+      title: "Cinematic Portrait",
+      scene: "A powerful cinematic scene centered on a compelling character in a dramatic setting. The subject commands attention through expressive movement and emotional presence. Cinematic lighting and professional framing create a visually striking narrative moment.",
+      subject: "A compelling character presented with dramatic cinematic lighting and professional portraiture.",
+      action: "Expressive character movement with realistic body language, emotional depth, and cinematic timing.",
+      environment: "Atmospheric environment that complements the character with mood-appropriate lighting and detail.",
+      camera: "Close-up cinematic shot with shallow depth of field focusing on the subject.",
+      lens: "85mm prime lens with beautiful bokeh",
+      movement: "Subtle cinematic camera movement following the character's motion.",
+      lighting: "Dramatic cinematic lighting with Rembrandt-style shadows and professional key light.",
+      color_grading: "Cinematic color grade with skin-tone optimization and mood-enhancing palette.",
+      realism: "Ultra realistic, 4K cinematic quality with lifelike skin texture and detail.",
+      style: "Cinematic drama style with emotional depth",
+      duration: "10 seconds",
+      negative_prompt: "low quality, blurry, distorted face, bad anatomy, unnatural expression, flat lighting, cartoon style",
+      music: "Emotional cinematic soundtrack with piano and strings",
+      voice: "Warm cinematic narration with emotional resonance",
+      full_prompt: "",
+    },
+    action: {
+      title: "Dynamic Action Scene",
+      scene: "An intense cinematic action scene with professional choreography and dynamic camera work. Every movement is captured with precision, realistic physics, and high-energy cinematography. The scene builds tension through dramatic timing and visual impact.",
+      subject: "The central subject of the action scene captured in dynamic motion with professional framing.",
+      action: "Fast-paced action sequence with realistic physics, precise movement, and cinematic timing.",
+      environment: "Action-oriented environment with dramatic atmosphere and professional set design.",
+      camera: "Dynamic handheld-style camera following the action with immersive intensity.",
+      lens: "24mm wide-angle lens capturing the full scope of the action",
+      movement: "Energetic camera movement following the action with stabilized dynamic shots.",
+      lighting: "Dramatic action lighting with high contrast and cinematic shadows.",
+      color_grading: "High-contrast cinematic color grade with enhanced drama.",
+      realism: "Ultra realistic, 4K cinematic quality with accurate physics and dynamic motion blur.",
+      style: "Hollywood action film style",
+      duration: "10 seconds",
+      negative_prompt: "low quality, blurry, distorted motion, unrealistic physics, bad anatomy, static, slow motion",
+      music: "Intense cinematic soundtrack with driving percussion and orchestral hits",
+      voice: "Energetic cinematic narration with commanding tone",
+      full_prompt: "",
+    },
+  };
+
+  /**
+   * Build a prompt using keyword-matched cinematic templates.
+   * NEVER includes the user's raw description in any field.
    */
   private buildDynamicFallback(
     platform: VideoPlatform,
     description: string
   ): VideoPrompt {
-    const desc = description.trim();
-    const short = desc.length > 60 ? desc.slice(0, 57) + "..." : desc;
-
-    // Cinematic scene: wrap the user's idea in a professional framing
-    const scene = `A cinematic scene featuring ${desc.toLowerCase()}. Professional cinematography captures the action with dramatic lighting, realistic physics, and Hollywood-quality production value.`;
-
-    return {
-      platform,
-      title: short,
-      scene,
-      subject: `The main subject of ${short} presented in a cinematic composition with professional detail.`,
-      action: `Cinematic action sequence showing ${desc.toLowerCase()} with realistic motion, physics accuracy, and fluid movement.`,
-      environment: `Cinematic environment that complements the scene of ${short}, with detailed atmosphere and appropriate setting.`,
-      camera: "Dynamic camera angle following the action with professional framing.",
-      lens: "35mm cinema lens with cinematic depth of field",
-      movement: "Smooth tracking camera movement capturing the speed and motion.",
-      lighting: "Dramatic cinematic lighting with realistic shadows and mood enhancement.",
-      color_grading: "Cinematic color grade with professional color palette matching the scene mood.",
-      realism: "Ultra realistic, 4K cinematic quality with accurate physics and lifelike details.",
-      style: "Cinematic film style with professional production quality",
-      duration: "10 seconds",
-      negative_prompt: "low quality, blurry, distorted objects, unrealistic physics, bad anatomy, cartoon style, deformed features",
-      music: "Cinematic soundtrack with dramatic tempo matching the action",
-      voice: "Professional cinematic narration",
-      full_prompt: scene,
-    };
+    const type = this.detectSceneType(description);
+    const tmpl = this.fallbackTemplates[type]!;
+    return { platform, ...tmpl };
   }
 
   /**
-   * Validate AI-generated prompt against the user's original description.
-   * If key content words (nouns, actions) from the user's input are
-   * missing from the AI output, append them naturally so the prompt
-   * always reflects the user's actual idea.
+   * Validates that the AI output contains key concepts from the user's
+   * description.  If critical elements are missing, merges them gracefully
+   * without using the user's exact words.
    */
   private validateAndMergePrompt(
     prompt: VideoPrompt,
     description: string
   ): VideoPrompt {
     const desc = description.toLowerCase();
+    const scene = prompt.scene.toLowerCase();
+    const subject = prompt.subject.toLowerCase();
 
-    const stopWords = new Set([
-      "a", "an", "the", "is", "are", "was", "were", "in", "on", "at",
-      "to", "for", "of", "with", "and", "or", "but", "not", "it",
-      "its", "this", "that", "these", "those", "from", "by", "as",
-      "be", "been", "being", "have", "has", "had", "do", "does",
-      "did", "will", "would", "can", "could", "should", "may", "might",
-      "da", "va", "lar", "ni", "ga", "dan", "bilan", "uchun",
-      "bu", "shu", "u", "ular", "men", "sen", "biz", "siz",
-    ]);
+    // Detect scene type for natural merge phrasing
+    const type = this.detectSceneType(description);
 
-    const contentWords = desc
-      .split(/[\s,.-]+/)
-      .map((w) => w.replace(/[^a-z0-9]/g, "").trim())
-      .filter((w) => w.length > 2 && !stopWords.has(w));
-
-    // Unique — already in set to avoid duplicates
-    const uniqueItems = <T>(a: T[]): T[] => [...new Set(a)];
-
-    // For each target field, collect important words missing from the AI output
-    const findMissing = (fieldText: string): string[] => {
-      const lower = fieldText.toLowerCase();
-      return uniqueItems(
-        contentWords.filter((w) => w.length > 2 && !lower.includes(w))
-      );
+    // Keyword lists that should be present based on scene type
+    const requiredHints: Record<string, string> = {
+      vehicle: "high-speed vehicle motion",
+      nature: "natural environment atmosphere",
+      people: "character presence movement",
+      action: "dynamic action intensity",
     };
 
-    const missingScene = findMissing(prompt.scene);
-    const missingSubject = findMissing(prompt.subject);
-    const missingAction = findMissing(prompt.action);
-    const missingEnv = findMissing(prompt.environment);
-
+    const hint = requiredHints[type] || requiredHints.action;
     const merged = { ...prompt };
 
-    // Merge missing details naturally by appending, not awkward prepending
-    if (missingScene.length > 0) {
-      merged.scene =
-        prompt.scene +
-        " The scene prominently features " +
-        missingScene.slice(0, 5).join(", ") +
-        ".";
-    }
+    // Check scene for type-appropriate keywords
+    const typeWords: Record<ReturnType<typeof this.detectSceneType>, string[]> = {
+      vehicle: ["speed", "vehicle", "motion", "road", "drive"],
+      nature: ["landscape", "nature", "light", "scene", "environment"],
+      people: ["character", "subject", "presence", "expression"],
+      action: ["action", "motion", "dynamic", "intense", "energy"],
+    };
 
-    if (missingSubject.length > 0) {
-      merged.subject =
-        prompt.subject +
-        " (" +
-        missingSubject.slice(0, 3).join(", ") +
-        ")";
-    }
+    const words = typeWords[type] || typeWords.action;
+    const hasTypeContent = words.some((w) => scene.includes(w) || subject.includes(w));
 
-    if (missingAction.length > 0) {
-      merged.action =
-        prompt.action +
-        " The action includes " +
-        missingAction.slice(0, 3).join(", ") +
-        ".";
-    }
-
-    if (missingEnv.length > 0) {
-      merged.environment =
-        prompt.environment +
-        " The environment features " +
-        missingEnv.slice(0, 3).join(", ") +
-        ".";
+    if (!hasTypeContent) {
+      // Graceful merge: add a single natural sentence, no raw user words
+      merged.scene = `${prompt.scene} The scene captures ${hint} with professional cinematic quality.`.trim();
     }
 
     return merged;

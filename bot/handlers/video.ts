@@ -3,6 +3,9 @@
  * Generates professional video prompts for various platforms.
  * Now with interactive history (clickable resume + regenerate buttons),
  * conversation limit enforcement, and platform info in titles.
+ *
+ * Uses parse_mode: undefined for video content to avoid Telegram
+ * parsing errors from special characters in AI-generated prompts.
  */
 
 import type { BotContext, VideoPrompt } from "@/types";
@@ -21,106 +24,128 @@ import {
   resumeConversation,
 } from "@/bot/handlers/history";
 import { InlineKeyboard } from "grammy";
-import { escapeTelegramHTML } from "@/utils/helpers";
 
 const log = logger.child("handler-video");
 
 /**
  * Format an array of VideoPrompt objects into a Telegram-friendly string.
  * Only includes fields that have content. Never duplicates text.
- * Uses HTML parse_mode — escapes AI content via escapeTelegramHTML().
+ *
+ * Sent with parse_mode: undefined (plain text) so special characters
+ * like *, _, `, [, ], (, ) never crash Telegram.
+ *
+ * Example:
  *
  * 🎬 Hailuo AI
  *
- * 🎭 <b>Scene:</b>
- * [scene text]
- * ...
+ * 🎭 Scene:
+ * A cinematic motorcycle rider...
+ *
+ * 💡 Lighting:
+ * Dramatic sunset...
  */
-/**
- * Quick check: does text look like raw JSON (starts with [ or { and has quoted keys)?
- */
-function looksLikeRawJson(text: string): boolean {
-  const trimmed = text.trim();
-  if (!trimmed) return false;
-  const first = trimmed[0]!;
-  return (first === "[" || first === "{") && /"[a-zA-Z]+\s*":/.test(trimmed.slice(0, 200));
-}
-
 function formatVideoPrompts(prompts: VideoPrompt[]): string {
   const parts: string[] = [];
 
   for (const prompt of prompts) {
     const block: string[] = [];
-    block.push("🎬 <b>" + escapeTelegramHTML(prompt.platform) + "</b>");
+    block.push("🎬 " + prompt.platform);
     block.push("");
 
+    if (prompt.title) {
+      block.push("📌 " + prompt.title);
+      block.push("");
+    }
+
     if (prompt.scene) {
-      block.push("🎭 <b>Scene:</b>");
-      block.push(escapeTelegramHTML(prompt.scene));
+      block.push("🎭 Scene:");
+      block.push(prompt.scene);
       block.push("");
     }
 
-    if (prompt.lighting) {
-      block.push("💡 <b>Lighting:</b>");
-      block.push(escapeTelegramHTML(prompt.lighting));
+    if (prompt.subject) {
+      block.push("🎯 Subject:");
+      block.push(prompt.subject);
       block.push("");
     }
 
-    if (prompt.cameraMovement || prompt.lens) {
-      block.push("🎥 <b>Camera:</b>");
-      const cameraDesc = prompt.cameraMovement
-        ? prompt.lens
-          ? prompt.cameraMovement + " (" + prompt.lens + ")"
-          : prompt.cameraMovement
-        : prompt.lens || "";
-      block.push(escapeTelegramHTML(cameraDesc));
+    if (prompt.action) {
+      block.push("⚡ Action:");
+      block.push(prompt.action);
       block.push("");
     }
 
     if (prompt.environment) {
-      block.push("🌎 <b>Environment:</b>");
-      block.push(escapeTelegramHTML(prompt.environment));
+      block.push("🌎 Environment:");
+      block.push(prompt.environment);
       block.push("");
     }
 
-    if (prompt.negativePrompt) {
-      block.push("🚫 <b>Negative:</b>");
-      block.push(escapeTelegramHTML(prompt.negativePrompt));
+    if (prompt.camera) {
+      block.push("🎥 Camera:");
+      const cameraLine = prompt.lens
+        ? prompt.camera + " (" + prompt.lens + ")"
+        : prompt.camera;
+      block.push(cameraLine);
+      block.push("");
+    } else if (prompt.lens) {
+      block.push("🎥 Lens:");
+      block.push(prompt.lens);
       block.push("");
     }
 
-    if (prompt.voice) {
-      block.push("🎙️ <b>Voice:</b>");
-      block.push(escapeTelegramHTML(prompt.voice));
+    if (prompt.movement) {
+      block.push("🎬 Movement:");
+      block.push(prompt.movement);
+      block.push("");
+    }
+
+    if (prompt.lighting) {
+      block.push("💡 Lighting:");
+      block.push(prompt.lighting);
+      block.push("");
+    }
+
+    if (prompt.color_grading) {
+      block.push("🎨 Color Grading:");
+      block.push(prompt.color_grading);
+      block.push("");
+    }
+
+    if (prompt.realism) {
+      block.push("🔬 Realism:");
+      block.push(prompt.realism);
+      block.push("");
+    }
+
+    if (prompt.negative_prompt) {
+      block.push("🚫 Negative Prompt:");
+      block.push(prompt.negative_prompt);
       block.push("");
     }
 
     if (prompt.music) {
-      block.push("🎵 <b>Music:</b>");
-      block.push(escapeTelegramHTML(prompt.music));
+      block.push("🎵 Music:");
+      block.push(prompt.music);
+      block.push("");
+    }
+
+    if (prompt.voice) {
+      block.push("🎙️ Voice:");
+      block.push(prompt.voice);
       block.push("");
     }
 
     if (prompt.duration) {
-      block.push("⏱ <b>Duration:</b>");
-      block.push(escapeTelegramHTML(prompt.duration));
+      block.push("⏱ Duration:");
+      block.push(prompt.duration);
       block.push("");
     }
 
-    if (prompt.style) {
-      block.push("<b>Style:</b>");
-      block.push(escapeTelegramHTML(prompt.style));
-      block.push("");
-    }
-
-    // Only show fullPrompt if it's non-empty, differs from scene, and is NOT raw JSON
-    if (
-      prompt.fullPrompt &&
-      prompt.fullPrompt !== prompt.scene &&
-      !looksLikeRawJson(prompt.fullPrompt)
-    ) {
-      block.push("📝 <b>Full Prompt:</b>");
-      block.push(escapeTelegramHTML(prompt.fullPrompt));
+    // Only show full_prompt if non-empty and doesn't look like raw JSON
+    if (prompt.full_prompt && !looksLikeRawJson(prompt.full_prompt)) {
+      block.push("📝 Full Prompt:");
+      block.push(prompt.full_prompt);
       block.push("");
     }
 
@@ -131,6 +156,16 @@ function formatVideoPrompts(prompts: VideoPrompt[]): string {
   }
 
   return parts.join("\n");
+}
+
+/**
+ * Quick check: does text look like raw JSON (starts with [ or { and has quoted keys)?
+ */
+function looksLikeRawJson(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  const first = trimmed[0]!;
+  return (first === "[" || first === "{") && /"[a-zA-Z]+\s*":/.test(trimmed.slice(0, 200));
 }
 
 /**
@@ -189,9 +224,7 @@ export async function videoGenerateHandler(ctx: BotContext): Promise<void> {
 
   try {
     log.info("[VIDEO_FLOW] Generating video prompt", { platform, model: ctx.session.selectedModel });
-    
-    // As there is no Hailuo API right now, if 'hailuo' is selected, we just generate a professional prompt
-    // The videoAIService will handle this based on the platform string
+
     const prompts = await videoAIService.generatePrompt(
       text,
       platform === "all" ? undefined : platform,
@@ -220,7 +253,7 @@ export async function videoGenerateHandler(ctx: BotContext): Promise<void> {
 
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
     await ctx.reply(response, {
-      parse_mode: "HTML",
+      parse_mode: undefined,
       reply_markup: videoKeyboard,
     });
     log.info("[VIDEO_FLOW] Prompt generation successful");
@@ -228,8 +261,8 @@ export async function videoGenerateHandler(ctx: BotContext): Promise<void> {
     log.error("[VIDEO_FLOW] Error during generation", { userId, error: String(error) });
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
     const friendlyMsg = error instanceof Error ? error.message : String(error);
-    await ctx.reply(`❌ <b>Video AI Error</b>\n\n<b>Reason:</b>\n${escapeTelegramHTML(friendlyMsg)}`, {
-      parse_mode: "HTML",
+    await ctx.reply("❌ Video AI Error\n\nReason:\n" + friendlyMsg, {
+      parse_mode: undefined,
       reply_markup: videoKeyboard,
     });
   }
@@ -267,7 +300,7 @@ export async function videoHistoryHandler(ctx: BotContext): Promise<void> {
     const title = conv.title.length > 40
       ? conv.title.slice(0, 40) + "…"
       : conv.title;
-    lines.push("• *" + title + "*");
+    lines.push("• " + title);
     lines.push("  🕐 " + date);
     lines.push("");
 
@@ -324,8 +357,8 @@ export async function resumeVideoHandler(ctx: BotContext): Promise<void> {
     .text("🔙 Back to Video AI", "nav:back");
 
   if (lastAssistantMsg) {
-    await ctx.reply("📋 <b>Previously generated prompts:</b>\n\n" + escapeTelegramHTML(lastAssistantMsg.content), {
-      parse_mode: "HTML",
+    await ctx.reply("📋 Previously generated prompts:\n\n" + lastAssistantMsg.content, {
+      parse_mode: undefined,
       reply_markup: resumeKb,
     });
   } else {
@@ -377,17 +410,19 @@ export async function regenerateVideoHandler(ctx: BotContext): Promise<void> {
   await ctx.replyWithChatAction("typing");
   const startMsg = await ctx.reply(t(lang, "video.generating"), {
     parse_mode: "Markdown",
-  });    try {
-      const prompts = await videoAIService.generatePrompt(
-        userDescription,
-        platform === "all" ? undefined : platform,
-        ctx.session.selectedModel
-      );
+  });
 
-      // Build structured response
-      const response = t(lang, "video.result_title") + formatVideoPrompts(prompts);
+  try {
+    const prompts = await videoAIService.generatePrompt(
+      userDescription,
+      platform === "all" ? undefined : platform,
+      ctx.session.selectedModel
+    );
 
-      // Store in session and save to DB
+    // Build structured response
+    const response = t(lang, "video.result_title") + formatVideoPrompts(prompts);
+
+    // Store in session and save to DB
     ctx.session.tempData.lastPromptDescription = userDescription;
     ctx.session.messages.push({ role: "user", content: userDescription });
     ctx.session.messages.push({ role: "assistant", content: response });
@@ -396,16 +431,16 @@ export async function regenerateVideoHandler(ctx: BotContext): Promise<void> {
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
 
     // Show regenerated prompts with confirmation header
-    await ctx.reply(t(lang, "video.regenerated") + "\n\n" + escapeTelegramHTML(response), {
-      parse_mode: "HTML",
+    await ctx.reply(t(lang, "video.regenerated") + "\n\n" + response, {
+      parse_mode: undefined,
       reply_markup: videoKeyboard,
     });
   } catch (error) {
     log.error("Video regenerate error", { userId, error: String(error) });
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
     const friendlyMsg = error instanceof Error ? error.message : null;
-    await ctx.reply(`❌ <b>Error</b>\n\n${escapeTelegramHTML(friendlyMsg || t(lang, "video.error"))}`, {
-      parse_mode: "HTML",
+    await ctx.reply("❌ Error\n\n" + (friendlyMsg || t(lang, "video.error")), {
+      parse_mode: undefined,
       reply_markup: videoKeyboard,
     });
   }

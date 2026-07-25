@@ -1,57 +1,110 @@
 /**
- * Enterprise Video AI Prompt Service
+ * Enterprise Video AI Prompt Service v2
  *
- * Generates structured JSON prompts for professional AI video generators.
- * Supports: Hailuo AI, Kling AI, Google Veo, Runway, PixVerse.
+ * Generates structured cinematic video prompts for professional AI video
+ * generators.  Supports Hailuo AI, Kling AI, Google Veo, Runway & PixVerse.
  *
- * Always returns fully populated VideoPrompt objects. If JSON parsing
- * fails, a text-based field extractor scans the raw output for known
- * key headers (e.g. "Scene:", "Lighting:") so that no field is ever
- * left empty when the AI gives a structured textual answer.
+ * The AI is instructed to return ONLY a JSON array with the canonical
+ * schema below.  If JSON parsing fails, a text-based field extractor
+ * attempts to recover structured fields from "Header: value" lines;
+ * otherwise a safe fallback is returned that never leaks raw JSON.
  */
 
 import { BaseAIService } from "./base";
 import type { VideoPrompt, VideoPlatform } from "@/types";
 import type { PlanType } from "@/config/ai";
 
-// ─── Known field headers in the AI's textual fallback output ──────
-const FIELD_HEADERS: Record<string, keyof VideoPrompt> = {
+// ─── Canonical schema keys (all lower-case, underscore style) ─────
+const CANONICAL_KEYS: Record<string, keyof VideoPrompt> = {
+  platform: "platform",
+  title: "title",
   scene: "scene",
-  lighting: "lighting",
-  camera: "cameraMovement",
-  movement: "cameraMovement",
-  lens: "lens",
+  subject: "subject",
+  action: "action",
   environment: "environment",
-  "negative prompt": "negativePrompt",
-  "negative": "negativePrompt",
+  camera: "camera",
+  lens: "lens",
+  movement: "movement",
+  lighting: "lighting",
+  color_grading: "color_grading",
+  colour_grading: "color_grading",
+  realism: "realism",
+  duration: "duration",
+  negative_prompt: "negative_prompt",
+  negative: "negative_prompt",
+  music: "music",
   voice: "voice",
   sound: "voice",
-  music: "music",
-  duration: "duration",
-  style: "style",
-  "full prompt": "fullPrompt",
+  full_prompt: "full_prompt",
+  fullprompt: "full_prompt",
+  prompt: "full_prompt",
 };
 
-/** Known header aliases for the text fallback parser. */
-const HEADER_ALIASES = [
-  "Negative prompt",
-  "Camera Movement",
-  "Camera movement",
-  "cameraMovement",
-  "Camera",
+/** Header aliases used by the text-fallback regex. */
+const HEADER_ALIASES = Object.keys(CANONICAL_KEYS).concat([
   "Full Prompt",
-  "fullPrompt",
-  "Scene",
-  "Lighting",
-  "Lens",
-  "Environment",
-  "Voice",
-  "Music",
-  "Duration",
-  "Style",
-  "Sound",
-  "Negative",
-];
+  "Negative Prompt",
+  "Color Grading",
+  "Colour Grading",
+]);
+
+// ─── System prompt ─────────────────────────────────────────────────
+
+const SYSTEM_PROMPT = `You are a professional cinematic AI video prompt engineer.
+
+You create prompts for Hailuo AI, Kling AI, Google Veo, Runway and PixVerse.
+
+Convert simple user ideas into cinematic production prompts.
+
+Always include:
+- cinematic scene description
+- realistic characters
+- physics accuracy
+- camera movement
+- camera lens
+- lighting
+- environment details
+- motion effects
+- color grading
+- atmosphere
+- sound design
+- negative prompt
+
+Make prompts compatible with AI video generators.
+
+CRITICAL RULES:
+- Never repeat text.
+- Never return incomplete sentences.
+- Return ONLY valid JSON.
+- NEVER wrap JSON inside markdown code blocks.
+- NEVER add text before or after the JSON array.
+- Return EXACTLY one JSON object per platform.
+
+You MUST respond with a JSON array where EVERY object has ALL of these fields:
+
+[
+  {
+    "platform": "Hailuo AI",
+    "title": "Short epic title for the video",
+    "scene": "Detailed cinematic scene description",
+    "subject": "Main subject of the video",
+    "action": "What the subject is doing in detail",
+    "environment": "Setting, time of day, weather, atmosphere",
+    "camera": "Camera angle, position, framing",
+    "lens": "Lens type and focal length, e.g. 35mm prime",
+    "movement": "Camera movement description",
+    "lighting": "Lighting setup, mood, shadows, color temp",
+    "color_grading": "Color palette, grade, visual tone",
+    "realism": "Realism level, physics accuracy, rendering quality",
+    "duration": "Suggested clip duration, e.g. 10 seconds",
+    "negative_prompt": "What to avoid: artifacts, distortions, deformed faces, low quality",
+    "music": "Music genre, tempo, mood for soundtrack",
+    "voice": "Voice-over or narration style",
+    "full_prompt": "Single complete prompt ready to paste into the AI video generator"
+  }
+]
+
+Return ONLY the JSON array. No markdown. No explanation. No code blocks.`;
 
 // ─── Service ──────────────────────────────────────────────────────
 
@@ -76,52 +129,6 @@ export class VideoAIService extends BaseAIService {
   ): Promise<VideoPrompt[]> {
     const targetPlatforms = platform ? [platform] : this.platforms;
 
-    const systemPrompt = `You are a professional cinematic AI video prompt engineer.
-
-Create production-ready prompts for Hailuo AI, Kling AI, Veo, Runway and PixVerse.
-
-Every prompt must include:
-- cinematic scene description
-- realistic environment
-- character/action details
-- camera movement
-- camera lens
-- lighting
-- visual effects
-- atmosphere
-- negative prompt
-- music suggestion
-- duration
-- professional filmmaking style
-
-CRITICAL RULES:
-- Never repeat text.
-- Never return incomplete sentences.
-- Always return valid JSON only.
-- NEVER wrap the JSON inside markdown code blocks.
-- NEVER add any text before or after the JSON array.
-- Return EXACTLY one JSON object per platform.
-
-You MUST respond with a JSON array where EVERY object has ALL of these fields:
-[
-  {
-    "platform": "Hailuo AI",
-    "scene": "Detailed cinematic scene description. Do NOT repeat this in fullPrompt.",
-    "lighting": "Lighting setup, mood, shadows, color temperature.",
-    "cameraMovement": "Camera angle, movement type, position relative to subject.",
-    "lens": "Lens type and focal length, e.g. 35mm prime lens.",
-    "environment": "Setting, time of day, weather, atmosphere details.",
-    "negativePrompt": "What to avoid: artifacts, distortions, deformed faces, extra limbs, low quality.",
-    "voice": "Voice-over or narration style description.",
-    "music": "Music genre, tempo, mood for the soundtrack.",
-    "duration": "Suggested clip duration in seconds, e.g. 10 seconds.",
-    "style": "Visual style, e.g. Hollywood action, 8K cinematic, ultra-realistic, IMAX.",
-    "fullPrompt": "A single, complete, ready-to-paste professional prompt combining all elements above."
-  }
-]
-
-IMPORTANT: Return ONLY the JSON array. No markdown. No explanation. No code blocks.`;
-
     const userPrompt = `Generate professional cinematic video prompts for the following idea:
 
 "${description}"
@@ -132,7 +139,7 @@ Return one JSON object per platform in a JSON array.`;
 
     const response = await this.executeAI(
       [{ role: "user", content: userPrompt }],
-      systemPrompt,
+      SYSTEM_PROMPT,
       modelId,
       userPlan
     );
@@ -140,15 +147,15 @@ Return one JSON object per platform in a JSON array.`;
     return this.parseResponse(response.content, targetPlatforms, description);
   }
 
+  // ── Parsing ──────────────────────────────────────────────────────
+
   /**
-   * Parse AI JSON response, with robust fallback to text-based extraction.
-   *
-   * Strategy:
-   * 1. Strip ALL markdown code blocks from anywhere in the response
-   * 2. Extract JSON substring by finding the first `[` or `{`
-   * 3. Attempt JSON.parse with multiple fix-up strategies (single quotes, trailing commas)
-   * 4. If JSON fails, use `extractFieldsFromText` to parse "Field: value" lines
-   * 5. If even that yields nothing, pack the raw content into fullPrompt only
+   * Multi-strategy parser:
+   * 1. Strip all markdown code blocks
+   * 2. Extract JSON substring (find first `[` or `{`)
+   * 3. Try JSON.parse with several fix-ups (single quotes, trailing commas)
+   * 4. Fallback: text-based "Header: value" extraction
+   * 5. Last resort: use user description as scene, never leak raw JSON
    */
   private parseResponse(
     rawContent: string,
@@ -165,21 +172,18 @@ Return one JSON object per platform in a JSON array.`;
       if (jsonResult) return jsonResult;
     }
 
-    // 3. Fallback: text-based field extraction on the full cleaned text
+    // 3. Fallback: text-based field extraction
     const fields = this.extractFieldsFromText(noCodeBlocks);
-    if (Object.keys(fields).length > 0) {
-      return targetPlatforms.map((p) => this.buildFromFields(p, fields, description));
+    if (Object.keys(fields).length > 1) {
+      return targetPlatforms.map((p) => this.buildFromFields(p, fields));
     }
 
-    // 4. Last resort: pack everything into fullPrompt
-    return targetPlatforms.map((p) =>
-      this.buildEmptyFallback(p, noCodeBlocks, description)
-    );
+    // 4. Last resort — safe fallback, never raw JSON
+    return targetPlatforms.map((p) => this.buildSafeFallback(p, description));
   }
 
   /**
-   * Locate the first JSON array or object within a text blob and return it.
-   * Returns null if no JSON-like structure is found.
+   * Locate the first JSON array or object within surrounding text.
    */
   private extractJsonString(text: string): string | null {
     const firstBracket = text.indexOf("[");
@@ -197,19 +201,17 @@ Return one JSON object per platform in a JSON array.`;
   }
 
   /**
-   * Attempt to parse the response as JSON. Tries multiple parsing strategies
-   * and returns structured VideoPrompt[] on success.
+   * Try parsing text as JSON with multiple fix-up strategies.
    */
   private tryParseJson(
     text: string,
     targetPlatforms: VideoPlatform[]
   ): VideoPrompt[] | null {
-    // Collect all attempts; first to succeed wins
     const candidates = [
-      text,                                        // raw
-      text.replace(/'/g, '"'),                      // single -> double quotes
-      text.replace(/,([\s\n]*[}\]])/g, "$1"),       // trailing commas
-      text.replace(/'/g, '"').replace(/,([\s\n]*[}\]])/g, "$1"), // both fixes
+      text,
+      text.replace(/'/g, '"'),
+      text.replace(/,([\s\n]*[}\]])/g, "$1"),
+      text.replace(/'/g, '"').replace(/,([\s\n]*[}\]])/g, "$1"),
     ];
 
     for (const candidate of candidates) {
@@ -220,67 +222,89 @@ Return one JSON object per platform in a JSON array.`;
         const results: VideoPrompt[] = arr
           .map((item, idx) => {
             const p = item as Record<string, unknown>;
-            const platform =
-              (p["platform"] as VideoPlatform) ??
-              targetPlatforms[idx] ??
-              targetPlatforms[0]!;
-
-            return {
-              platform,
-              scene: this.safeString(p["scene"]),
-              lighting: this.safeString(p["lighting"]),
-              cameraMovement: this.safeString(p["cameraMovement"]),
-              lens: this.safeString(p["lens"]),
-              environment: this.safeString(p["environment"]),
-              negativePrompt: this.safeString(p["negativePrompt"]),
-              voice: this.safeString(p["voice"]),
-              music: this.safeString(p["music"]),
-              duration: this.safeString(p["duration"]),
-              style: this.safeString(p["style"]),
-              fullPrompt: this.safeString(p["fullPrompt"]) || text,
-            };
+            return this.mapToPrompt(p, targetPlatforms, idx, text);
           })
           .filter((r): r is VideoPrompt => !!r.platform);
 
         if (results.length > 0) return results;
       } catch {
-        // Try next candidate
+        // try next candidate
       }
     }
-
     return null;
   }
 
   /**
-   * Skip fullPrompt text that looks like raw JSON to avoid showing
-   * unparsed JSON to the end user.
+   * Map a raw JSON object to a VideoPrompt, supporting both
+   * camelCase (old) and underscore (new) key styles.
    */
-  private looksLikeRawJson(text: string): boolean {
-    const trimmed = text.trim();
-    if (!trimmed) return false;
-    const first = trimmed[0]!;
-    // Starts with [ or { and contains typical JSON patterns
-    if (first === "[" || first === "{") {
-      return /"[a-zA-Z]+\s*":/.test(trimmed.slice(0, 200));
-    }
-    return false;
+  private mapToPrompt(
+    p: Record<string, unknown>,
+    targetPlatforms: VideoPlatform[],
+    idx: number,
+    rawText: string
+  ): VideoPrompt {
+    const platform =
+      (p["platform"] as VideoPlatform) ??
+      targetPlatforms[idx] ??
+      targetPlatforms[0]!;
+
+    const empty = () => "";
+    return {
+      platform,
+      title: this.safeString(p["title"] ?? empty()),
+      scene: this.safeString(p["scene"] ?? empty()),
+      subject: this.safeString(p["subject"] ?? empty()),
+      action: this.safeString(p["action"] ?? empty()),
+      environment: this.safeString(
+        p["environment"] ?? p["env"] ?? empty()
+      ),
+      camera: this.safeString(
+        p["camera"] ?? p["cameraMovement"] ?? p["camera_movement"] ?? empty()
+      ),
+      lens: this.safeString(p["lens"] ?? empty()),
+      movement: this.safeString(
+        p["movement"] ?? p["camera_movement"] ?? empty()
+      ),
+      lighting: this.safeString(p["lighting"] ?? empty()),
+      color_grading: this.safeString(
+        p["color_grading"] ?? p["colour_grading"] ?? p["colorGrading"] ?? empty()
+      ),
+      realism: this.safeString(
+        p["realism"] ?? p["realistic"] ?? empty()
+      ),
+      duration: this.safeString(
+        p["duration"] ?? p["dur"] ?? "10 seconds"
+      ),
+      negative_prompt: this.safeString(
+        p["negative_prompt"] ?? p["negativePrompt"] ?? p["negative"] ?? empty()
+      ),
+      music: this.safeString(p["music"] ?? empty()),
+      voice: this.safeString(
+        p["voice"] ?? p["sound"] ?? p["narration"] ?? empty()
+      ),
+      full_prompt: this.safeString(
+        p["full_prompt"] ?? p["fullPrompt"] ?? p["prompt"] ?? rawText
+      ),
+    };
   }
 
+  // ── Text-based fallback ─────────────────────────────────────────
+
   /**
-   * Extract structured fields from a text response that uses
-   * "FieldName: value" lines (e.g. "Scene: ...", "Lighting: ...").
+   * Extract structured fields from textual "Header: value" responses.
    */
-  private extractFieldsFromText(text: string): Partial<Record<keyof VideoPrompt, string>> {
+  private extractFieldsFromText(
+    text: string
+  ): Partial<Record<keyof VideoPrompt, string>> {
     const fields: Partial<Record<keyof VideoPrompt, string>> = {};
 
-    // Build a regex that matches any of the known header aliases
-    // e.g. "Scene:", "Negative Prompt:", "Camera Movement:", "Camera:", etc.
-    const headerPattern = HEADER_ALIASES.map((h) =>
+    const pattern = HEADER_ALIASES.map((h) =>
       h.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
     ).join("|");
 
     const regex = new RegExp(
-      `(?:^|\\n)\\s*(?:\\*{0,2})?(${headerPattern})\\s*:\\s*(?:\\*{0,2})?([\\s\\S]*?)(?=\\n\\s*(?:${headerPattern})\\s*:|\\n\\s*[-=]{3,}|$)`,
+      `(?:^|\\n)\\s*(?:\\*{0,2})?(${pattern})\\s*:\\s*(?:\\*{0,2})?([\\s\\S]*?)(?=\\n\\s*(?:${pattern})\\s*:|\\n\\s*[-=]{3,}|$)`,
       "gim"
     );
 
@@ -292,26 +316,27 @@ Return one JSON object per platform in a JSON array.`;
 
       const mappedKey = this.mapHeaderToField(rawHeader);
       if (mappedKey) {
-        // If multiple matches for the same key, append (don't overwrite)
-        if (fields[mappedKey]) {
-          fields[mappedKey] += "\n" + value;
-        } else {
-          fields[mappedKey] = value;
-        }
+        fields[mappedKey] = fields[mappedKey]
+          ? fields[mappedKey] + "\n" + value
+          : value;
       }
     }
-
     return fields;
   }
 
   /**
-   * Map a text header like "Camera Movement", "Camera", "Negative Prompt" to
-   * the canonical VideoPrompt field name.
+   * Map a text header (e.g. "Camera Movement", "Negative Prompt")
+   * to the canonical key name.
    */
   private mapHeaderToField(header: string): keyof VideoPrompt | null {
     const lower = header.toLowerCase().replace(/\s+/g, " ").trim();
-    for (const [alias, field] of Object.entries(FIELD_HEADERS)) {
+    for (const [alias, field] of Object.entries(CANONICAL_KEYS)) {
       if (lower === alias || lower.startsWith(alias)) {
+        return field;
+      }
+      // Also match space-separated versions of underscore keys (e.g. "color grading" matches "color_grading")
+      const spaced = alias.replace(/_/g, " ");
+      if (lower === spaced || lower.startsWith(spaced)) {
         return field;
       }
     }
@@ -319,70 +344,65 @@ Return one JSON object per platform in a JSON array.`;
   }
 
   /**
-   * Build a VideoPrompt from extracted fields.
+   * Build a VideoPrompt from extracted text fields.
    */
   private buildFromFields(
     platform: VideoPlatform,
-    fields: Partial<Record<keyof VideoPrompt, string>>,
-    _description: string
+    fields: Partial<Record<keyof VideoPrompt, string>>
   ): VideoPrompt {
-    const scene = fields.scene || "";
-    const lighting = fields.lighting || "";
-    const cameraMovement = fields.cameraMovement || "";
-    const lens = fields.lens || "";
-    const environment = fields.environment || "";
-    const negativePrompt = fields.negativePrompt || "";
-    const voice = fields.voice || "";
-    const music = fields.music || "";
-    const duration = fields.duration || "";
-    const style = fields.style || "";
-    const fullPrompt = fields.fullPrompt || "";
-
+    const empty = (k: keyof VideoPrompt): string => fields[k] || "";
     return {
       platform,
-      scene,
-      lighting,
-      cameraMovement,
-      lens,
-      environment,
-      negativePrompt,
-      voice,
-      music,
-      duration,
-      style,
-      fullPrompt,
+      title: empty("title"),
+      scene: empty("scene"),
+      subject: empty("subject"),
+      action: empty("action"),
+      environment: empty("environment"),
+      camera: empty("camera"),
+      lens: empty("lens"),
+      movement: empty("movement"),
+      lighting: empty("lighting"),
+      color_grading: empty("color_grading"),
+      realism: empty("realism"),
+      duration: empty("duration") || "10 seconds",
+      negative_prompt: empty("negative_prompt"),
+      music: empty("music"),
+      voice: empty("voice"),
+      full_prompt: empty("full_prompt"),
     };
   }
 
   /**
-   * Absolute last-resort fallback: uses the user's description as the scene
-   * and hides fullPrompt if it looks like raw JSON.
+   * Safe fallback that never shows raw JSON — uses user's description
+   * as the scene and leaves other fields empty.
    */
-  private buildEmptyFallback(
+  private buildSafeFallback(
     platform: VideoPlatform,
-    rawContent: string,
     description: string
   ): VideoPrompt {
-    const isRawJson = this.looksLikeRawJson(rawContent);
     return {
       platform,
-      scene: isRawJson ? description : "",
-      lighting: "",
-      cameraMovement: "",
-      lens: "",
+      title: "",
+      scene: description,
+      subject: "",
+      action: "",
       environment: "",
-      negativePrompt: "",
-      voice: "",
+      camera: "",
+      lens: "",
+      movement: "",
+      lighting: "",
+      color_grading: "",
+      realism: "",
+      duration: "10 seconds",
+      negative_prompt: "",
       music: "",
-      duration: "",
-      style: "",
-      fullPrompt: isRawJson ? "" : rawContent,
+      voice: "",
+      full_prompt: "",
     };
   }
 
-  /**
-   * Safely convert a value to string, defaulting to empty string.
-   */
+  // ── Helpers ──────────────────────────────────────────────────────
+
   private safeString(val: unknown): string {
     if (typeof val === "string") return val;
     if (typeof val === "number" || typeof val === "boolean") return String(val);

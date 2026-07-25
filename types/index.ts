@@ -80,17 +80,22 @@ export interface AIChatResponse {
 
 export interface VideoPrompt {
   platform: VideoPlatform;
+  title: string;
   scene: string;
-  lighting: string;
-  cameraMovement: string;
-  lens: string;
+  subject: string;
+  action: string;
   environment: string;
-  negativePrompt: string;
-  voice: string;
-  music: string;
+  camera: string;
+  lens: string;
+  movement: string;
+  lighting: string;
+  color_grading: string;
+  realism: string;
   duration: string;
-  style: string;
-  fullPrompt: string;
+  negative_prompt: string;
+  music: string;
+  voice: string;
+  full_prompt: string;
 }
 
 export type VideoPlatform =

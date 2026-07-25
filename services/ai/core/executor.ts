@@ -331,7 +331,9 @@ export class AIExecutor {
         }
 
         // Log the REAL error server-side with full details
-        console.error("[AI EXECUTOR ERROR]", {
+        const sysPromptLen = request.systemPrompt?.length ?? 0;
+        const userMsgLen = request.messages.map((m) => m.content).join("\n").length;
+        const errorLog: Record<string, unknown> = {
           feature,
           provider: providerId,
           model: attemptedModel,
@@ -341,10 +343,20 @@ export class AIExecutor {
           attempt: attempt + 1,
           total: providerChain.length,
           continuationCount,
+          maxTokens,
+          systemPromptLength: sysPromptLen,
+          userPromptLength: userMsgLen,
           error: errorMsg,
           timestamp: new Date().toISOString(),
           remainingProviders: providerChain.length - attempt - 1,
-        });
+        };
+
+        // For business feature, log a dedicated structured entry
+        if (feature === "business") {
+          console.error(`[BUSINESS_AI_ERROR] provider=${providerId} model=${attemptedModel} status=${errorStatus ?? "N/A"} code=${errorCode} maxTokens=${maxTokens} sysPromptLen=${sysPromptLen} userMsgLen=${userMsgLen} message="${errorMsg}"`);
+        }
+
+        console.error("[AI EXECUTOR ERROR]", errorLog);
 
         // Telemetry for failure
         const remainingTokens = userId ? usageTracker.getRemainingDailyTokens(userId, userPlan) : 0;

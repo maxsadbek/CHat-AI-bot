@@ -309,15 +309,41 @@ export class AIExecutor {
       } catch (rawError) {
         const errorMsg = rawError instanceof Error ? rawError.message : String(rawError);
 
-        // Log the REAL error server-side — users must never see this
+        // Extract AIError details if available
+        let errorCode = "UNKNOWN";
+        let errorStatus: number | undefined;
+        let errorRetryable = false;
+        let attemptedModel = "unknown";
+
+        if (rawError instanceof AIError) {
+          errorCode = rawError.code;
+          errorStatus = rawError.statusCode;
+          errorRetryable = rawError.retryable;
+        }
+
+        // Determine the model that was attempted (best-effort, non-critical)
+        try {
+          const prov = this.registry.getProviderById(providerId);
+          const mdl = modelId ? prov.getModel(modelId) || prov.getDefaultModel() : prov.getDefaultModel();
+          attemptedModel = mdl?.id ?? providerId;
+        } catch {
+          // Model name is best-effort for diagnostics
+        }
+
+        // Log the REAL error server-side with full details
         console.error("[AI EXECUTOR ERROR]", {
           feature,
           provider: providerId,
+          model: attemptedModel,
+          errorCode,
+          statusCode: errorStatus,
+          retryable: errorRetryable,
           attempt: attempt + 1,
           total: providerChain.length,
           continuationCount,
           error: errorMsg,
           timestamp: new Date().toISOString(),
+          remainingProviders: providerChain.length - attempt - 1,
         });
 
         // Telemetry for failure

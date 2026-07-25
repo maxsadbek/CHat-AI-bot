@@ -1,12 +1,14 @@
 /**
- * Enterprise Social Media AI Service v2
+ * Enterprise Social Media AI Service v3
  *
- * Generates platform-optimized social media content with structured fields:
- * caption, hooks, CTA, hashtags, and trending keywords.
+ * Professional marketing agency-level social media content generator.
+ * Transforms short user ideas into complete viral-ready campaigns.
  *
- * The AI is instructed to return structured JSON. If JSON parsing fails,
- * a text-based field extractor attempts recovery; otherwise the raw
- * content is wrapped as a caption fallback.
+ * The AI MUST expand the user's idea — never repeat it — and return
+ * structured JSON with hooks, captions, reel ideas, audience targeting,
+ * CTAs, hashtags, keywords, and visual direction.
+ *
+ * All fields are mapped into the existing SocialMediaContent interface.
  */
 
 import { BaseAIService } from "./base";
@@ -15,6 +17,53 @@ import type { PlanType } from "@/config/ai";
 import { logger } from "@/bot/core/logger";
 
 const log = logger.child("ai-social");
+
+// ─── Custom internal type for the rich AI response ───────────
+
+interface SocialAIResponse {
+  platform: string;
+  hook: string;
+  caption: string;
+  reelIdea: string;
+  targetAudience: string;
+  cta: string;
+  hashtags: string[];
+  keywords: string[];
+  designIdea: string;
+}
+
+// ─── System prompt ──────────────────────────────────────────────
+
+const SYSTEM_PROMPT = `You are the head of content at a top-tier digital marketing agency.
+
+Your job is to transform short user ideas into complete, professional social media campaigns.
+
+RULES:
+1. NEVER repeat the user's input. Always expand it into a full campaign.
+2. If the user types something short like "Bot reklamasi uchun", create a complete bot promotion campaign — do not just echo the text.
+3. Think like a marketing strategist: analyze the idea, identify the target audience, and craft conversion-focused content.
+4. Every field must be detailed, actionable, and platform-optimized.
+
+You MUST respond with a JSON array. NO markdown, NO code blocks, NO explanations.
+EVERY object in the array must have ALL of these fields:
+
+[
+  {
+    "platform": "Instagram",
+    "hook": "A viral 3-second hook that stops the scroll — must be attention-grabbing, emotional, or curiosity-driven",
+    "caption": "Full optimized caption/post content — storytelling structure with hook, problem, solution, social proof, and CTA",
+    "reelIdea": "Complete Instagram Reel / TikTok concept: visual idea, text overlay, music suggestion, editing style, duration",
+    "targetAudience": "Primary audience demographic, psychographics, pain points, and why this content resonates with them",
+    "cta": "Clear, urgent call to action that drives engagement (comment, share, save, click)",
+    "hashtags": ["#branded1", "#niche2", "#broad3", "#trending4", "#location5", "#community6", "#growth7", "#viral8", "#education9", "#entertainment10", "#value11", "#story12", "#behindTheScenes13", "#tips14", "#inspiration15"],
+    "keywords": ["primary keyword", "secondary keyword", "trending term", "niche phrase", "long-tail keyword"],
+    "designIdea": "Visual and creative direction: color palette, font style, image/video mood, graphic elements, post layout"
+  }
+]
+
+Return ONLY the JSON array. No markdown. No explanation.`;
+
+// ─── Service ──────────────────────────────────────────────────────
 
 export class SocialAIService extends BaseAIService {
   private readonly platforms: SocialPlatform[] = [
@@ -34,38 +83,15 @@ export class SocialAIService extends BaseAIService {
   ): Promise<SocialMediaContent[]> {
     const targetPlatforms = platform ? [platform] : this.platforms;
 
-    const systemPrompt = `You are a professional social media content strategist.
-You create viral, engaging, platform-optimized content.
-You know the best practices for each platform: Instagram (visual, stories, reels),
-TikTok (short-form, trends, sounds), Telegram (long-form, community),
-Facebook (mixed media, shareable), LinkedIn (professional, thought leadership),
-YouTube (long-form, SEO-optimized).
-
-Tone: ${tone}
-
-You MUST respond with a JSON array. NO markdown, NO code blocks, NO explanations.
-EVERY object in the array must have ALL of these fields:
-
-[
-  {
-    "platform": "Instagram",
-    "caption": "Full optimized caption/post content for this platform",
-    "hooks": ["Hook 1 that grabs attention", "Hook 2", "Hook 3", "Hook 4", "Hook 5"],
-    "cta": "Clear call to action tailored to this platform and content",
-    "hashtags": ["#hashtag1", "#hashtag2", "#hashtag3", "#hashtag4", "#hashtag5", "#hashtag6", "#hashtag7", "#hashtag8", "#hashtag9", "#hashtag10"],
-    "trendingKeywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"]
-  }
-]
-
-Return ONLY the JSON array. No markdown. No explanation.`;
-
-    const userPrompt = `Create social media content for: "${topic}"
+    const userPrompt = `Create a complete social media marketing campaign for: "${topic}"
 
 Platforms: ${targetPlatforms.join(", ")}
 
-For each platform, provide platform-optimized content that will perform well.
-Include attention-grabbing hooks, a strong call to action, relevant hashtags,
-and trending keywords.
+Your task:
+1. Analyze "${topic}" and identify the core marketing message.
+2. Create platform-specific content that converts browsers into customers.
+3. For SHORT inputs (like "${topic.slice(0, 30)}"), expand into a full campaign — never repeat the input.
+4. Include a scroll-stopping hook, story-driven caption, reel idea, target audience insights, CTA, 15 hashtags, 5 keywords, and visual direction.
 
 Return ONE JSON object per platform in a JSON array.`;
 
@@ -79,7 +105,7 @@ Return ONE JSON object per platform in a JSON array.`;
     try {
       const response = await this.executeAI(
         [{ role: "user", content: userPrompt }],
-        systemPrompt,
+        SYSTEM_PROMPT,
         modelId,
         userPlan
       );
@@ -94,13 +120,18 @@ Return ONE JSON object per platform in a JSON array.`;
         error: String(error),
         topic: topic.slice(0, 50),
       });
-      // Graceful fallback: wrap raw content as caption
       return targetPlatforms.map((p) => this.buildSafeFallback(p, topic));
     }
   }
 
+  // ── Parsing ──────────────────────────────────────────────────────
+
   /**
    * Parse AI response: JSON → text extraction → safe fallback
+   * Maps the rich AI fields into the existing SocialMediaContent interface:
+   *
+   *   AI { hook, caption, reelIdea, targetAudience, cta, hashtags, keywords, designIdea }
+   *   → SocialMediaContent { caption (rich formatted), hooks, cta, hashtags, trendingKeywords }
    */
   private parseResponse(
     rawContent: string,
@@ -112,13 +143,15 @@ Return ONE JSON object per platform in a JSON array.`;
       .trim();
 
     // Strategy 1: Try JSON parse
-    const jsonResult = this.tryParseJson(cleaned, targetPlatforms);
-    if (jsonResult) return jsonResult;
+    const richResult = this.tryParseJson(cleaned, targetPlatforms);
+    if (richResult) {
+      return richResult.map((r) => this.mapToSocialContent(r));
+    }
 
     // Strategy 2: Text-based field extraction
     const fields = this.extractFieldsFromText(cleaned);
-    if (fields.caption) {
-      return targetPlatforms.map((p, _) => ({
+    if (fields.caption || fields.hooks.length > 0) {
+      return targetPlatforms.map((p) => ({
         platform: p,
         caption: fields.caption || cleaned,
         hooks: fields.hooks,
@@ -128,18 +161,65 @@ Return ONE JSON object per platform in a JSON array.`;
       }));
     }
 
-    // Strategy 3: Safe fallback — wrap raw content as caption
-    log.warn("[SOCIAL_SERVICE] All parsing failed, using text fallback");
+    // Strategy 3: Safe fallback
+    log.warn("[SOCIAL_SERVICE] All parsing strategies failed, using text fallback");
     return targetPlatforms.map((p) => this.buildSafeFallback(p, cleaned));
   }
 
   /**
-   * Try parsing text as a JSON array with multiple fix-up strategies.
+   * Map the rich AI response into the existing SocialMediaContent interface.
+   *
+   * Combines hook, caption, reelIdea, targetAudience, and designIdea into
+   * a beautifully formatted caption string.  Hooks go into the hooks array,
+   * keywords map to trendingKeywords.
+   */
+  private mapToSocialContent(ai: SocialAIResponse): SocialMediaContent {
+    const platform = ai.platform as SocialPlatform;
+
+    // Build a rich caption from all the AI fields
+    const captionParts: string[] = [];
+
+    if (ai.caption) {
+      captionParts.push(ai.caption);
+    }
+
+    if (ai.reelIdea) {
+      captionParts.push(`\n🎬 Reel/Idea:\n${ai.reelIdea}`);
+    }
+
+    if (ai.targetAudience) {
+      captionParts.push(`\n🎯 Target Audience:\n${ai.targetAudience}`);
+    }
+
+    if (ai.designIdea) {
+      captionParts.push(`\n🎨 Visual Direction:\n${ai.designIdea}`);
+    }
+
+    const caption = captionParts.join("\n\n") || ai.hook || "";
+
+    // Hooks array
+    const hooks = ai.hook ? [ai.hook] : [];
+
+    // Keywords map to trendingKeywords
+    const keywords = Array.isArray(ai.keywords) ? ai.keywords.filter(Boolean) : [];
+
+    return {
+      platform,
+      caption,
+      hooks,
+      cta: ai.cta || "",
+      hashtags: Array.isArray(ai.hashtags) ? ai.hashtags.filter(Boolean) : [],
+      trendingKeywords: keywords,
+    };
+  }
+
+  /**
+   * Try parsing text as a JSON array of SocialAIResponse objects.
    */
   private tryParseJson(
     text: string,
     targetPlatforms: SocialPlatform[]
-  ): SocialMediaContent[] | null {
+  ): SocialAIResponse[] | null {
     const candidates = [
       text,
       text.replace(/'/g, '"'),
@@ -152,20 +232,23 @@ Return ONE JSON object per platform in a JSON array.`;
         const parsed = JSON.parse(candidate);
         const arr: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
 
-        const results: SocialMediaContent[] = arr
+        const results: SocialAIResponse[] = arr
           .map((item, idx) => {
             const p = item as Record<string, unknown>;
-            const platform = (p["platform"] as SocialPlatform) ?? targetPlatforms[idx] ?? targetPlatforms[0]!;
+            const platform = (p["platform"] as string) ?? targetPlatforms[idx] ?? targetPlatforms[0]!;
             return {
               platform,
-              caption: this.safeStr(p["caption"]) || text,
-              hooks: Array.isArray(p["hooks"]) ? (p["hooks"] as string[]).filter(Boolean) : [],
+              hook: this.safeStr(p["hook"]),
+              caption: this.safeStr(p["caption"]),
+              reelIdea: this.safeStr(p["reelIdea"] ?? p["reel_idea"] ?? p["reel"]),
+              targetAudience: this.safeStr(p["targetAudience"] ?? p["target_audience"] ?? p["audience"]),
               cta: this.safeStr(p["cta"]),
-              hashtags: Array.isArray(p["hashtags"]) ? (p["hashtags"] as string[]).filter(Boolean) : [],
-              trendingKeywords: Array.isArray(p["trendingKeywords"]) ? (p["trendingKeywords"] as string[]).filter(Boolean) : [],
+              hashtags: this.asStringArray(p["hashtags"]),
+              keywords: this.asStringArray(p["keywords"] ?? p["trendingKeywords"] ?? p["trending_keywords"]),
+              designIdea: this.safeStr(p["designIdea"] ?? p["design_idea"] ?? p["visual"]),
             };
           })
-          .filter((r): r is SocialMediaContent => !!r.platform);
+          .filter((r): r is SocialAIResponse => !!r.platform);
 
         if (results.length > 0) return results;
       } catch {
@@ -175,9 +258,8 @@ Return ONE JSON object per platform in a JSON array.`;
     return null;
   }
 
-  /**
-   * Extract fields from text-based "Header: value" format
-   */
+  // ── Text-based fallback ─────────────────────────────────────────
+
   private extractFieldsFromText(text: string): {
     caption: string;
     hooks: string[];
@@ -185,21 +267,24 @@ Return ONE JSON object per platform in a JSON array.`;
     hashtags: string[];
     trendingKeywords: string[];
   } {
-    const result = { caption: "", hooks: [] as string[], cta: "", hashtags: [] as string[], trendingKeywords: [] as string[] };
+    const result = {
+      caption: "",
+      hooks: [] as string[],
+      cta: "",
+      hashtags: [] as string[],
+      trendingKeywords: [] as string[],
+    };
 
-    // Extract caption (everything before first recognized section)
-    const captionMatch = text.match(/^([\s\S]*?)(?:\n\n*(?:Hook|CTA|Call to Action|Hashtag|Trending|Keyword)|$)/i);
-    if (captionMatch && captionMatch[1]!.trim()) {
-      result.caption = captionMatch[1]!.trim();
+    // Extract hook
+    const hookMatch = text.match(/(?:Hook|Viral Hook)[:\s]*([^\n]+)/i);
+    if (hookMatch) {
+      result.hooks = [hookMatch[1]!.trim()];
     }
 
-    // Extract hooks
-    const hookSection = text.match(/(?:Hook|Hooks)[:\s]*([\s\S]*?)(?=\n\n*(?:CTA|Call to Action|Hashtag|Trending|Keyword|Platform))/i);
-    if (hookSection) {
-      result.hooks = hookSection[1]!
-        .split("\n")
-        .map((line) => line.replace(/^[-*\d.]+\s*/, "").trim())
-        .filter((line) => line.length > 5);
+    // Extract caption (between "Caption:" and next section)
+    const captionMatch = text.match(/(?:Caption|Post Content)[:\s]*([\s\S]*?)(?=\n\n*(?:Reel|Hook|CTA|Call to Action|Hashtag|Target|Audience|Design|Keyword|Platform))/i);
+    if (captionMatch && captionMatch[1]!.trim()) {
+      result.caption = captionMatch[1]!.trim();
     }
 
     // Extract CTA
@@ -209,7 +294,7 @@ Return ONE JSON object per platform in a JSON array.`;
     }
 
     // Extract hashtags
-    const hashtagMatch = text.match(/(?:Hashtag|Hashtags)[:\s]*([\s\S]*?)(?=\n\n*(?:Trending|Keyword|Platform|$))/i);
+    const hashtagMatch = text.match(/(?:Hashtag|Hashtags)[:\s]*([\s\S]*?)(?=\n\n*(?:Keyword|Trending|Design|Platform|$))/i);
     if (hashtagMatch) {
       result.hashtags = hashtagMatch[1]!
         .split(/[\s,]+/)
@@ -217,10 +302,10 @@ Return ONE JSON object per platform in a JSON array.`;
         .filter((tag) => tag.startsWith("#") && tag.length > 1);
     }
 
-    // Extract trending keywords
-    const trendMatch = text.match(/(?:Trending|Keywords?)[:\s]*([^\n]+)/i);
-    if (trendMatch) {
-      result.trendingKeywords = trendMatch[1]!
+    // Extract keywords
+    const keywordMatch = text.match(/(?:Keyword|Keywords|Trending)[:\s]*([^\n]+)/i);
+    if (keywordMatch) {
+      result.trendingKeywords = keywordMatch[1]!
         .split(/[,]+/)
         .map((k) => k.trim())
         .filter((k) => k.length > 0);
@@ -229,27 +314,38 @@ Return ONE JSON object per platform in a JSON array.`;
     return result;
   }
 
-  /**
-   * Safe fallback when all parsing fails
-   */
+  // ── Fallback ────────────────────────────────────────────────────
+
   private buildSafeFallback(
     platform: SocialPlatform,
-    content: string
+    topic: string
   ): SocialMediaContent {
     return {
       platform,
-      caption: content,
-      hooks: [],
-      cta: "",
-      hashtags: [],
-      trendingKeywords: [],
+      caption: `📢 Marketing campaign for: ${topic}\n\nOur team is generating a complete content strategy for this topic. Stay tuned for optimized posts, hooks, and hashtags across all platforms.`,
+      hooks: ["Learn more about " + topic],
+      cta: "Share your thoughts in the comments!",
+      hashtags: ["#" + topic.replace(/\s+/g, "").toLowerCase(), "#marketing", "#content", "#growth"],
+      trendingKeywords: [topic, "marketing strategy", "content marketing"],
     };
   }
+
+  // ── Helpers ─────────────────────────────────────────────────────
 
   private safeStr(val: unknown): string {
     if (typeof val === "string") return val;
     if (typeof val === "number" || typeof val === "boolean") return String(val);
     return "";
+  }
+
+  private asStringArray(val: unknown): string[] {
+    if (Array.isArray(val)) {
+      return val.map((v) => String(v)).filter(Boolean);
+    }
+    if (typeof val === "string") {
+      return val.split(/[,;]+/).map((s) => s.trim()).filter(Boolean);
+    }
+    return [];
   }
 
   getPlatforms(): SocialPlatform[] {

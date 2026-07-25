@@ -74,9 +74,35 @@ export async function socialGenerateHandler(ctx: BotContext): Promise<void> {
 
     let response = t(lang, "social.result_title");
     for (const content of contents) {
-      response += `*${content.platform}*\n`;
-      response += `${content.caption}\n\n`;
-      response += "━━━━━━━━━━━━━━━━━━━━━\n\n";
+      response += `📱 ${content.platform}\n`;
+      response += "━━━━━━━━━━━━━━━━━━━━━\n";
+
+      // Hook
+      if (content.hooks.length > 0) {
+        response += `\n🔥 Hook:\n${content.hooks[0]}\n`;
+      }
+
+      // Caption
+      if (content.caption) {
+        response += `\n📝 Caption:\n${content.caption}\n`;
+      }
+
+      // CTA
+      if (content.cta) {
+        response += `\n👉 CTA:\n${content.cta}\n`;
+      }
+
+      // Hashtags
+      if (content.hashtags.length > 0) {
+        response += `\n🏷️ Hashtags:\n${content.hashtags.slice(0, 15).join(" ")}\n`;
+      }
+
+      // Keywords
+      if (content.trendingKeywords.length > 0) {
+        response += `\n📈 Keywords:\n${content.trendingKeywords.join(", ")}\n`;
+      }
+
+      response += "\n━━━━━━━━━━━━━━━━━━━━━\n\n";
     }
 
     // Store in session (consistent with other features)

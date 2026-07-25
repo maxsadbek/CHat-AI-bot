@@ -173,6 +173,8 @@ export class AIExecutor {
   ): Promise<ChatResponse> {
     let accumulatedContent = "";
     let continuationCount = 0;
+    // Track ALL provider errors across the chain for comprehensive summary logging
+    const allProviderErrors: Array<{ provider: string; model: string; code: string; status: number | undefined; message: string }> = [];
 
     for (let attempt = 0; attempt < providerChain.length; attempt++) {
       const providerId = providerChain[attempt]!;
@@ -203,6 +205,19 @@ export class AIExecutor {
               { role: "assistant" as const, content: accumulatedContent },
             ]
           : request.messages;
+
+        // ── Pre-flight: Log the exact request about to be sent ──
+        const sysPromptPreview = request.systemPrompt
+          ? request.systemPrompt.slice(0, 200).replace(/\n/g, "\\n")
+          : "(none)";
+        const userMsgPreview = continuationMessages
+          .map((m) => `${m.role}:${m.content.slice(0, 100)}`)
+          .join(" | ");
+        if (feature === "business") {
+          log.info(`[BUSINESS_EXECUTOR] Attempt ${attempt + 1}/${providerChain.length} — provider=${providerId} model=${resolvedModelId} maxTokens=${maxTokens} temp=${temperature} systemPrompt="${sysPromptPreview}"... messages="${userMsgPreview}"...`);
+        } else {
+          log.info(`[EXECUTOR] Attempt ${attempt + 1}/${providerChain.length} — ${feature} → ${providerId}/${resolvedModelId} maxTokens=${maxTokens} temp=${temperature}`);
+        }
 
         const response = await provider.chat({
           ...request,
@@ -351,6 +366,15 @@ export class AIExecutor {
           remainingProviders: providerChain.length - attempt - 1,
         };
 
+        // Track this error for the all-providers summary
+        allProviderErrors.push({
+          provider: providerId,
+          model: attemptedModel,
+          code: errorCode,
+          status: errorStatus,
+          message: errorMsg,
+        });
+
         // For business feature, log a dedicated structured entry
         if (feature === "business") {
           console.error(`[BUSINESS_AI_ERROR] provider=${providerId} model=${attemptedModel} status=${errorStatus ?? "N/A"} code=${errorCode} maxTokens=${maxTokens} sysPromptLen=${sysPromptLen} userMsgLen=${userMsgLen} message="${errorMsg}"`);
@@ -396,6 +420,15 @@ export class AIExecutor {
         if (attempt < providerChain.length - 1) {
           await new Promise((resolve) => setTimeout(resolve, 1000));
           continue;
+        }
+
+        // ── All providers exhausted — comprehensive summary log ──
+        const errorSummary = allProviderErrors
+          .map((e) => `${e.provider}/${e.model}: [${e.code}] status=${e.status ?? "?"} "${e.message.slice(0, 150)}"`)
+          .join(" | ");
+        console.error(`[AI ALL PROVIDERS EXHAUSTED] feature=${feature} chain=[${providerChain.join(",")}] allProviderErrors=${allProviderErrors.length} summary="${errorSummary}"`);
+        if (feature === "business") {
+          console.error(`[BUSINESS_ALL_FAILED] Chain: ${providerChain.join(" → ")} | Errors: ${errorSummary}`);
         }
 
         // All providers exhausted — throw friendly error

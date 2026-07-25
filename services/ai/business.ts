@@ -4,6 +4,10 @@
  * Roles: Startup Consultant, Brand Strategist, Marketing Expert
  * Generates professional business analysis with exact structured format:
  *   📋 Business Overview → 🚀 Brand Strategy → 💰 Monetization → 📈 Marketing Plan → 🎯 Action Steps
+ *
+ * Optimized for token efficiency and short inputs.
+ * Even "Kayzel Creator" or "telegram bot" should produce a full analysis
+ * — the AI infers a business idea rather than asking for more detail.
  */
 
 import { BaseAIService } from "./base";
@@ -14,42 +18,21 @@ import type { BusinessContent, BusinessContentType } from "@/types";
 const log = logger.child("ai-business");
 
 /**
- * Professional business analysis system prompt.
- * Instructs the AI to produce the exact structured format the user expects.
+ * Concise system prompt (~400 chars) — every word counts.
+ * Forces the AI to infer a business idea from short inputs like
+ * "Kayzel Creator" and produce the 5-section format without
+ * asking for clarification.
  */
-const SYSTEM_PROMPT = `You are a world-class startup consultant and brand strategist.
+const SYSTEM_PROMPT = `You are a startup consultant. The user may give a very short input — always INFER a complete business idea from it. Never ask for more info.
 
-Analyze the user's input and produce a professional business analysis with these EXACT sections:
+Output these 5 sections with emoji headers:
+📋 Business Overview (idea, audience, problem)
+🚀 Brand Strategy (positioning, USP, competitors)
+💰 Monetization (revenue, pricing, growth)
+📈 Marketing Plan (channels, content, launch)
+🎯 Action Steps (30-day roadmap)
 
-📋 Business Overview
-- Business idea analysis
-- Target audience
-- Problem solved
-
-🚀 Brand Strategy
-- Brand positioning
-- Unique value proposition
-- Competitor advantage
-
-💰 Monetization
-- Revenue model
-- Pricing ideas
-- Growth opportunities
-
-📈 Marketing Plan
-- Acquisition channels
-- Content strategy
-- Launch plan
-
-🎯 Action Steps
-- First 30 days roadmap
-
-RULES:
-1. Respond in the SAME LANGUAGE as the user's input.
-2. Use emoji headers for each section.
-3. Be specific and actionable — avoid generic advice.
-4. Provide concrete examples and data points.
-5. Each bullet point must be a complete, detailed sentence.`;
+Match language. Be specific with examples. 2-4 bullets per section.`;
 
 export class BusinessAIService extends BaseAIService {
   private readonly types: BusinessContentType[] = [
@@ -70,12 +53,11 @@ export class BusinessAIService extends BaseAIService {
     const typeLabel = type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
     const temperature = aiConfig.getTemperature("business");
 
-    // Build user prompt based on content type
+    // Build user prompt — short inputs must yield a full analysis
     const userPrompt = [
-      `Generate a ${typeLabel} for: "${description}"`,
-      "",
-      `Use the standard business analysis format with all 5 sections.`,
-      "Make it detailed, actionable, and specific to this idea.",
+      `Analyze "${description}" as a ${typeLabel}.`,
+      `If this input is very short (a name, a word, a phrase), infer a complete business idea from it.`,
+      `Produce all 5 sections with emoji headers. Be specific.`,
     ].join("\n");
 
     log.info("[BUSINESS] Generating content", {

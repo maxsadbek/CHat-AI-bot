@@ -3,6 +3,19 @@
  */
 
 /**
+ * Escape special characters for Telegram HTML parse_mode.
+ * Escapes: & < >
+ * Characters like * _ ` [ ] ( ) are NOT special in HTML mode
+ * and are safe to send without escaping.
+ */
+export function escapeTelegramHTML(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/**
  * Sleep for a given number of milliseconds
  */
 export function sleep(ms: number): Promise<void> {

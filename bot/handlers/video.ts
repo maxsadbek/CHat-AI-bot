@@ -21,17 +21,18 @@ import {
   resumeConversation,
 } from "@/bot/handlers/history";
 import { InlineKeyboard } from "grammy";
+import { escapeTelegramHTML } from "@/utils/helpers";
 
 const log = logger.child("handler-video");
 
 /**
  * Format an array of VideoPrompt objects into a Telegram-friendly string.
  * Only includes fields that have content. Never duplicates text.
- * Matches the expected output format:
+ * Uses HTML parse_mode — escapes AI content via escapeTelegramHTML().
  *
  * 🎬 Hailuo AI
  *
- * 🎭 Scene:
+ * 🎭 <b>Scene:</b>
  * [scene text]
  * ...
  */
@@ -40,72 +41,72 @@ function formatVideoPrompts(prompts: VideoPrompt[]): string {
 
   for (const prompt of prompts) {
     const block: string[] = [];
-    block.push("🎬 *" + prompt.platform + "*");
+    block.push("🎬 <b>" + escapeTelegramHTML(prompt.platform) + "</b>");
     block.push("");
 
     if (prompt.scene) {
-      block.push("🎭 *Scene:*");
-      block.push(prompt.scene);
+      block.push("🎭 <b>Scene:</b>");
+      block.push(escapeTelegramHTML(prompt.scene));
       block.push("");
     }
 
     if (prompt.lighting) {
-      block.push("💡 *Lighting:*");
-      block.push(prompt.lighting);
+      block.push("💡 <b>Lighting:</b>");
+      block.push(escapeTelegramHTML(prompt.lighting));
       block.push("");
     }
 
     if (prompt.cameraMovement || prompt.lens) {
-      block.push("🎥 *Camera:*");
+      block.push("🎥 <b>Camera:</b>");
       const cameraDesc = prompt.cameraMovement
         ? prompt.lens
           ? prompt.cameraMovement + " (" + prompt.lens + ")"
           : prompt.cameraMovement
         : prompt.lens || "";
-      block.push(cameraDesc);
+      block.push(escapeTelegramHTML(cameraDesc));
       block.push("");
     }
 
     if (prompt.environment) {
-      block.push("🌎 *Environment:*");
-      block.push(prompt.environment);
+      block.push("🌎 <b>Environment:</b>");
+      block.push(escapeTelegramHTML(prompt.environment));
       block.push("");
     }
 
     if (prompt.negativePrompt) {
-      block.push("🚫 *Negative:*");
-      block.push(prompt.negativePrompt);
+      block.push("🚫 <b>Negative:</b>");
+      block.push(escapeTelegramHTML(prompt.negativePrompt));
       block.push("");
     }
 
     if (prompt.voice) {
-      block.push("🎙️ *Voice:*");
-      block.push(prompt.voice);
+      block.push("🎙️ <b>Voice:</b>");
+      block.push(escapeTelegramHTML(prompt.voice));
       block.push("");
     }
 
     if (prompt.music) {
-      block.push("🎵 *Music:*");
-      block.push(prompt.music);
+      block.push("🎵 <b>Music:</b>");
+      block.push(escapeTelegramHTML(prompt.music));
       block.push("");
     }
 
     if (prompt.duration) {
-      block.push("⏱ *Duration:*");
-      block.push(prompt.duration);
+      block.push("⏱ <b>Duration:</b>");
+      block.push(escapeTelegramHTML(prompt.duration));
       block.push("");
     }
 
     if (prompt.style) {
-      block.push("*Style:*");
-      block.push(prompt.style);
+      block.push("<b>Style:</b>");
+      block.push(escapeTelegramHTML(prompt.style));
       block.push("");
     }
 
     // Only show fullPrompt if it's non-empty and differs from scene (avoid duplication)
     if (prompt.fullPrompt && prompt.fullPrompt !== prompt.scene) {
-      block.push("📝 *Full Prompt:*");
-      block.push(prompt.fullPrompt);
+      block.push("📝 <b>Full Prompt:</b>");
+      block.push(escapeTelegramHTML(prompt.fullPrompt));
       block.push("");
     }
 
@@ -205,7 +206,7 @@ export async function videoGenerateHandler(ctx: BotContext): Promise<void> {
 
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
     await ctx.reply(response, {
-      parse_mode: "Markdown",
+      parse_mode: "HTML",
       reply_markup: videoKeyboard,
     });
     log.info("[VIDEO_FLOW] Prompt generation successful");
@@ -213,8 +214,8 @@ export async function videoGenerateHandler(ctx: BotContext): Promise<void> {
     log.error("[VIDEO_FLOW] Error during generation", { userId, error: String(error) });
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
     const friendlyMsg = error instanceof Error ? error.message : String(error);
-    await ctx.reply(`❌ *Video AI Error*\n\n*Reason:*\n${friendlyMsg}`, {
-      parse_mode: "Markdown",
+    await ctx.reply(`❌ <b>Video AI Error</b>\n\n<b>Reason:</b>\n${escapeTelegramHTML(friendlyMsg)}`, {
+      parse_mode: "HTML",
       reply_markup: videoKeyboard,
     });
   }
@@ -309,8 +310,8 @@ export async function resumeVideoHandler(ctx: BotContext): Promise<void> {
     .text("🔙 Back to Video AI", "nav:back");
 
   if (lastAssistantMsg) {
-    await ctx.reply("📋 *Previously generated prompts:*\n\n" + lastAssistantMsg.content, {
-      parse_mode: "Markdown",
+    await ctx.reply("📋 <b>Previously generated prompts:</b>\n\n" + escapeTelegramHTML(lastAssistantMsg.content), {
+      parse_mode: "HTML",
       reply_markup: resumeKb,
     });
   } else {
@@ -381,16 +382,16 @@ export async function regenerateVideoHandler(ctx: BotContext): Promise<void> {
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
 
     // Show regenerated prompts with confirmation header
-    await ctx.reply(t(lang, "video.regenerated") + "\n\n" + response, {
-      parse_mode: "Markdown",
+    await ctx.reply(t(lang, "video.regenerated") + "\n\n" + escapeTelegramHTML(response), {
+      parse_mode: "HTML",
       reply_markup: videoKeyboard,
     });
   } catch (error) {
     log.error("Video regenerate error", { userId, error: String(error) });
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
     const friendlyMsg = error instanceof Error ? error.message : null;
-    await ctx.reply(friendlyMsg || t(lang, "video.error"), {
-      parse_mode: "Markdown",
+    await ctx.reply(`❌ <b>Error</b>\n\n${escapeTelegramHTML(friendlyMsg || t(lang, "video.error"))}`, {
+      parse_mode: "HTML",
       reply_markup: videoKeyboard,
     });
   }

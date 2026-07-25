@@ -55,17 +55,21 @@ export async function imageGenerateHandler(ctx: BotContext): Promise<void> {
 
   if (!userId) return;
 
+  log.info("[IMAGE_FLOW] Handler started", { userId, platform, text: text.slice(0, 30) });
+
   // Create conversation if not exists — title includes platform/provider info
   if (!ctx.session.conversationId) {
     const platformLabel = platform === "all" ? "All Platforms" : platform;
     const title = `Image (${platformLabel}): ${text.slice(0, 70)}`;
     const created = await createConversation(ctx, title, "image");
     if (!created) {
+      log.warn("[IMAGE_FLOW] Limit reached", { userId, platform });
       await ctx.reply(t(lang, "image.limit_reached"), {
         parse_mode: "Markdown",
       });
       return;
     }
+    log.info("[IMAGE_FLOW] Conversation created", { userId, conversationId: ctx.session.conversationId });
   }
 
   await ctx.replyWithChatAction("typing");
@@ -75,85 +79,93 @@ export async function imageGenerateHandler(ctx: BotContext): Promise<void> {
 
   try {
     if (platform.toLowerCase() === "flux" || platform.toLowerCase() === "stability") {
-      const generatedImage = await imageAIService.generateImage(
-        text,
-        platform.toLowerCase(),
-        ctx.session.selectedModel
-      );
+      log.info("[IMAGE_FLOW] Direct image generation selected", { platform: platform.toLowerCase() });
+      try {
+        const generatedImage = await imageAIService.generateImage(
+          text,
+          platform.toLowerCase(),
+          ctx.session.selectedModel
+        );
+        log.info("[IMAGE_FLOW] Image generation successful");
 
-      // Track usage
-      const selectedModel = ctx.session.selectedModel;
-      const providerName = selectedModel
-        ? providerRegistry.getModel(selectedModel)?.provider
-        : platform.toLowerCase();
-      usageService.track(userId, "image", 0, 0, providerName, selectedModel);
+        // Track usage
+        const selectedModel = ctx.session.selectedModel;
+        const providerName = selectedModel
+          ? providerRegistry.getModel(selectedModel)?.provider
+          : platform.toLowerCase();
+        usageService.track(userId, "image", 0, 0, providerName, selectedModel);
 
-      await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
-      
-      const caption = `🎨 *${platform.toLowerCase() === "flux" ? "Flux AI" : "Stability AI"}*\n\n${text.slice(0, 500)}`;
-      
-      // generatedImage can be a URL string or a Buffer
-      if (typeof generatedImage === "string") {
-        await ctx.replyWithPhoto(generatedImage, {
-          caption: caption,
-          parse_mode: "Markdown",
-          reply_markup: imageKeyboard,
-        });
-      } else {
-        import("grammy").then(({ InputFile }) => {
-          ctx.replyWithPhoto(new InputFile(generatedImage, "image.jpg"), {
+        await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
+        
+        const caption = `🎨 *${platform.toLowerCase() === "flux" ? "Flux AI" : "Stability AI"}*\n\n${text.slice(0, 500)}`;
+        
+        // generatedImage can be a URL string or a Buffer
+        if (typeof generatedImage === "string") {
+          await ctx.replyWithPhoto(generatedImage, {
             caption: caption,
             parse_mode: "Markdown",
             reply_markup: imageKeyboard,
           });
-        });
+        } else {
+          const { InputFile } = await import("grammy");
+          await ctx.replyWithPhoto(new InputFile(generatedImage, "image.jpg"), {
+            caption: caption,
+            parse_mode: "Markdown",
+            reply_markup: imageKeyboard,
+          });
+        }
+
+        // Store in session and db
+        ctx.session.messages.push({ role: "user", content: text });
+        ctx.session.messages.push({ role: "assistant", content: `[Image Generated: ${caption}]` });
+        await saveMessagesToDb(ctx, "image");
+        return; // Success, exit handler
+      } catch (genError) {
+        log.warn("[IMAGE_FLOW] Direct image generation failed, falling back to prompt generator", { error: String(genError) });
+        // Fall through to prompt generation
       }
-
-      // Store in session and db
-      ctx.session.messages.push({ role: "user", content: text });
-      ctx.session.messages.push({ role: "assistant", content: `[Image Generated: ${caption}]` });
-      await saveMessagesToDb(ctx, "image");
-
-    } else {
-      const prompts = await imageAIService.generatePrompt(
-        text,
-        platform === "all" ? undefined : platform,
-        ctx.session.selectedModel
-      );
-
-      // Build structured response with prompt details
-      let response = t(lang, "image.result_title");
-      for (const prompt of prompts) {
-        response += "🖼️ *" + prompt.platform + "*\n";
-        response += prompt.fullPrompt + "\n\n";
-        response += "━━━━━━━━━━━━━━━━━━━━━\n\n";
-      }
-
-      // Store in session
-      ctx.session.messages.push({ role: "user", content: text });
-      ctx.session.messages.push({ role: "assistant", content: response });
-
-      // Save to database
-      await saveMessagesToDb(ctx, "image");
-
-      // Track usage (non-blocking)
-      const selectedModel = ctx.session.selectedModel;
-      const providerName = selectedModel
-        ? providerRegistry.getModel(selectedModel)?.provider
-        : undefined;
-      usageService.track(userId, "image", 0, 0, providerName, selectedModel);
-
-      await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
-      await ctx.reply(response, {
-        parse_mode: "Markdown",
-        reply_markup: imageKeyboard,
-      });
     }
-  } catch (error) {
-    log.error("Image AI error", { userId, error: String(error) });
+
+    log.info("[IMAGE_FLOW] Generating prompts", { platform, model: ctx.session.selectedModel });
+    const prompts = await imageAIService.generatePrompt(
+      text,
+      platform === "all" ? undefined : platform,
+      ctx.session.selectedModel
+    );
+
+    // Build structured response with prompt details
+    let response = t(lang, "image.result_title");
+    for (const prompt of prompts) {
+      response += "🖼️ *" + prompt.platform + "*\n";
+      response += prompt.fullPrompt + "\n\n";
+      response += "━━━━━━━━━━━━━━━━━━━━━\n\n";
+    }
+
+    // Store in session
+    ctx.session.messages.push({ role: "user", content: text });
+    ctx.session.messages.push({ role: "assistant", content: response });
+
+    // Save to database
+    await saveMessagesToDb(ctx, "image");
+
+    // Track usage (non-blocking)
+    const selectedModel = ctx.session.selectedModel;
+    const providerName = selectedModel
+      ? providerRegistry.getModel(selectedModel)?.provider
+      : undefined;
+    usageService.track(userId, "image", 0, 0, providerName, selectedModel);
+
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
-    const friendlyMsg = error instanceof Error ? error.message : null;
-    await ctx.reply(friendlyMsg || t(lang, "image.error"), {
+    await ctx.reply(response, {
+      parse_mode: "Markdown",
+      reply_markup: imageKeyboard,
+    });
+    log.info("[IMAGE_FLOW] Generated prompts successfully");
+  } catch (error) {
+    log.error("[IMAGE_FLOW] Error during generation", { userId, error: String(error) });
+    await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
+    const friendlyMsg = error instanceof Error ? error.message : String(error);
+    await ctx.reply(`❌ *Image AI Error*\n\n*Reason:*\n${friendlyMsg}`, {
       parse_mode: "Markdown",
       reply_markup: imageKeyboard,
     });

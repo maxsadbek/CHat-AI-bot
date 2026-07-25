@@ -56,17 +56,21 @@ export async function videoGenerateHandler(ctx: BotContext): Promise<void> {
 
   if (!userId) return;
 
+  log.info("[VIDEO_FLOW] Handler started", { userId, platform, text: text.slice(0, 30) });
+
   // Create conversation if not exists — title includes platform/provider info
   if (!ctx.session.conversationId) {
     const platformLabel = platform === "all" ? "All Platforms" : platform;
     const title = "Video (" + platformLabel + "): " + text.slice(0, 70);
     const created = await createConversation(ctx, title, "video");
     if (!created) {
+      log.warn("[VIDEO_FLOW] Limit reached", { userId, platform });
       await ctx.reply(t(lang, "video.limit_reached"), {
         parse_mode: "Markdown",
       });
       return;
     }
+    log.info("[VIDEO_FLOW] Conversation created", { userId, conversationId: ctx.session.conversationId });
   }
 
   await ctx.replyWithChatAction("typing");
@@ -75,6 +79,10 @@ export async function videoGenerateHandler(ctx: BotContext): Promise<void> {
   });
 
   try {
+    log.info("[VIDEO_FLOW] Generating video prompt", { platform, model: ctx.session.selectedModel });
+    
+    // As there is no Hailuo API right now, if 'hailuo' is selected, we just generate a professional prompt
+    // The videoAIService will handle this based on the platform string
     const prompts = await videoAIService.generatePrompt(
       text,
       platform === "all" ? undefined : platform,
@@ -123,11 +131,12 @@ export async function videoGenerateHandler(ctx: BotContext): Promise<void> {
       parse_mode: "Markdown",
       reply_markup: videoKeyboard,
     });
+    log.info("[VIDEO_FLOW] Prompt generation successful");
   } catch (error) {
-    log.error("Video AI error", { userId, error: String(error) });
+    log.error("[VIDEO_FLOW] Error during generation", { userId, error: String(error) });
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
-    const friendlyMsg = error instanceof Error ? error.message : null;
-    await ctx.reply(friendlyMsg || t(lang, "video.error"), {
+    const friendlyMsg = error instanceof Error ? error.message : String(error);
+    await ctx.reply(`❌ *Video AI Error*\n\n*Reason:*\n${friendlyMsg}`, {
       parse_mode: "Markdown",
       reply_markup: videoKeyboard,
     });

@@ -10,6 +10,9 @@
 import { aiExecutor, AIExecutor } from "./core/executor";
 import type { ChatRequest, ChatResponse } from "./providers/interface";
 import type { FeatureType, PlanType } from "@/config/ai";
+import { logger } from "@/bot/core/logger";
+
+const log = logger.child("ai-base");
 
 export interface AIProviderConfig {
   model: string;
@@ -62,15 +65,39 @@ export abstract class BaseAIService {
     // Optimize system prompt: trim whitespace to reduce token usage
     const optimizedSystemPrompt = systemPrompt ? this.optimizePrompt(systemPrompt) : undefined;
 
-    return this.executor.execute({
+    log.info("[AI_PROVIDER] Executing AI request", {
       feature: this.feature,
-      userPlan: typeof userPlan === "string" ? userPlan : undefined,
-      modelId,
-      request: {
-        messages,
-        systemPrompt: optimizedSystemPrompt,
-        temperature,
-      },
+      modelId: modelId ?? "default",
+      userPlan: typeof userPlan === "string" ? userPlan : "none",
+      messagesCount: messages.length,
     });
+
+    try {
+      const result = await this.executor.execute({
+        feature: this.feature,
+        userPlan: typeof userPlan === "string" ? userPlan : undefined,
+        modelId,
+        request: {
+          messages,
+          systemPrompt: optimizedSystemPrompt,
+          temperature,
+        },
+      });
+
+      log.info("[AI_PROVIDER] Response received", {
+        feature: this.feature,
+        contentLength: result.content.length,
+        usage: result.usage,
+      });
+
+      return result;
+    } catch (error) {
+      log.error("[AI_PROVIDER] Execution failed", {
+        feature: this.feature,
+        modelId,
+        error: String(error),
+      });
+      throw error;
+    }
   }
 }

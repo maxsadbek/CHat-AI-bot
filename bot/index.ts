@@ -36,6 +36,7 @@ import { createInitialSession } from "@/bot/middleware";
 import { registerMiddleware } from "@/bot/middleware";
 import { resetSession } from "@/bot/session";
 import { sessionManager } from "@/bot/core/session-manager";
+import { prismaSessionStorage } from "@/bot/core/session-storage";
 import { modeManager } from "@/bot/core/mode-manager";
 import { callbackRouter } from "@/bot/core/router";
 import { logger } from "@/bot/core/logger";
@@ -253,22 +254,20 @@ export function createBot(): Bot<BotContext> {
   const bot = new Bot<BotContext>(env.TELEGRAM_BOT_TOKEN);
 
   // ─── 1. Session Middleware ─────────────────────────
+  // Uses Prisma-backed storage so sessions survive serverless cold starts.
+  // Each update is keyed by chatId. Falls back gracefully on DB errors.
   bot.use(
     session({
       initial: createInitialSession,
+      storage: prismaSessionStorage,
+      getSessionKey: (ctx) => ctx.chat?.id?.toString(),
     })
   );
 
   // ─── 2. Global Middleware ──────────────────────────
   registerMiddleware(bot);
 
-  // Warn about session storage in serverless environments
-  // grammY's default in-memory session does NOT persist across
-  // serverless function invocations. For production deployments
-  // on Vercel/Netlify, implement a database-backed storage adapter.
-  if (env.isProd) {
-    log.warn("Using in-memory session storage — sessions will reset on cold starts. For production serverless deployments, add a persistent session adapter (e.g., Prisma/Redis).");
-  }
+  log.info("Bot session storage: Prisma (persistent)");
 
   log.info("Bot initializing...", { model: env.OPENAI_MODEL });
 
@@ -802,12 +801,21 @@ export function createBot(): Bot<BotContext> {
   callbackRouter.register(/^video:(.+)/, async (ctx) => {
     await ctx.answerCallbackQuery();
     const raw = (ctx as any).match[1] ?? "";
+    // Map keyboard slugs to proper platform names
+    const VIDEO_PLATFORM_MAP: Record<string, import("@/types").VideoPlatform> = {
+      "hailuo": "Hailuo AI",
+      "kling": "Kling AI",
+      "veo": "Google Veo",
+      "runway": "Runway",
+      "pixverse": "PixVerse",
+    };
     const platform: import("@/types").VideoPlatform | "all" =
-      raw === "all" || !raw ? "all" : (raw as import("@/types").VideoPlatform);
+      raw === "all" || !raw ? "all" : (VIDEO_PLATFORM_MAP[raw] ?? raw as import("@/types").VideoPlatform);
     ctx.session.selectedVideoPlatform = platform;
     const lang = ctx.session.language;
     const platformName = platform === "all" ? "All Platforms" : platform;
     sessionManager.setStep(ctx.session, BotStep.VIDEO_PROMPT);
+    log.info("[SESSION] Video platform selected", { platform, step: BotStep.VIDEO_PROMPT });
     await ctx.editMessageText(
       t(lang, "video.platform_selected", { platform: platformName }),
       { parse_mode: "Markdown" }
@@ -817,12 +825,21 @@ export function createBot(): Bot<BotContext> {
   callbackRouter.register(/^image:(.+)/, async (ctx) => {
     await ctx.answerCallbackQuery();
     const raw = (ctx as any).match[1] ?? "";
+    // Map keyboard slugs to proper platform names
+    const IMAGE_PLATFORM_MAP: Record<string, import("@/types").ImagePlatform> = {
+      "gpt": "GPT Image",
+      "flux": "Flux",
+      "midjourney": "Midjourney",
+      "leonardo": "Leonardo",
+      "ideogram": "Ideogram",
+    };
     const platform: import("@/types").ImagePlatform | "all" =
-      raw === "all" || !raw ? "all" : (raw as import("@/types").ImagePlatform);
+      raw === "all" || !raw ? "all" : (IMAGE_PLATFORM_MAP[raw] ?? raw as import("@/types").ImagePlatform);
     ctx.session.selectedImagePlatform = platform;
     const lang = ctx.session.language;
     const platformName = platform === "all" ? "All Platforms" : platform;
     sessionManager.setStep(ctx.session, BotStep.IMAGE_PROMPT);
+    log.info("[SESSION] Image platform selected", { platform, step: BotStep.IMAGE_PROMPT });
     await ctx.editMessageText(
       t(lang, "image.platform_selected", { platform: platformName }),
       { parse_mode: "Markdown" }
@@ -945,6 +962,12 @@ export function createBot(): Bot<BotContext> {
   // receipts it returns without calling next(), so message:text never runs.
   bot.on("message:text", async (ctx) => {
     const step = ctx.session.step;
+
+    log.info("[SESSION] Text message received", {
+      telegramId: ctx.from?.id,
+      step: step,
+      text: ctx.message?.text ? `${ctx.message.text.slice(0, 20)}...` : null,
+    });
 
     switch (step) {
       case BotStep.AI_CHAT:

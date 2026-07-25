@@ -276,3 +276,15 @@ model AdminLog {
   @@index([adminId])
   @@map("admin_logs")
 }
+
+// ─── Bot Session (Persistent) ─────────────────────────
+// Stores grammy session state per Telegram chat so it survives
+// serverless cold starts on Vercel.
+
+model BotSession {
+  id        String   @id          // Telegram chat ID as string
+  data      String               // JSON-encoded SessionData
+  updatedAt DateTime @updatedAt
+
+  @@map("bot_sessions")
+}

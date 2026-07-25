@@ -3,9 +3,15 @@
  * Tracks per-user daily usage across features with separate free/premium limits.
  * Integrates with the existing usageService for database-backed tracking.
  *
- * Limits:
- * - Free users: 50 requests/day (default, configurable via AI_DAILY_LIMIT_FREE)
- * - Premium users: 500 requests/day (default, configurable via AI_DAILY_LIMIT_PREMIUM)
+ * Per-feature daily limits:
+ *            Free    Premium
+ *   chat      30      300
+ *   image     10      100
+ *   video      5       50
+ *   code      10      100
+ *   social    30      300
+ *   business  30      300
+ *   translate 30      300
  */
 
 import { logger } from "@/bot/core/logger";
@@ -86,27 +92,71 @@ export class UsageTracker {
     return total;
   }
 
-  /** Get daily limit based on user plan (FREE vs PREMIUM) */
-  getDailyLimit(userPlan?: string): number {
+  /**
+   * Per-feature daily limits for free users
+   */
+  private readonly FREE_FEATURE_LIMITS: Record<string, number> = {
+    chat: Number(process.env.AI_DAILY_CHAT_LIMIT_FREE) || 30,
+    image: Number(process.env.AI_DAILY_IMAGE_LIMIT_FREE) || 10,
+    video: Number(process.env.AI_DAILY_VIDEO_LIMIT_FREE) || 5,
+    coding: Number(process.env.AI_DAILY_CODING_LIMIT_FREE) || 10,
+    social: Number(process.env.AI_DAILY_SOCIAL_LIMIT_FREE) || 30,
+    business: Number(process.env.AI_DAILY_BUSINESS_LIMIT_FREE) || 30,
+    translate: Number(process.env.AI_DAILY_TRANSLATE_LIMIT_FREE) || 30,
+  };
+
+  /**
+   * Per-feature daily limits for premium users
+   */
+  private readonly PREMIUM_FEATURE_LIMITS: Record<string, number> = {
+    chat: Number(process.env.AI_DAILY_CHAT_LIMIT_PREMIUM) || 300,
+    image: Number(process.env.AI_DAILY_IMAGE_LIMIT_PREMIUM) || 100,
+    video: Number(process.env.AI_DAILY_VIDEO_LIMIT_PREMIUM) || 50,
+    coding: Number(process.env.AI_DAILY_CODING_LIMIT_PREMIUM) || 100,
+    social: Number(process.env.AI_DAILY_SOCIAL_LIMIT_PREMIUM) || 300,
+    business: Number(process.env.AI_DAILY_BUSINESS_LIMIT_PREMIUM) || 300,
+    translate: Number(process.env.AI_DAILY_TRANSLATE_LIMIT_PREMIUM) || 300,
+  };
+
+  /** Get daily limit for a specific feature and plan */
+  getDailyLimit(feature?: FeatureType | string, userPlan?: string): number {
     const normalized = (userPlan || "FREE").toUpperCase();
-    if (normalized === "FREE") {
+
+    if (normalized === "FREE" || normalized === "") {
+      if (feature && this.FREE_FEATURE_LIMITS[feature]) {
+        return this.FREE_FEATURE_LIMITS[feature]!;
+      }
       return Number(process.env.AI_DAILY_LIMIT_FREE) || 50;
     }
+
     // Premium and above
+    if (feature && this.PREMIUM_FEATURE_LIMITS[feature]) {
+      return this.PREMIUM_FEATURE_LIMITS[feature]!;
+    }
     return Number(process.env.AI_DAILY_LIMIT_PREMIUM) || 500;
   }
 
-  /** Check if user has exceeded their daily limit */
-  isLimitReached(userId: number, userPlan?: string): boolean {
+  /** Check if user has exceeded their daily limit (per-feature) */
+  isLimitReached(userId: number, userPlan?: string, feature?: FeatureType | string): boolean {
+    if (feature) {
+      const todayCount = this.getTodayCount(userId, feature as FeatureType);
+      const limit = this.getDailyLimit(feature, userPlan);
+      return todayCount >= limit;
+    }
     const totalToday = this.getTotalToday(userId);
-    const limit = this.getDailyLimit(userPlan);
+    const limit = this.getDailyLimit(undefined, userPlan);
     return totalToday >= limit;
   }
 
-  /** Get remaining requests for today */
-  getRemaining(userId: number, userPlan?: string): number {
+  /** Get remaining requests for today (per-feature) */
+  getRemaining(userId: number, userPlan?: string, feature?: FeatureType | string): number {
+    if (feature) {
+      const todayCount = this.getTodayCount(userId, feature as FeatureType);
+      const limit = this.getDailyLimit(feature, userPlan);
+      return Math.max(0, limit - todayCount);
+    }
     const totalToday = this.getTotalToday(userId);
-    const limit = this.getDailyLimit(userPlan);
+    const limit = this.getDailyLimit(undefined, userPlan);
     return Math.max(0, limit - totalToday);
   }
 

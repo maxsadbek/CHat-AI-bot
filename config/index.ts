@@ -92,6 +92,46 @@ const envSchema = z.object({
   /** Max tokens for Translate (default: 400) */
   AI_TRANSLATE_MAX_TOKENS: z.coerce.number().default(400),
 
+  // ─── Stability AI (Image/Text) ────────
+  STABILITY_API_KEY: z.string().optional(),
+  STABILITY_BASE_URL: z.string().url().default("https://api.stability.ai/v1"),
+  STABILITY_MODEL: z.string().default("stable-diffusion-xl-1024-v1-0"),
+
+  // ─── Flux AI (Image/Text) ──────────────
+  FLUX_API_KEY: z.string().optional(),
+  FLUX_BASE_URL: z.string().url().default("https://api.bfl.ml/v1"),
+  FLUX_MODEL: z.string().default("FLUX.1-schnell"),
+
+  // ─── AI Router Environment Variables ───
+  /** Enable/disable AI router (default: true) */
+  AI_ROUTER_ENABLED: z.string().default("true"),
+  /** Enable/disable AI fallback (default: true) */
+  AI_FALLBACK_ENABLED: z.string().default("true"),
+  /** Provider order for text tasks (comma-separated) */
+  AI_PROVIDER_ORDER: z.string().default("gemini,cerebras,mistral,openrouter"),
+
+  // ─── Per-Feature Daily Limits (Free) ───
+  AI_DAILY_CHAT_LIMIT_FREE: z.coerce.number().default(30),
+  AI_DAILY_IMAGE_LIMIT_FREE: z.coerce.number().default(10),
+  AI_DAILY_VIDEO_LIMIT_FREE: z.coerce.number().default(5),
+  AI_DAILY_CODING_LIMIT_FREE: z.coerce.number().default(10),
+  AI_DAILY_SOCIAL_LIMIT_FREE: z.coerce.number().default(30),
+  AI_DAILY_BUSINESS_LIMIT_FREE: z.coerce.number().default(30),
+  AI_DAILY_TRANSLATE_LIMIT_FREE: z.coerce.number().default(30),
+
+  // ─── Per-Feature Daily Limits (Premium) ─
+  AI_DAILY_CHAT_LIMIT_PREMIUM: z.coerce.number().default(300),
+  AI_DAILY_IMAGE_LIMIT_PREMIUM: z.coerce.number().default(100),
+  AI_DAILY_VIDEO_LIMIT_PREMIUM: z.coerce.number().default(50),
+  AI_DAILY_CODING_LIMIT_PREMIUM: z.coerce.number().default(100),
+  AI_DAILY_SOCIAL_LIMIT_PREMIUM: z.coerce.number().default(300),
+  AI_DAILY_BUSINESS_LIMIT_PREMIUM: z.coerce.number().default(300),
+  AI_DAILY_TRANSLATE_LIMIT_PREMIUM: z.coerce.number().default(300),
+
+  // ─── Token Limits ────────────────────────
+  FREE_MAX_TOKENS: z.coerce.number().default(250),
+  PREMIUM_MAX_TOKENS: z.coerce.number().default(700),
+
   // ─── Stripe ───────────────────────────
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),

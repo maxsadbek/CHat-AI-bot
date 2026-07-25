@@ -58,10 +58,10 @@ export class AIExecutor {
     const startTime = Date.now();
     const { feature, userPlan, modelId, request, userId } = options;
 
-    // ── 1. Check daily usage limits ────────────────
-    if (userId && usageTracker.isLimitReached(userId, userPlan)) {
+    // ── 1. Check daily usage limits (per-feature) ──
+    if (userId && usageTracker.isLimitReached(userId, userPlan, feature)) {
       throw new AIError(
-        "⚠️ You've reached your daily limit. Please try again tomorrow or upgrade your plan.",
+        "⚠️ You've reached your daily limit for this feature. Please try again tomorrow or upgrade your plan.",
         "RATE_LIMIT",
         { retryable: false }
       );

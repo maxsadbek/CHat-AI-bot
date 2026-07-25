@@ -41,7 +41,9 @@ export type ProviderId =
   | "openrouter"
   | "ollama"
   | "cerebras"
-  | "mistral";
+  | "mistral"
+  | "stability"
+  | "flux";
 
 export interface ProviderSetting {
   id: ProviderId;
@@ -91,7 +93,8 @@ export function normalizePlanType(planStr?: string | null): PlanType {
  */
 export class AIConfig {
   private static configData: AIConfigData = {
-    defaultProvider: "openai",
+    // AI_PROVIDER_ORDER from env: gemini,cerebras,mistral,openrouter
+    defaultProvider: (process.env.AI_PROVIDER_ORDER?.split(",")[0]?.trim() as ProviderId) || "gemini",
     fallbackSteps: [6000, 4000, 3000, 2000, 1200, 800],
     retry: {
       maxRetries: 3,
@@ -110,47 +113,48 @@ export class AIConfig {
       social: 0.8,
     },
     // Per-feature max tokens read from environment variables with sensible defaults
-    // FREE tier uses minimal tokens to reduce costs; premium tiers get more.
+    // FREE tier uses minimal tokens (FREE_MAX_TOKENS=250) to reduce costs;
+    // premium tiers get more (PREMIUM_MAX_TOKENS=700).
     tokenPolicies: {
       chat: {
-        FREE: { base: Number(process.env.AI_CHAT_MAX_TOKENS) || 400, max: Number(process.env.AI_CHAT_MAX_TOKENS) || 400 },
-        PREMIUM: { base: 1024, max: 2048 },
+        FREE: { base: Number(process.env.FREE_MAX_TOKENS) || 250, max: Number(process.env.FREE_MAX_TOKENS) || 250 },
+        PREMIUM: { base: Number(process.env.PREMIUM_MAX_TOKENS) || 700, max: 1024 },
         PRO: { base: 2048, max: 4096 },
         ENTERPRISE: { base: 4096, max: 8192 },
       },
       business: {
-        FREE: { base: Number(process.env.AI_BUSINESS_MAX_TOKENS) || 500, max: Number(process.env.AI_BUSINESS_MAX_TOKENS) || 500 },
-        PREMIUM: { base: 1024, max: 2048 },
+        FREE: { base: Number(process.env.FREE_MAX_TOKENS) || 250, max: Number(process.env.FREE_MAX_TOKENS) || 250 },
+        PREMIUM: { base: Number(process.env.PREMIUM_MAX_TOKENS) || 700, max: 1024 },
         PRO: { base: 2048, max: 4096 },
         ENTERPRISE: { base: 4096, max: 8192 },
       },
       coding: {
-        FREE: { base: Number(process.env.AI_CODING_MAX_TOKENS) || 600, max: Number(process.env.AI_CODING_MAX_TOKENS) || 600 },
-        PREMIUM: { base: 2048, max: 4096 },
+        FREE: { base: Number(process.env.FREE_MAX_TOKENS) || 250, max: Number(process.env.FREE_MAX_TOKENS) || 250 },
+        PREMIUM: { base: Number(process.env.PREMIUM_MAX_TOKENS) || 700, max: 2048 },
         PRO: { base: 4096, max: 8192 },
         ENTERPRISE: { base: 8192, max: 16384 },
       },
       image: {
-        FREE: { base: Number(process.env.AI_IMAGE_MAX_TOKENS) || 350, max: Number(process.env.AI_IMAGE_MAX_TOKENS) || 350 },
-        PREMIUM: { base: 1024, max: 2048 },
+        FREE: { base: Number(process.env.FREE_MAX_TOKENS) || 250, max: Number(process.env.FREE_MAX_TOKENS) || 250 },
+        PREMIUM: { base: Number(process.env.PREMIUM_MAX_TOKENS) || 700, max: 1024 },
         PRO: { base: 2048, max: 4096 },
         ENTERPRISE: { base: 4096, max: 8192 },
       },
       video: {
-        FREE: { base: Number(process.env.AI_VIDEO_MAX_TOKENS) || 450, max: Number(process.env.AI_VIDEO_MAX_TOKENS) || 450 },
-        PREMIUM: { base: 1024, max: 2048 },
+        FREE: { base: Number(process.env.FREE_MAX_TOKENS) || 250, max: Number(process.env.FREE_MAX_TOKENS) || 250 },
+        PREMIUM: { base: Number(process.env.PREMIUM_MAX_TOKENS) || 700, max: 1024 },
         PRO: { base: 2048, max: 4096 },
         ENTERPRISE: { base: 4096, max: 8192 },
       },
       translate: {
-        FREE: { base: Number(process.env.AI_TRANSLATE_MAX_TOKENS) || 400, max: Number(process.env.AI_TRANSLATE_MAX_TOKENS) || 400 },
-        PREMIUM: { base: 1024, max: 2048 },
+        FREE: { base: Number(process.env.FREE_MAX_TOKENS) || 250, max: Number(process.env.FREE_MAX_TOKENS) || 250 },
+        PREMIUM: { base: Number(process.env.PREMIUM_MAX_TOKENS) || 700, max: 1024 },
         PRO: { base: 2048, max: 4096 },
         ENTERPRISE: { base: 4096, max: 8192 },
       },
       social: {
-        FREE: { base: Number(process.env.AI_SOCIAL_MAX_TOKENS) || 500, max: Number(process.env.AI_SOCIAL_MAX_TOKENS) || 500 },
-        PREMIUM: { base: 1024, max: 2048 },
+        FREE: { base: Number(process.env.FREE_MAX_TOKENS) || 250, max: Number(process.env.FREE_MAX_TOKENS) || 250 },
+        PREMIUM: { base: Number(process.env.PREMIUM_MAX_TOKENS) || 700, max: 1024 },
         PRO: { base: 2048, max: 4096 },
         ENTERPRISE: { base: 4096, max: 8192 },
       },
@@ -225,6 +229,22 @@ export class AIConfig {
         name: "Mistral AI",
         baseUrl: process.env.MISTRAL_BASE_URL || "https://api.mistral.ai/v1",
         envKey: "MISTRAL_API_KEY",
+        enabled: true,
+        timeoutMs: 60000,
+      },
+      stability: {
+        id: "stability",
+        name: "Stability AI",
+        baseUrl: process.env.STABILITY_BASE_URL || "https://api.stability.ai/v1",
+        envKey: "STABILITY_API_KEY",
+        enabled: true,
+        timeoutMs: 60000,
+      },
+      flux: {
+        id: "flux",
+        name: "Flux AI",
+        baseUrl: process.env.FLUX_BASE_URL || "https://api.bfl.ml/v1",
+        envKey: "FLUX_API_KEY",
         enabled: true,
         timeoutMs: 60000,
       },
@@ -311,12 +331,59 @@ export class AIConfig {
         maxOutputTokens: 4096,
         pricing: { promptUsdPer1k: 0.001, completionUsdPer1k: 0.003 },
       },
+      "mistral-large-latest": {
+        id: "mistral-large-latest",
+        name: "Mistral Large",
+        provider: "mistral",
+        maxContextTokens: 128000,
+        maxOutputTokens: 8192,
+        pricing: { promptUsdPer1k: 0.002, completionUsdPer1k: 0.006 },
+      },
+      "stable-diffusion-xl-1024-v1-0": {
+        id: "stable-diffusion-xl-1024-v1-0",
+        name: "Stable Diffusion XL 1.0",
+        provider: "stability",
+        maxContextTokens: 8192,
+        maxOutputTokens: 2048,
+        pricing: { promptUsdPer1k: 0.001, completionUsdPer1k: 0.002 },
+      },
+      "FLUX.1-schnell": {
+        id: "FLUX.1-schnell",
+        name: "FLUX.1 Schnell",
+        provider: "flux",
+        maxContextTokens: 8192,
+        maxOutputTokens: 2048,
+        pricing: { promptUsdPer1k: 0.001, completionUsdPer1k: 0.002 },
+      },
+      "gemini-2.5-flash": {
+        id: "gemini-2.5-flash",
+        name: "Gemini 2.5 Flash",
+        provider: "gemini",
+        maxContextTokens: 1048576,
+        maxOutputTokens: 8192,
+        pricing: { promptUsdPer1k: 0.00015, completionUsdPer1k: 0.0006 },
+      },
+      // Cerebras GPT model alias
+      "gpt-oss-120b": {
+        id: "gpt-oss-120b",
+        name: "GPT OSS 120B",
+        provider: "cerebras",
+        maxContextTokens: 32000,
+        maxOutputTokens: 4096,
+        pricing: { promptUsdPer1k: 0.0001, completionUsdPer1k: 0.0001 },
+      },
+      // OpenRouter free model (used with OpenAI-compatible endpoint)
+      "openrouter/free": {
+        id: "openrouter/free",
+        name: "OpenRouter Free",
+        provider: "openai",
+        maxContextTokens: 128000,
+        maxOutputTokens: 4096,
+        pricing: { promptUsdPer1k: 0, completionUsdPer1k: 0 },
+      },
     },
   };
 
-  /**
-   * Resolve maximum output tokens dynamically based on feature, plan tier, and prompt size.
-   */
   /**
    * Resolve maximum output tokens dynamically based on feature, plan tier, and prompt size.
    * Uses env-var-configured defaults to avoid hardcoding.

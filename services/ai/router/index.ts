@@ -89,12 +89,12 @@ export class AIRouter {
 
     this.stats.totalRequests++;
 
-    // ── 1. Check daily usage limits ────────────────
+    // ── 1. Check daily usage limits (per-feature) ──
     if (userId) {
-      if (usageTracker.isLimitReached(userId, userPlan)) {
+      if (usageTracker.isLimitReached(userId, userPlan, feature)) {
         this.stats.totalFailed++;
         throw new Error(
-          "⚠️ You've reached your daily limit. Please try again tomorrow or upgrade your plan."
+          "⚠️ You've reached your daily limit for this feature. Please try again tomorrow or upgrade your plan."
         );
       }
     }
@@ -258,3 +258,105 @@ export class AIRouter {
 
 /** Singleton router instance */
 export const aiRouter = new AIRouter();
+
+// ═══════════════════════════════════════════════════════
+// UNIVERSAL generateAI FACADE FUNCTION
+// ═══════════════════════════════════════════════════════
+// Simple, clean API for all AI operations across the bot.
+//
+// Usage:
+//   const result = await generateAI({
+//     type: "text",
+//     prompt: "Hello, how are you?",
+//     userId: 12345,
+//     premium: true
+//   });
+// ═══════════════════════════════════════════════════════
+
+export type AITaskType = "text" | "image" | "video_prompt";
+
+export interface GenerateAIOptions {
+  /** Task type — determines provider chain and limits */
+  type: AITaskType;
+  /** The user's input prompt */
+  prompt: string;
+  /** Optional user ID for usage tracking */
+  userId?: number;
+  /** Whether user is premium (affects limits) */
+  premium?: boolean;
+  /** Optional specific model override */
+  modelId?: string;
+  /** Optional system prompt override */
+  systemPrompt?: string;
+  /** Optional temperature override */
+  temperature?: number;
+  /** Skip cache for this request */
+  skipCache?: boolean;
+}
+
+export interface GenerateAIResult {
+  content: string;
+  provider: string;
+  model: string;
+  latencyMs: number;
+  cached: boolean;
+  fromFallback: boolean;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+}
+
+/**
+ * Universal AI generation function.
+ * Automatically selects the right provider chain based on task type,
+ * checks daily limits, handles fallback, and returns structured results.
+ *
+ * Provider chains by task:
+ *   text:         Gemini → Cerebras → Mistral → OpenRouter
+ *   image:        Stability → Flux
+ *   video_prompt: Gemini → Cerebras → Mistral
+ */
+export async function generateAI(options: GenerateAIOptions): Promise<GenerateAIResult> {
+  const { type, prompt, userId, premium, modelId, systemPrompt, temperature, skipCache } = options;
+  const userPlan = premium ? "PREMIUM" : "FREE";
+
+  // Map task type to feature
+  const featureMap: Record<AITaskType, FeatureType> = {
+    text: "chat",
+    image: "image",
+    video_prompt: "video",
+  };
+
+  const feature = featureMap[type];
+
+  // Build request
+  const request: ChatRequest = {
+    messages: [{ role: "user", content: prompt }],
+    systemPrompt: systemPrompt,
+    temperature,
+    feature,
+    userPlan,
+  };
+
+  // Execute through the router
+  const result = await aiRouter.execute({
+    feature,
+    userId,
+    userPlan,
+    modelId,
+    request,
+    options: { skipCache, forceAttempt: false },
+  });
+
+  return {
+    content: result.response.content,
+    provider: result.providerId,
+    model: result.modelId,
+    latencyMs: result.latencyMs,
+    cached: result.cached,
+    fromFallback: result.fromFallback,
+    usage: result.response.usage,
+  };
+}

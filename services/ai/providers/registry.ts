@@ -13,6 +13,8 @@ import { OpenRouterProviderImpl } from "./openrouter";
 import { OllamaProviderImpl } from "./ollama";
 import { CerebrasProviderImpl } from "./cerebras";
 import { MistralProviderImpl } from "./mistral";
+import { StabilityProviderImpl } from "./stability";
+import { FluxProviderImpl } from "./flux";
 import { ALL_MODELS, findModel, getSelectableModels } from "./models";
 import type { AIProvider, ProviderModel } from "./interface";
 
@@ -71,6 +73,12 @@ export class ProviderRegistry {
           break;
         case "mistral":
           this.providers.set(key, new MistralProviderImpl());
+          break;
+        case "stability":
+          this.providers.set(key, new StabilityProviderImpl());
+          break;
+        case "flux":
+          this.providers.set(key, new FluxProviderImpl());
           break;
         default:
           log.warn(`Unrecognized provider "${providerId}", defaulting to OpenAI`);

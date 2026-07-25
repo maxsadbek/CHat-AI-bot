@@ -58,6 +58,19 @@ export const OPENAI_MODELS: ProviderModel[] = [
       maxOutputTokens: 4096,
     },
   },
+  {
+    id: "openrouter/free",
+    name: "OpenRouter Free",
+    provider: "openai",
+    default: false,
+    capabilities: {
+      streaming: true,
+      vision: true,
+      functionCalling: true,
+      maxContextTokens: 128000,
+      maxOutputTokens: 4096,
+    },
+  },
 ];
 
 // ─── Google Gemini Models ─────────────────────────────
@@ -300,6 +313,40 @@ export const MISTRAL_MODELS: ProviderModel[] = [
   },
 ];
 
+// ─── Stability AI Models ────────────────────────────
+export const STABILITY_MODELS: ProviderModel[] = [
+  {
+    id: "stable-diffusion-xl-1024-v1-0",
+    name: "Stable Diffusion XL 1.0",
+    provider: "stability",
+    default: true,
+    capabilities: {
+      streaming: true,
+      vision: false,
+      functionCalling: false,
+      maxContextTokens: 8192,
+      maxOutputTokens: 2048,
+    },
+  },
+];
+
+// ─── Flux Models ──────────────────────────────────────
+export const FLUX_MODELS: ProviderModel[] = [
+  {
+    id: "FLUX.1-schnell",
+    name: "FLUX.1 Schnell",
+    provider: "flux",
+    default: true,
+    capabilities: {
+      streaming: true,
+      vision: false,
+      functionCalling: false,
+      maxContextTokens: 8192,
+      maxOutputTokens: 2048,
+    },
+  },
+];
+
 export const ALL_MODELS: ProviderModel[] = [
   ...OPENAI_MODELS,
   ...GEMINI_MODELS,
@@ -310,6 +357,8 @@ export const ALL_MODELS: ProviderModel[] = [
   ...OLLAMA_MODELS,
   ...CEREBRAS_MODELS,
   ...MISTRAL_MODELS,
+  ...STABILITY_MODELS,
+  ...FLUX_MODELS,
 ];
 
 export function findModel(modelId: string): ProviderModel | undefined {

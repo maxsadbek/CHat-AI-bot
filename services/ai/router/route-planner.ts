@@ -9,6 +9,21 @@ import { env } from "@/config/index";
 import type { FeatureType } from "@/config/ai";
 import type { RoutePlan } from "./types";
 
+/**
+ * Default provider chains per task type.
+ * These match the user's specified architecture:
+ *   text:         Gemini → Cerebras → Mistral → OpenRouter
+ *   image:        Stability → Flux
+ *   video_prompt: Gemini → Cerebras → Mistral
+ *
+ * Can be overridden via environment variables.
+ */
+const DEFAULT_PRIORITY_CHAINS: Record<string, string> = {
+  text: "gemini,cerebras,mistral,openrouter",
+  image: "stability,flux",
+  video_prompt: "gemini,cerebras,mistral",
+};
+
 /** Map of env var names to their feature types */
 const PRIORITY_ENV_MAP: Record<FeatureType, string> = {
   chat: "ROUTER_CHAT_PRIORITY",
@@ -24,7 +39,14 @@ export class RoutePlanner {
   /** Resolve the provider priority chain for a given task */
   getRoute(feature: FeatureType): RoutePlan {
     const envVar = PRIORITY_ENV_MAP[feature];
-    const rawValue = (process.env[envVar] || env.ROUTER_DEFAULT_PRIORITY);
+    const envValue = process.env[envVar];
+
+    // Use env var if set, otherwise use task-type-specific default
+    const rawValue = envValue
+      || DEFAULT_PRIORITY_CHAINS[feature]
+      || DEFAULT_PRIORITY_CHAINS.text // Fall back to text chain
+      || env.ROUTER_DEFAULT_PRIORITY
+      || "gemini,cerebras,mistral,openrouter";
 
     const providerChain = rawValue
       .split(",")
@@ -35,7 +57,7 @@ export class RoutePlanner {
       feature,
       providerChain: providerChain.length > 0
         ? providerChain
-        : ["openai", "groq"], // Absolute fallback
+        : ["gemini", "cerebras", "mistral", "openrouter"], // Absolute fallback
     };
   }
 

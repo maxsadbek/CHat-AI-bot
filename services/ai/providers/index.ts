@@ -11,4 +11,6 @@ export * from "./deepseek";
 export * from "./groq";
 export * from "./openrouter";
 export * from "./ollama";
+export * from "./stability";
+export * from "./flux";
 export * from "./registry";

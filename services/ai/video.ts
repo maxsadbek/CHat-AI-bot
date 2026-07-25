@@ -66,16 +66,21 @@ RULES:
 
 IMPORTANT SUBJECT RULES:
 - Always keep the exact main object from user input.
-- Never replace motorcycle with vehicle.
+- Never replace specific objects with generic categories.
+- Never replace brand names (BMW, Ferrari, etc.) with generic terms like vehicle or car.
 - Never replace person/rider with driver.
 - Never remove numbers, speeds, brands, colors or unique details.
 - Expand details, don't generalize.
+- Detect ALL objects in the user input. If user mentions both car and motorcycle, include BOTH.
 
 Bad example: "A vehicle moves at extreme velocity"
 Good example: "A professional motorcycle racer rides a black superbike at 300 km/h on an empty highway."
 
 Bad example: "A driver controls a high-performance vehicle"
 Good example: "A rider wearing a racing suit controls a powerful motorcycle while reaching extreme speed."
+
+Bad: Input mentions BMW M5 and motorcycle, output only shows motorcycle.
+Good: Scene includes both the BMW M5 performance car and the superbike motorcycle racing side by side.
 
 CRITICAL DETAIL PRESERVATION:
 - Always preserve numbers from user input.
@@ -87,6 +92,25 @@ Good: "The superbike reaches 300 km/h speed while the rider maintains control."
 
 Bad: "Fast vehicle action scene."
 Good: "A motorcycle rider accelerates a superbike to 300 km/h on an open highway."
+
+CURRENT REQUEST ONLY:
+- Always generate from the latest user description only.
+- Ignore previous examples, previous generations and old scenes.
+- Never continue old scenes or reuse old subjects.
+- Analyze the current user message completely for ALL objects.
+
+ENTITY PRESERVATION:
+- Detect ALL vehicles, characters, objects and numbers from the current user input.
+- Do not replace specific brand names with generic words.
+- When user mentions both a car and a motorcycle, include BOTH in the scene.
+
+Examples:
+BMW M5 → BMW M5 performance car (not motorcycle, not generic vehicle)
+Mercedes AMG → Mercedes AMG sports sedan
+Ferrari → Ferrari supercar
+Motorcycle → superbike motorcycle
+
+Never transform brand names into generic vehicle or different vehicle types.
 
 Example:
 
@@ -170,51 +194,92 @@ export class VideoAIService extends BaseAIService {
   }
 
   /**
-   * Extract key semantic elements from the user's description:
-   * subject, object, action, and speed.  This helps the AI
-   * preserve specific details rather than generalizing.
+   * Extract key semantic elements from the user's description,
+   * detecting ALL objects mentioned (not just the first match),
+   * brand names, subjects, actions, and speed values.
    */
   private extractKeyElements(description: string): {
     subject: string;
-    object: string;
+    objects: string[];
     action: string;
     speed: string;
   } {
-    const lower = description.toLowerCase();
+    const objects: string[] = [];
 
-    // Detect object first (what is being used), then derive subject from it
-    let object = lower;
-    if (/moto|motorcycle|bike|scooter/gi.test(description))
-      object = "a superbike motorcycle";
-    else if (/car|auto|sedan|suv|coupe/gi.test(description))
-      object = "a sports car";
-    else if (/truck|lorry/gi.test(description)) object = "a powerful truck";
-    else if (/plane|airplane|jet/gi.test(description)) object = "an aircraft";
-    else if (/boat|ship|yacht/gi.test(description)) object = "a boat";
+    // ── Brand name detection ───────────────────────────────────────
+    // Car brand patterns — capture everything after brand name until space/comma
+    const brandPatterns: [RegExp, string][] = [
+      [/\bbmw\s+m[0-9]/gi, "a BMW M performance car"],
+      [/\bbmw\b/gi, "a BMW luxury sports sedan"],
+      [/\bmercedes\s+amg\b/gi, "a Mercedes AMG sports sedan"],
+      [/\bmercedes\b/gi, "a Mercedes luxury sedan"],
+      [/\bferrari\b/gi, "a Ferrari supercar"],
+      [/\blamborghini\b/gi, "a Lamborghini supercar"],
+      [/\bporsche\b/gi, "a Porsche sports car"],
+      [/\bmustang\b/gi, "a Ford Mustang muscle car"],
+      [/\btesla\b/gi, "a Tesla electric car"],
+      [/\btoyota\b/gi, "a Toyota vehicle"],
+      [/\bhonda\b/gi, "a Honda vehicle"],
+      [/\bnissan\b/gi, "a Nissan vehicle"],
+      [/\baudi\b/gi, "an Audi luxury car"],
+      [/\bvolkswagen\b|\bvw\b/gi, "a Volkswagen vehicle"],
+    ];
 
-    // Detect subject based on object type
+    for (const [pattern, label] of brandPatterns) {
+      if (pattern.test(description)) {
+        // Check if this brand isn't already added
+        const lower = label.toLowerCase();
+        if (!objects.some((o) => o.toLowerCase().includes(lower.slice(0, 10)))) {
+          objects.push(label);
+        }
+      }
+    }
+
+    // ── Generic vehicle detection (only if no brand detected) ──────
+    const hasMotorcycle =
+      /moto(?![0-9])|motorcycle|bike|scooter/gi.test(description) &&
+      !/\bbmw\s+m[0-9]/gi.test(description); // exclude "BMW M" pattern
+    const hasCar =
+      /car|auto|sedan|suv|coupe|truck|lorry|highway|road/gi.test(
+        description
+      ) && !objects.some((o) => /car|vehicle|sedan/i.test(o));
+
+    if (hasMotorcycle) objects.push("a superbike motorcycle");
+    if (hasCar) objects.push("a sports car");
+
+    // Fallback if no specific object detected
+    if (objects.length === 0) {
+      objects.push(description.toLowerCase());
+    }
+
+    // ── Detect subject based on all detected objects ───────────────
+    const hasMoto = objects.some((o) => /motorcycle|bike|scooter/i.test(o));
+    const hasAuto = objects.some((o) => /car|sedan|vehicle|truck/i.test(o));
+
     let subject = "a person";
-    const isMotorcycle =
-      /moto|motorcycle|bike|scooter/gi.test(description);
-    const isCar = /car|auto|sedan|suv|coupe|truck|lorry/gi.test(description);
-
-    if (isMotorcycle) {
-      if (/odam|rider|motorcyclist/gi.test(description))
-        subject = "a motorcycle rider";
-      else subject = "a professional rider";
-    } else if (isCar) {
-      if (/driver|man|woman|person/gi.test(description))
-        subject = "a driver";
-      else subject = "a professional driver";
+    if (hasMoto && hasAuto) {
+      subject = "a group of riders and drivers";
+    } else if (hasMoto) {
+      subject = /odam|rider|motorcyclist/gi.test(description)
+        ? "a motorcycle rider"
+        : "a professional rider";
+    } else if (hasAuto) {
+      subject = /driver|man|woman|person/gi.test(description)
+        ? "a driver"
+        : "a professional driver";
     } else {
       if (/woman|girl|lady/gi.test(description)) subject = "a woman";
       else if (/man|guy|boy|gentleman/gi.test(description)) subject = "a man";
     }
 
-    // Detect action
+    // ── Detect action ─────────────────────────────────────────────
     let action = "moving at speed";
     if (/ketayotgan|riding|driving|racing|chasing/gi.test(description))
-      action = isMotorcycle ? "riding at extreme speed" : "driving at high speed";
+      action = hasMoto && hasAuto
+        ? "racing side by side at extreme speed"
+        : hasMoto
+          ? "riding at extreme speed"
+          : "driving at high speed";
     else if (/uchayotgan|flying|soaring/gi.test(description))
       action = "flying";
     else if (/yugurayotgan|running|sprinting/gi.test(description))
@@ -222,14 +287,14 @@ export class VideoAIService extends BaseAIService {
     else if (/suzayotgan|swimming|diving/gi.test(description))
       action = "swimming rapidly";
 
-    // Detect speed
+    // ── Detect speed ──────────────────────────────────────────────
     let speed = "extreme speed";
     const speedMatch = description.match(/(\d+)\s*(km|km\/h|kph|mph|kmh)/gi);
     if (speedMatch) {
       speed = speedMatch[0]!;
     }
 
-    return { subject, object, action, speed };
+    return { subject, objects, action, speed };
   }
 
   async generatePrompt(
@@ -241,17 +306,22 @@ export class VideoAIService extends BaseAIService {
     const targetPlatforms = platform ? [platform] : this.platforms;
     const elements = this.extractKeyElements(description);
 
+    const objectsList = elements.objects
+      .map((o) => `- ${o}`)
+      .join("\n");
+
     const userPrompt = `Generate professional cinematic video prompts for the following idea:
 
 "${description}"
 
-Key elements identified:
+Current request elements (from this input only):
 - Subject: ${elements.subject}
-- Object: ${elements.object}
+- Objects detected:
+${objectsList}
 - Action: ${elements.action}
 - Speed: ${elements.speed}
 
-IMPORTANT: Keep these specific elements in your output. Do NOT replace ${elements.object} with a generic term like "vehicle" or "machine". Do NOT replace ${elements.subject} with a generic term like "driver" or "person". Use these exact objects in your cinematic descriptions.
+IMPORTANT: Keep ALL of these specific objects in your output. Do NOT replace any of them with generic terms. Include every object listed above in the cinematic description.
 
 Target platforms: ${targetPlatforms.join(", ")}
 
@@ -610,9 +680,9 @@ Return one JSON object per platform in a JSON array.`;
   }
 
   /**
-   * Validates that the AI output contains the user's specific objects
-   * (motorcycle, rider, speed, etc.) rather than generic replacements.
-   * If the output generalized, it adds a natural clarifying sentence.
+   * Validates that the AI output contains ALL of the user's specific
+   * objects (detected vehicles, brands, subjects).  If any are missing
+   * (generalized away), adds natural clarifying sentences.
    */
   private validateAndMergePrompt(
     prompt: VideoPrompt,
@@ -621,29 +691,33 @@ Return one JSON object per platform in a JSON array.`;
     const elements = this.extractKeyElements(description);
     const merged = { ...prompt };
 
-    const sceneLower = prompt.scene.toLowerCase();
-    const subjectLower = prompt.subject.toLowerCase();
-
-    // Extract the key specific noun from elements (e.g. "a superbike motorcycle" -> "motorcycle")
-    const objWords = elements.object
-      .toLowerCase()
-      .split(/\s+/)
-      .filter((w) => w.length > 2 && w !== "a" && w !== "an");
-
-    // Skip validation if object is the raw description (no specific type detected)
-    if (elements.object === description.toLowerCase()) {
+    // Skip validation if no specific objects were detected (raw description fallback)
+    if (
+      elements.objects.length === 1 &&
+      elements.objects[0] === description.toLowerCase()
+    ) {
       return merged;
     }
 
-    // Check if specific object words are missing from output (AI generalized)
-    const missingObj = objWords.filter(
-      (w) => !sceneLower.includes(w) && !subjectLower.includes(w)
-    );
+    const sceneLower = prompt.scene.toLowerCase();
+    const subjectLower = prompt.subject.toLowerCase();
 
-    if (missingObj.length > 0 && objWords.length > 0) {
-      // AI generalized — add a natural detail sentence
-      const specificObj = elements.object.replace(/^a |^an /, "");
-      merged.scene = `${prompt.scene} A ${specificObj} dominates the scene with powerful presence and dynamic energy.`.trim();
+    // For each detected object, check if its key words appear in output
+    for (const obj of elements.objects) {
+      const objWords = obj
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((w) => w.length > 2 && w !== "a" && w !== "an");
+
+      const missingKeyWords = objWords.filter(
+        (w) => !sceneLower.includes(w) && !subjectLower.includes(w)
+      );
+
+      if (missingKeyWords.length > 0) {
+        // Object is missing from AI output — add it naturally
+        const specificObj = obj.replace(/^a |^an /, "");
+        merged.scene = `${merged.scene} A ${specificObj} also features in this scene with prominent presence.`.trim();
+      }
     }
 
     return merged;

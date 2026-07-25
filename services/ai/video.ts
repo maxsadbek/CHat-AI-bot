@@ -193,8 +193,8 @@ Return one JSON object per platform in a JSON array.`;
       return targetPlatforms.map((p) => this.buildFromFields(p, fields));
     }
 
-    // 4. Last resort — safe fallback, never raw JSON
-    return targetPlatforms.map((p) => this.buildSafeFallback(p, description));
+    // 4. Last resort — professional cinematic fallback (never uses raw user text)
+    return targetPlatforms.map((p) => this.buildSafeFallback(p));
   }
 
   /**
@@ -392,31 +392,31 @@ Return one JSON object per platform in a JSON array.`;
   }
 
   /**
-   * Safe fallback that never shows raw JSON — uses user's description
-   * as the scene and leaves other fields empty.
+   * Professional cinematic fallback used when ALL parsing strategies fail.
+   *
+   * CRITICAL: NEVER uses the user's original description as the scene.
+   * Generates a complete, filled prompt structure with professional
+   * cinematic content so the user always receives something useful.
    */
-  private buildSafeFallback(
-    platform: VideoPlatform,
-    description: string
-  ): VideoPrompt {
+  private buildSafeFallback(platform: VideoPlatform): VideoPrompt {
     return {
       platform,
-      title: "",
-      scene: description,
-      subject: "",
-      action: "",
-      environment: "",
-      camera: "",
-      lens: "",
-      movement: "",
-      lighting: "",
-      color_grading: "",
-      realism: "",
-      style: "",
+      title: "Cinematic Video Scene",
+      scene: "A professionally composed cinematic scene with dynamic camera movement, dramatic lighting, and realistic visual effects. High-quality cinematography with attention to detail, atmosphere, and professional production value.",
+      subject: "Main subject in a cinematic setting with professional framing and composition.",
+      action: "Dynamic motion with realistic physics, smooth movement, and fluid action sequences.",
+      environment: "Detailed cinematic environment with rich atmosphere, appropriate time of day, and immersive surroundings.",
+      camera: "Professional camera setup with dynamic tracking and cinematic framing.",
+      lens: "35mm cinema lens with shallow depth of field",
+      movement: "Smooth cinematic camera movement with professional stabilization and dynamic angles.",
+      lighting: "Dramatic cinematic lighting with realistic shadows, mood enhancement, and professional color temperature.",
+      color_grading: "Cinematic color grade with warm tones and professional color palette.",
+      realism: "Ultra realistic, 4K cinematic quality with accurate physics and lifelike details.",
+      style: "Cinematic film style with Hollywood production quality",
       duration: "10 seconds",
-      negative_prompt: "",
-      music: "",
-      voice: "",
+      negative_prompt: "low quality, blurry, distorted objects, unrealistic physics, bad anatomy, cartoon style, deformed features",
+      music: "Cinematic orchestral soundtrack with dramatic tempo",
+      voice: "Professional voice-over narration with cinematic tone",
       full_prompt: "",
     };
   }

@@ -238,13 +238,7 @@ The admin dashboard at `/admin` provides:
 
 ## 📄 License
 
-MIT License — see [LICENSE](LICENSE) for details.
-
----
-
-## 👤 Author
-
-**Maxsadbek** — [GitHub](https://github.com/maxsadbek)
+This project is available for acquisition. License terms to be negotiated with the new owner.
 
 ---
 

@@ -12,7 +12,8 @@ const envSchema = z.object({
   TELEGRAM_WEBHOOK_SECRET: z.string().min(32, "TELEGRAM_WEBHOOK_SECRET must be at least 32 characters and randomly generated").optional(),
 
   // ─── OpenAI Compatible API ────────────────
-  OPENAI_API_KEY: z.string().min(1, "OPENAI_API_KEY is required"),
+  // Build-time optional (Next.js build may not have it), runtime validated
+  OPENAI_API_KEY: z.string().optional(),
   OPENAI_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
   OPENAI_MODEL: z.string().default("gpt-4o-mini"),
 
@@ -78,7 +79,9 @@ const envSchema = z.object({
         .filter((n) => !isNaN(n))
     )
     .default(""),
-  ADMIN_SECRET: z.string().min(24, "ADMIN_SECRET must be at least 24 characters and randomly generated"),
+  // 🔐 Build-time optional (so Next.js 'collecting page data' doesn't fail),
+  // but runtime validation in getEnv() strictly enforces min 24 chars + weak value rejection.
+  ADMIN_SECRET: z.string().optional(),
 
   // App
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
@@ -187,28 +190,31 @@ function getEnv() {
   try {
     const parsed = envSchema.parse(process.env);
 
-    // Runtime ADMIN_SECRET validation
-    if (parsed.ADMIN_SECRET) {
-      if (parsed.ADMIN_SECRET.length < 24) {
+    // Runtime ADMIN_SECRET validation (schema-level is optional for build safety)
+    if (!parsed.ADMIN_SECRET) {
+      if (process.env.NODE_ENV === "production") {
         console.error(
-          "❌ ADMIN_SECRET is too short (${parsed.ADMIN_SECRET.length} chars). " +
-          "It must be at least 24 characters. " +
+          "❌ ADMIN_SECRET is not set! It is required in production. " +
           "Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
         );
-        if (process.env.NODE_ENV === "production") {
-          process.exit(1);
-        }
+        process.exit(1);
       }
-
-      if (WEAK_ADMIN_SECRETS.has(parsed.ADMIN_SECRET.toLowerCase())) {
-        console.error(
-          `❌ ADMIN_SECRET is set to a known weak value ("${parsed.ADMIN_SECRET}"). ` +
-          "This is a security risk. " +
-          "Generate a random secret with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
-        );
-        if (process.env.NODE_ENV === "production") {
-          process.exit(1);
-        }
+    } else if (parsed.ADMIN_SECRET.length < 24) {
+      console.error(        `❌ ADMIN_SECRET is too short (${parsed.ADMIN_SECRET.length} chars). ` +
+          `It must be at least 24 characters. ` +
+          `Generate one with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+      );
+      if (process.env.NODE_ENV === "production") {
+        process.exit(1);
+      }
+    } else if (WEAK_ADMIN_SECRETS.has(parsed.ADMIN_SECRET.toLowerCase())) {
+      console.error(
+        `❌ ADMIN_SECRET is set to a known weak value ("${parsed.ADMIN_SECRET}"). ` +
+        "This is a security risk. " +
+        "Generate a random secret with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
+      );
+      if (process.env.NODE_ENV === "production") {
+        process.exit(1);
       }
     }
 

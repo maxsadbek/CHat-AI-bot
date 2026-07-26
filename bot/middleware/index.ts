@@ -73,6 +73,10 @@ export async function userMiddleware(
     // Store the Prisma user ID in session
     ctx.session.userId = user.id;
 
+    // Store premium/plan info for token limit resolution downstream
+    ctx.session.isPremium = user.isPremium ?? false;
+    ctx.session.planType = user.isPremium ? "PREMIUM" : "FREE";
+
     // Load user's language preference from the upsert result (no separate query)
     // This eliminates the race condition where a second query could fail after
     // findOrCreate succeeds, causing existing users to see language selection again.
@@ -99,6 +103,8 @@ export async function userMiddleware(
     try {
       const user = await userService.findOrCreate(from);
       ctx.session.userId = user.id;
+      ctx.session.isPremium = user.isPremium ?? false;
+      ctx.session.planType = user.isPremium ? "PREMIUM" : "FREE";
       log.info("User resolved on retry", {
         userId: user.id,
         telegramId: from.id,

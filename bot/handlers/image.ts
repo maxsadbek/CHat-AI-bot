@@ -86,6 +86,7 @@ export async function imageGenerateHandler(ctx: BotContext): Promise<void> {
           platform.toLowerCase(),
           ctx.session.selectedModel
         );
+        // Note: generateImage has no userPlan param — image generation is always FREE
         log.info("[IMAGE_FLOW] Image generation successful");
 
         // Track usage
@@ -130,7 +131,8 @@ export async function imageGenerateHandler(ctx: BotContext): Promise<void> {
     const prompts = await imageAIService.generatePrompt(
       text,
       platform === "all" ? undefined : platform,
-      ctx.session.selectedModel
+      ctx.session.selectedModel,
+      ctx.session.planType
     );
 
     // Build structured response with prompt details

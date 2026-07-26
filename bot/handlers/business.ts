@@ -5,6 +5,8 @@ import { businessKeyboard } from "@/bot/keyboards";
 import { clearModeData } from "@/bot/session";
 import { t } from "@/bot/localization";
 import { logger } from "@/bot/core/logger";
+import { usageService } from "@/services/usage";
+import { providerRegistry } from "@/services/ai/providers";
 import {
   createConversation,
   saveMessagesToDb,
@@ -114,7 +116,8 @@ export async function businessGenerateHandler(ctx: BotContext): Promise<void> {
     const result = await businessAIService.generate(
       text,
       type,
-      ctx.session.selectedModel
+      ctx.session.selectedModel,
+      ctx.session.planType
     );
 
     log.info("[BUSINESS_HANDLER] AI response received", {
@@ -127,6 +130,13 @@ export async function businessGenerateHandler(ctx: BotContext): Promise<void> {
 
     // Save to database
     await saveMessagesToDb(ctx, "business");
+
+    // Track usage (non-blocking)
+    const selectedModel = ctx.session.selectedModel;
+    const providerName = selectedModel
+      ? providerRegistry.getModel(selectedModel)?.provider
+      : undefined;
+    usageService.track(userId, "business", 0, 0, providerName, selectedModel);
 
     const typeTitle = type
       .replace(/_/g, " ")

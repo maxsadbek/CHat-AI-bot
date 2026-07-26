@@ -1,3 +1,5 @@
+export const maxDuration = 30;
+
 import { type NextRequest, NextResponse } from "next/server";
 import { webhookCallback } from "grammy";
 import { bot } from "@/bot";

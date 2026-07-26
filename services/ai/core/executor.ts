@@ -28,13 +28,13 @@ const log = logger.child("ai-executor");
  * Instead: tell the user we're retrying automatically.
  */
 /** Per-provider attempt timeout — 15 seconds max per single AI call */
-const PER_PROVIDER_TIMEOUT_MS = 60_000;
+const PER_PROVIDER_TIMEOUT_MS = 15_000;
 
 /**
- * Overall execution timeout — 90 seconds for the entire generation.
+ * Overall execution timeout — 20 seconds for the entire generation.
  * If no provider responds within this window, we give up.
  */
-const OVERALL_EXECUTION_TIMEOUT_MS = 90_000;
+const OVERALL_EXECUTION_TIMEOUT_MS = 20_000;
 
 const FRIENDLY_ERRORS: Record<FeatureType, string> = {
   chat: "⚠️ AI is currently under heavy load. Your request will retry automatically.",
@@ -108,13 +108,17 @@ export class AIExecutor {
       );
     const temperature = request.temperature ?? aiConfig.getTemperature(feature);
 
+    // Inject resolved maxTokens into request for accurate cache key
+    request.maxTokens = maxTokens;
+    request.temperature = temperature;
+
     // ── 3. Get provider routing chain ──────────────
     const route = routePlanner.getRoute(feature);
     const primaryProvider = route.providerChain[0]!;
 
-    // ── 4. Check cache ──────────────────────────────
+    // ── 4. Check cache (with userPlan + resolved maxTokens in key) ──
     if (!modelId) {
-      const cached = responseCache.get(feature, primaryProvider, request);
+      const cached = responseCache.get(feature, primaryProvider, request, userPlan);
       if (cached) {
         const remainingTokens = userId ? usageTracker.getRemainingDailyTokens(userId, userPlan) : 0;
         AITelemetry.logRequest({
@@ -244,14 +248,6 @@ export class AIExecutor {
         attemptStartTime = Date.now();
         console.log(`[AI_ATTEMPT_START] feature=${feature} provider=${providerId} model=${resolvedModelId} attempt=${attempt + 1}/${providerChain.length} maxTokens=${maxTokens}`);
 
-        // ── TEMP DEBUG: Log the EXACT system prompt and model being sent to provider ──
-        const sysPromptToSend = request.systemPrompt || "(none)";
-        const sysPromptPreview = sysPromptToSend.length > 300 ? sysPromptToSend.slice(0, 300) + "..." : sysPromptToSend;
-        console.log(`[FINAL_SYSTEM_PROMPT] feature=${feature} provider=${providerId} model=${resolvedModelId} length=${sysPromptToSend.length} preview="${sysPromptPreview}"`);
-        console.log(`[FINAL_MODEL] feature=${feature} provider=${providerId} model=${resolvedModelId}`);
-        console.log(`[FINAL_PROVIDER] feature=${feature} provider=${providerId} chain=[${providerChain.join(",")}]`);
-        console.log(`[FINAL_MESSAGES] feature=${feature} count=${continuationMessages.length} roles=[${continuationMessages.map(m => m.role).join(",")}] userContent="${(continuationMessages.find(m => m.role === "user")?.content || "").slice(0, 80)}"`);
-
         // ── Execute provider.chat() with per-provider timeout ──
         // If the provider hangs (no response, network stall, infinite loop),
         // the timeout will abort and treat it as a provider failure,
@@ -306,7 +302,7 @@ export class AIExecutor {
         // it was likely truncated.  Estimate tokens and compare to limit.
         const responseTokens = CostOptimizationStrategy.estimateTokenCount(response.content);
         const likelyTruncated = finishReason === "max_tokens" || finishReason === "length" ||
-          (maxTokens > 100 && responseTokens >= maxTokens * 0.85);
+          (!finishReason && maxTokens > 100 && responseTokens >= maxTokens * 0.95);
 
         // Strategy 3 (Business AI): Detect incomplete trailing section
         // If response ends with an emoji header + colon with no content after it
@@ -377,7 +373,7 @@ export class AIExecutor {
             provider: response.provider,
             costUsd,
           };
-          responseCache.set(feature, providerId, request, mergedResponse);
+          responseCache.set(feature, providerId, request, mergedResponse, userPlan);
         }
 
         // Track usage (count all continuation tokens together)
@@ -441,7 +437,7 @@ export class AIExecutor {
         // Backoff: 2s, 5s, 10s (max 3 retries), then fall through to failover.
         // After exhausting retries, mark provider as rate-limited for 60s cooldown.
         if (errorCode === "RATE_LIMIT" || errorStatus === 429) {
-          const backoffSchedule = [2000, 5000, 10000];
+          const backoffSchedule = [1000, 2000];
           const maxRateLimitRetries = backoffSchedule.length;
           for (let retry = 1; retry <= maxRateLimitRetries; retry++) {
             const backoffMs = backoffSchedule[retry - 1]!;
@@ -513,7 +509,7 @@ export class AIExecutor {
                   provider: recoveredResponse.provider,
                   costUsd: recoveredCostUsd,
                 };
-                responseCache.set(feature, providerId, request, mergedResponse);
+                responseCache.set(feature, providerId, request, mergedResponse, userPlan);
               }
 
               if (userId) {

@@ -6,6 +6,8 @@ import { clearModeData } from "@/bot/session";
 import { t } from "@/bot/localization";
 import { splitMessage, sendAIMessage } from "@/utils/markdown";
 import { logger } from "@/bot/core/logger";
+import { usageService } from "@/services/usage";
+import { providerRegistry } from "@/services/ai/providers";
 import {
   createConversation,
   saveMessagesToDb,
@@ -71,7 +73,8 @@ export async function codingGenerateHandler(ctx: BotContext): Promise<void> {
     const result = await codingAIService.generate(
       text,
       language,
-      ctx.session.selectedModel
+      ctx.session.selectedModel,
+      ctx.session.planType
     );
 
     // Store in session
@@ -80,6 +83,13 @@ export async function codingGenerateHandler(ctx: BotContext): Promise<void> {
 
     // Save to database
     await saveMessagesToDb(ctx, "coding");
+
+    // Track usage (non-blocking)
+    const selectedModel = ctx.session.selectedModel;
+    const providerName = selectedModel
+      ? providerRegistry.getModel(selectedModel)?.provider
+      : undefined;
+    usageService.track(userId, "coding", 0, 0, providerName, selectedModel);
 
     const response = `${t(lang, "coding.result_title", { language })}\n\n${result.code}`;
 

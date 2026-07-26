@@ -234,7 +234,8 @@ export async function videoGenerateHandler(ctx: BotContext): Promise<void> {
     const prompts = await videoAIService.generatePrompt(
       text,
       platform === "all" ? undefined : platform,
-      ctx.session.selectedModel
+      ctx.session.selectedModel,
+      ctx.session.planType
     );
 
     // Build structured response with prompt details
@@ -422,7 +423,8 @@ export async function regenerateVideoHandler(ctx: BotContext): Promise<void> {
     const prompts = await videoAIService.generatePrompt(
       userDescription,
       platform === "all" ? undefined : platform,
-      ctx.session.selectedModel
+      ctx.session.selectedModel,
+      ctx.session.planType
     );
 
     // Build structured response

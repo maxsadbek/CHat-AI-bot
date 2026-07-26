@@ -32,6 +32,8 @@ export class SessionManager {
     selectedModel: process.env.GEMINI_MODEL || "gemini-2.5-flash",
     currentProjectId: null,
     pendingProjectName: "",
+    isPremium: false,
+    planType: "FREE",
     ...overrides,
     };
   }

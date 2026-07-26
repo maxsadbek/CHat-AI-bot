@@ -24,7 +24,8 @@ export class ResponseCache {
   private buildKey(
     feature: FeatureType,
     modelId: string,
-    request: ChatRequest
+    request: ChatRequest,
+    userPlan: string = "FREE"
   ): string {
     const parts = [
       feature,
@@ -33,6 +34,7 @@ export class ResponseCache {
       ...request.messages.map((m) => `${m.role}:${m.content}`),
       String(request.temperature ?? 0.7),
       String(request.maxTokens ?? 0),
+      userPlan,
     ];
     // Simple but deterministic hash
     const raw = parts.join("|||");
@@ -51,9 +53,10 @@ export class ResponseCache {
   get(
     feature: FeatureType,
     modelId: string,
-    request: ChatRequest
+    request: ChatRequest,
+    userPlan: string = "FREE"
   ): ChatResponse | null {
-    const key = this.buildKey(feature, modelId, request);
+    const key = this.buildKey(feature, modelId, request, userPlan);
     const entry = this.cache.get(key);
 
     if (!entry) return null;
@@ -75,9 +78,10 @@ export class ResponseCache {
     modelId: string,
     request: ChatRequest,
     response: ChatResponse,
+    userPlan: string = "FREE",
     ttl?: number
   ): void {
-    const key = this.buildKey(feature, modelId, request);
+    const key = this.buildKey(feature, modelId, request, userPlan);
 
     this.cache.set(key, {
       response,

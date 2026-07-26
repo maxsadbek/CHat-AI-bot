@@ -5,6 +5,8 @@ import { t } from "@/bot/localization";
 import { translateKeyboard } from "@/bot/keyboards";
 import { translateAIService } from "@/services/ai/translate";
 import { logger } from "@/bot/core/logger";
+import { usageService } from "@/services/usage";
+import { providerRegistry } from "@/services/ai/providers";
 import {
   createConversation,
   saveMessagesToDb,
@@ -84,7 +86,8 @@ export async function translateProcessHandler(ctx: BotContext): Promise<void> {
     const translated = await translateAIService.translateText(
       sourceText,
       targetLanguage,
-      ctx.session.selectedModel
+      ctx.session.selectedModel,
+      ctx.session.planType
     );
 
     if (!translated) throw new Error("No translation");
@@ -95,6 +98,13 @@ export async function translateProcessHandler(ctx: BotContext): Promise<void> {
 
     // Save to database
     await saveMessagesToDb(ctx, "translate");
+
+    // Track usage (non-blocking)
+    const selectedModel = ctx.session.selectedModel;
+    const providerName = selectedModel
+      ? providerRegistry.getModel(selectedModel)?.provider
+      : undefined;
+    usageService.track(userId, "translate", 0, 0, providerName, selectedModel);
 
     await ctx.reply(
       t(lang, "translate.result", {
@@ -151,7 +161,8 @@ export async function translateLanguageHandler(ctx: BotContext): Promise<void> {
     const translated = await translateAIService.translateText(
       pendingText,
       text,
-      ctx.session.selectedModel
+      ctx.session.selectedModel,
+      ctx.session.planType
     );
 
     if (!translated) throw new Error("No translation");
@@ -165,6 +176,13 @@ export async function translateLanguageHandler(ctx: BotContext): Promise<void> {
 
     // Save to database
     await saveMessagesToDb(ctx, "translate");
+
+    // Track usage (non-blocking)
+    const selectedModel = ctx.session.selectedModel;
+    const providerName = selectedModel
+      ? providerRegistry.getModel(selectedModel)?.provider
+      : undefined;
+    usageService.track(userId, "translate", 0, 0, providerName, selectedModel);
 
     await ctx.reply(
       t(lang, "translate.result", {

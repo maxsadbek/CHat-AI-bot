@@ -69,7 +69,8 @@ export async function socialGenerateHandler(ctx: BotContext): Promise<void> {
       text,
       platform === "all" ? undefined : platform,
       "professional",
-      ctx.session.selectedModel
+      ctx.session.selectedModel,
+      ctx.session.planType
     );
 
     let response = t(lang, "social.result_title");

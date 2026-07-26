@@ -268,39 +268,14 @@ export class BusinessAIService extends BaseAIService {
         maxTokens
       );
 
-      // ── Post-generation: detect & fix truncation ──
-      let finalContent = response.content;
-      const isTruncated = this.isMidSentenceCut(finalContent);
-      if (isTruncated) {
-        log.info(`[BUSINESS_AI] mid-sentence cut detected, attempting continuation`);
-        try {
-          const continuation = await this.executeAI(
-            [
-              { role: "user", content: userPrompt },
-              { role: "assistant", content: finalContent },
-              { role: "user", content: "Continue exactly from where you stopped. Do not repeat previous text. Just complete the last sentence and section." },
-            ],
-            systemPrompt,
-            modelId,
-            userPlan,
-            temperature,
-            maxTokens
-          );
-          finalContent = finalContent + " " + continuation.content;
-          log.info(`[BUSINESS_AI] continuation successful, merged length=${finalContent.length}`);
-        } catch (contErr) {
-          log.warn(`[BUSINESS_AI] continuation failed, returning partial content: ${String(contErr).slice(0, 100)}`);
-          // Fall through — return what we have
-        }
-      }
-
       // Post-generation safety: trim incomplete trailing section
-      finalContent = this.trimIncompleteTrailingSection(finalContent);
+      // (executor.ts owns continuation end-to-end via detectIncompleteSection)
+      const finalContent = this.trimIncompleteTrailingSection(response.content);
 
       const latencyMs = Date.now() - startTime;
       const tokensUsed = response.usage?.totalTokens ?? 0;
 
-      log.info(`[BUSINESS_AI] provider=${response.provider} model=${response.model ?? "unknown"} status=success tokens=${tokensUsed} length=${finalContent.length} initialLength=${response.content.length} continued=${isTruncated} latency=${latencyMs}ms type=${type} user=${userPlan ?? "FREE"}`);
+      log.info(`[BUSINESS_AI] provider=${response.provider} model=${response.model ?? "unknown"} status=success tokens=${tokensUsed} length=${finalContent.length} initialLength=${response.content.length} latency=${latencyMs}ms type=${type} user=${userPlan ?? "FREE"}`);
 
       return { type, content: finalContent };
     } catch (error) {
@@ -321,37 +296,6 @@ export class BusinessAIService extends BaseAIService {
 
       throw error;
     }
-  }
-
-  /**
-   * Detect if response was cut mid-sentence.
-   * A response is "mid-sentence" if it doesn't end with sentence-ending
-   * punctuation (. ! ?) or a natural section-ending pattern.
-   */
-  private isMidSentenceCut(content: string): boolean {
-    const trimmed = content.trimEnd();
-    if (trimmed.length < 20) return false; // too short to judge
-
-    const lastChar = trimmed.charAt(trimmed.length - 1);
-
-    // Ends with sentence-ending punctuation → not cut
-    if (lastChar === "." || lastChar === "!" || lastChar === "?") return false;
-
-    // Ends with newline + emoji header pattern → next section starts, not a cut
-    const lastTwoLines = trimmed.split("\n").slice(-2).join("\n");
-    const emojiStart = /^[\u{1F300}-\u{1F9FF}]|^[📋📊💼📈🎯🔥🎨📱🚀💰📌🏷️📝🌈🔝💪✨📢]/u;
-    if (emojiStart.test(lastTwoLines.trim())) return false;
-
-    // Ends with closing brace/bracket → likely complete
-    if (lastChar === ")" || lastChar === "]" || lastChar === "}") return false;
-
-    // Ends with end-of-line character but no period → cut
-    // This includes: comma, dash, colon, a word without punctuation
-    if (/[a-zA-Z0-9\u{0400}-\u{04FF}ا-یぁ-んァ-ン]/u.test(lastChar)) return true;
-    if (lastChar === "," || lastChar === ";" || lastChar === "-" || lastChar === ":") return true;
-    if (lastChar === "\n") return false; // ends on newline → section end
-
-    return false;
   }
 
   /**

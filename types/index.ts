@@ -32,6 +32,10 @@ export interface SessionData {
   currentProjectId: string | null;
   /** Temporary project name being set */
   pendingProjectName: string;
+  /** Whether user has an active premium subscription */
+  isPremium: boolean;
+  /** User's plan tier (FREE, PREMIUM, PRO, ENTERPRISE) */
+  planType: string;
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;

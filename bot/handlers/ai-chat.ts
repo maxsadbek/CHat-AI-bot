@@ -50,7 +50,7 @@ export async function aiChatHandler(ctx: BotContext): Promise<void> {
 
   try {
     const selectedModel = ctx.session.selectedModel;
-    const response = await aiChatService.chat(ctx.session.messages, text, selectedModel);
+    const response = await aiChatService.chat(ctx.session.messages, text, selectedModel, ctx.session.planType);
 
     // Store messages in session
     ctx.session.messages.push({ role: "user", content: text });

@@ -60,7 +60,8 @@ export abstract class BaseAIService {
     systemPrompt?: string,
     modelId?: string,
     userPlan?: string | PlanType,
-    temperature?: number
+    temperature?: number,
+    maxTokens?: number
   ): Promise<ChatResponse> {
     // Optimize system prompt: trim whitespace to reduce token usage
     const optimizedSystemPrompt = systemPrompt ? this.optimizePrompt(systemPrompt) : undefined;
@@ -70,6 +71,7 @@ export abstract class BaseAIService {
       modelId: modelId ?? "default",
       userPlan: typeof userPlan === "string" ? userPlan : "none",
       messagesCount: messages.length,
+      maxTokens: maxTokens ?? "auto",
     });
 
     try {
@@ -81,6 +83,7 @@ export abstract class BaseAIService {
           messages,
           systemPrompt: optimizedSystemPrompt,
           temperature,
+          maxTokens,
         },
       });
 

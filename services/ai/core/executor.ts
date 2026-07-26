@@ -659,6 +659,7 @@ export class AIExecutor {
 
     return false;
   }
+
 }
 
 export const aiExecutor = new AIExecutor();

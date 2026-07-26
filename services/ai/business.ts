@@ -1,18 +1,17 @@
 /**
  * Enterprise Business AI Service
- * v3.0 — Truncation-Proof Compact Engine
+ * v4.0 — Logo/Brand Truncation Fix
  *
- * Core fix: Old prompts were too verbose (━━━ separators, long format descriptions).
- * AI wasted tokens on decoration instead of content.
+ * Core fix: Short-form types (logo_prompt, brand_name, slogan, color_palette)
+ * had prompts that were too verbose for their token budget. AI spent tokens
+ * on format descriptions instead of generating the actual prompts/names.
  *
  * New approach:
- *  - Minimal prompt format — no decorative separators, no boilerplate
- *  - Each type has only ESSENTIAL sections (3-5 max, not 5-7)
- *  - marketing_strategy = ONLY marketing, not full business plan
- *  - brand_name = names only
- *  - Each section = 3-5 bullet points, always filled with content
- *  - Token budget: 600 (FREE) / 1400 (PREMIUM)
- *  - Post-generation safety: trim incomplete trailing sections
+ *  - Ultra-concise prompts for short-form types — 2-3 lines max
+ *  - logo_prompt: 3 variants × 80-120 words each, no explanations
+ *  - Type-specific maxTokens passed to executor
+ *  - Mid-sentence detection: if response ends mid-sentence, auto-continue
+ *  - Post-generation safety: trim incomplete last section/line
  */
 
 import { BaseAIService } from "./base";
@@ -23,108 +22,121 @@ import type { BusinessContent, BusinessContentType } from "@/types";
 const log = logger.child("ai-business");
 
 /**
- * ─── COMPACT TYPE-SPECIFIC PROMPTS ───────────────────
+ * ─── TYPE-SPECIFIC TOKEN LIMITS ──────────────────────
+ * Override max output tokens per business content type + plan.
+ * These override the default `business` feature limits (600/1400).
  *
- * Design rules (token efficiency):
- *  1. NO decorative separators like ━━━━━━━━━━━━━━━━━━ (waste 40+ chars each)
- *  2. NO long format descriptions — show format inline
- *  3. Each section = emoji header + 3-5 bullet points
- *  4. AI fills EACH section with content before moving to next
- *  5. If token limit hit: finish current section, stop clean
+ * Short-form types (logo, brand, slogan, color): 400-500 tokens.
+ * Marketing strategy: 600 (fits in FREE limit).
+ * Business plan (only PREMIUM/PRO): 1000.
+ * Others: auto (uses feature default from config/ai.ts).
+ */
+const TYPE_MAX_TOKENS: Partial<Record<BusinessContentType, { free: number; premium: number }>> = {
+  logo_prompt:        { free: 400, premium: 500 },
+  brand_name:         { free: 400, premium: 500 },
+  slogan:             { free: 400, premium: 500 },
+  color_palette:      { free: 400, premium: 500 },
+  marketing_strategy: { free: 500, premium: 600 },
+  business_plan:      { free: 600, premium: 1000 },
+};
+
+/**
+ * ─── TYPE-SPECIFIC PROMPTS ───────────────────────────
+ * Ultra-concise. Short-form types (logo, brand, slogan, color):
+ *   - 2-3 lines max prompt text
+ *   - NO format boilerplate, NO long descriptions
+ *   - AI should spend 90%+ tokens on output, not reading instructions
+ *   - Each variant: 80-120 words max, complete sentence, production-ready
  */
 
 const TYPE_PROMPTS: Record<BusinessContentType, string> = {
 
-  startup_idea: `You are a startup consultant. User gives a short idea — you INFER a full concept.
+  // ── LONG-FORM (full analysis) ──────────────────────
 
-Output these 4 sections with emoji headers. Fill each with 3-5 bullet points. NEVER leave a section empty:
+  startup_idea: `You are a startup consultant. User gives short input — INFER full concept.
 
-🎯 Concept: what, who, problem solved
-📊 Market: size, competitors, your edge
-💰 Model: revenue streams, pricing, unit numbers
-🚀 Launch: first channels, first 100 customers, 30-day plan
+Output 4 sections. NEVER leave empty:
 
-Rules: Be specific (name real companies, give real numbers). Match user language. No "Here's an analysis". No "Based on your input". Stop cleanly if at limit.`,
+🎯 Concept — what, who, problem
+📊 Market — size, competitors, edge
+💰 Model — revenue, pricing, unit numbers
+🚀 Launch — channels, first 100 customers, 30 days
 
-  business_plan: `You are a business strategist. INFER business from input. Output:
+Specifics only. No "Here's an analysis". No "Based on your input". Match user language.`,
 
-📋 Executive Summary — one paragraph
+  business_plan: `You are a business strategist. INFER business from input.
+
+📋 Executive Summary
 📊 Market Analysis — competitors, trends, positioning
 💼 Operations — model, tech, team, logistics
 📈 Financials — revenue 12mo, costs, breakeven
-🎯 Goals — Year 1, 2, 3
+🎯 Goals — Year 1/2/3
 
-3-5 bullets per section. Never skip a section.`,
+3-5 bullets per section. Never skip.`,
 
-  marketing_strategy: `You are a marketing director. INFER product from input. MARKETING ONLY — no business plan, no financials.
+  marketing_strategy: `You are a marketing director. MARKETING ONLY — no business plan, no financials.
 
-Output these 4 sections:
-
-📌 Target Audience — 3-5 specific segments
-🔥 Channels — 3-5 platforms with budget & expected ROI per channel
-📱 Content — platform-by-platform: what to post, how often, goal
+📌 Target Audience — 3-5 segments
+🔥 Channels — 3-5 platforms with budget & ROI per channel
+📱 Content — platform-by-platform: format, frequency, goal
 🚀 Growth — first 90 days: weekly targets and tactics
 
-3-5 bullets each. Be specific: name platforms, budgets, dates.`,
+3-5 bullets. Name platforms, budgets, dates.`,
 
-  brand_name: `You are a naming strategist. Generate 5 brand names from user's concept.
+  // ── SHORT-FORM (concise output) ────────────────────
 
-🏷️ Name 1: [name] — meaning, why it works, domain availability
-🏷️ Name 2: [name] — same
-🏷️ Name 3: [name] — same
-🏷️ Name 4: [name] — same
-🏷️ Name 5: [name] — same
+  brand_name: `Generate 5 brand names from concept.
 
-Then: 🏆 Top pick + reasoning.
+🏷️ Name 1:
+🏷️ Name 2:
+🏷️ Name 3:
+🏷️ Name 4:
+🏷️ Name 5:
 
-Short explanations. No filler.`,
+Each: 1-line meaning + why it works. Then 🏆 top pick.`,
 
-  slogan: `You are a copywriter. Generate 5 slogans.
+  slogan: `Generate 5 slogans.
 
-📝 Slogan 1: [text] — psychological reason it works
-📝 Slogan 2: [text] — same
-📝 Slogan 3: [text] — same
-📝 Slogan 4: [text] — same
-📝 Slogan 5: [text] — same
+📝 Slogan 1:
+📝 Slogan 2:
+📝 Slogan 3:
+📝 Slogan 4:
+📝 Slogan 5:
 
-Then: 🎯 Best pick + where to use it.`,
+Each: text + 1-line psychological reason. Then 🎯 best pick.`,
 
-  logo_prompt: `You are an AI design director. Generate 3 production-ready logo prompts for Midjourney/DALL-E/Flux.
+  logo_prompt: `You are an AI design director. Generate 3 complete logo prompts.
 
-🎨 Prompt 1 — Minimalist: [full prompt with subject, style, colors, mood, technical params]
-🎨 Prompt 2 — Creative: [full prompt]
-🎨 Prompt 3 — Professional: [full prompt]
+🎨 Prompt 1 — Minimalist:
+🎨 Prompt 2 — Premium:
+🎨 Prompt 3 — Futuristic:
 
-Then: 📋 Color palette & typography suggestions.`,
+Each prompt: 80-120 words, complete sentence, ready for Midjourney/Gemini. Include: subject, style, composition, colors, mood, technical parameters. Do NOT explain the prompt — just output it.`,
 
-  color_palette: `You are a brand color strategist. Create color palettes.
+  color_palette: `Create brand color palette.
 
-🌈 Primary Palette: #HEX — name — psychology
-🌈 Secondary: #HEX — name — usage
+🌈 Primary: #HEX — name — psychology
+🌈 Secondary: #HEX —  name — usage
 🌈 Accent: #HEX — name — usage
 🌈 Neutral: #HEX — name — usage
 
-Then: 📱 Application — web, print, social usage.`,
+Then 📱 web, print, social application.`,
 
-  landing_page_copy: `You are a conversion copywriter. Write landing page copy.
+  landing_page_copy: `Write landing page copy.
 
-🔝 Hero: headline, subheadline, CTA button text
-💪 Problem & Solution: pain point then solution
-✨ Features: 3 features with benefits
+🔝 Hero: headline, subheadline, CTA button
+💪 Problem & Solution: pain → solution
+✨ Features: 3 features → benefits
 📢 Proof: testimonial + stat
 🎯 CTA: closing headline, final CTA, urgency
 
-Each section: 2-3 sentences max.`,
+2-3 sentences each section.`,
 
 };
 
-/**
- * Ultra-short behavior rules — appended to every type prompt.
- * Kept minimal to save tokens.
- */
 const BASE_BEHAVIOR = `
 
-RULES: No "Here's an analysis". No "Based on your input". No "As an AI". No disclaimers. Never ask for more info — INFER. Match user language. Fill every section. If at token limit, finish current section cleanly then stop.`;
+RULES: No "Here's an analysis". No "Based on your input". No "As an AI". No disclaimers. Never ask for more info — INFER. Match user language. Fill every section.`;
 
 export class BusinessAIService extends BaseAIService {
   private readonly types: BusinessContentType[] = [
@@ -144,13 +156,21 @@ export class BusinessAIService extends BaseAIService {
   ): Promise<BusinessContent> {
     const startTime = Date.now();
     const temperature = aiConfig.getTemperature("business");
+    const planType = userPlan && ["PREMIUM", "PRO", "ENTERPRISE"].includes(userPlan.toUpperCase())
+      ? "premium" as const
+      : "free" as const;
 
-    // Build compact system prompt
+    // Resolve type-specific token limit
+    const typeTokens = TYPE_MAX_TOKENS[type];
+    const maxTokens = typeTokens
+      ? planType === "premium" ? typeTokens.premium : typeTokens.free
+      : undefined; // undefined = use feature default from config/ai.ts
+
     const typePrompt = TYPE_PROMPTS[type] ?? TYPE_PROMPTS.startup_idea;
     const systemPrompt = `${typePrompt}\n${BASE_BEHAVIOR}`;
     const userPrompt = description.trim();
 
-    log.info(`[BUSINESS_AI] request user=${userPlan ?? "FREE"} type=${type} model=${modelId ?? "auto"} input="${userPrompt.slice(0, 80)}"`);
+    log.info(`[BUSINESS_AI] request user=${userPlan ?? "FREE"} type=${type} model=${modelId ?? "auto"} maxTokens=${maxTokens ?? "default"} input="${userPrompt.slice(0, 80)}"`);
 
     try {
       const response = await this.executeAI(
@@ -158,16 +178,45 @@ export class BusinessAIService extends BaseAIService {
         systemPrompt,
         modelId,
         userPlan,
-        temperature
+        temperature,
+        maxTokens
       );
+
+      // ── Post-generation: detect & fix truncation ──
+      let finalContent = response.content;
+      const isTruncated = this.isMidSentenceCut(finalContent);
+      if (isTruncated) {
+        log.info(`[BUSINESS_AI] mid-sentence cut detected, attempting continuation`);
+        try {
+          const continuation = await this.executeAI(
+            [
+              { role: "user", content: userPrompt },
+              { role: "assistant", content: finalContent },
+              { role: "user", content: "Continue exactly from where you stopped. Do not repeat previous text. Just complete the last sentence and section." },
+            ],
+            systemPrompt,
+            modelId,
+            userPlan,
+            temperature,
+            maxTokens
+          );
+          finalContent = finalContent + " " + continuation.content;
+          log.info(`[BUSINESS_AI] continuation successful, merged length=${finalContent.length}`);
+        } catch (contErr) {
+          log.warn(`[BUSINESS_AI] continuation failed, returning partial content: ${String(contErr).slice(0, 100)}`);
+          // Fall through — return what we have
+        }
+      }
+
+      // Post-generation safety: trim incomplete trailing section
+      finalContent = this.trimIncompleteTrailingSection(finalContent);
 
       const latencyMs = Date.now() - startTime;
       const tokensUsed = response.usage?.totalTokens ?? 0;
-      const trimmedContent = this.trimIncompleteTrailingSection(response.content);
 
-      log.info(`[BUSINESS_AI] provider=${response.provider} model=${response.model ?? "unknown"} status=success tokens=${tokensUsed} length=${response.content.length} trimmed=${response.content.length !== trimmedContent.length} latency=${latencyMs}ms type=${type} user=${userPlan ?? "FREE"}`);
+      log.info(`[BUSINESS_AI] provider=${response.provider} model=${response.model ?? "unknown"} status=success tokens=${tokensUsed} length=${finalContent.length} initialLength=${response.content.length} continued=${isTruncated} latency=${latencyMs}ms type=${type} user=${userPlan ?? "FREE"}`);
 
-      return { type, content: trimmedContent };
+      return { type, content: finalContent };
     } catch (error) {
       const latencyMs = Date.now() - startTime;
 
@@ -189,36 +238,54 @@ export class BusinessAIService extends BaseAIService {
   }
 
   /**
+   * Detect if response was cut mid-sentence.
+   * A response is "mid-sentence" if it doesn't end with sentence-ending
+   * punctuation (. ! ?) or a natural section-ending pattern.
+   */
+  private isMidSentenceCut(content: string): boolean {
+    const trimmed = content.trimEnd();
+    if (trimmed.length < 20) return false; // too short to judge
+
+    const lastChar = trimmed.charAt(trimmed.length - 1);
+
+    // Ends with sentence-ending punctuation → not cut
+    if (lastChar === "." || lastChar === "!" || lastChar === "?") return false;
+
+    // Ends with newline + emoji header pattern → next section starts, not a cut
+    const lastTwoLines = trimmed.split("\n").slice(-2).join("\n");
+    const emojiStart = /^[\u{1F300}-\u{1F9FF}]|^[📋📊💼📈🎯🔥🎨📱🚀💰📌🏷️📝🌈🔝💪✨📢]/u;
+    if (emojiStart.test(lastTwoLines.trim())) return false;
+
+    // Ends with closing brace/bracket → likely complete
+    if (lastChar === ")" || lastChar === "]" || lastChar === "}") return false;
+
+    // Ends with end-of-line character but no period → cut
+    // This includes: comma, dash, colon, a word without punctuation
+    if (/[a-zA-Z0-9\u{0400}-\u{04FF}ا-یぁ-んァ-ン]/u.test(lastChar)) return true;
+    if (lastChar === "," || lastChar === ";" || lastChar === "-" || lastChar === ":") return true;
+    if (lastChar === "\n") return false; // ends on newline → section end
+
+    return false;
+  }
+
+  /**
    * Post-generation safety: trim incomplete trailing section.
    * If the response ends with a header/emoji line that has no substantive
-   * content after it, remove it — better to show a complete report
-   * missing one section than a dangling header with nothing under it.
-   *
-   * Patterns that indicate an incomplete trailing section:
-   *  - Line ends with colon and nothing follows (empty header)
-   *  - Line is only emoji + short text (header with no content)
-   *  - Response ends with an emoji on its own line
+   * content after it, remove it.
    */
   private trimIncompleteTrailingSection(content: string): string {
     const lines = content.trimEnd().split("\n");
-
-    // Check last meaningful line
     const nonEmptyLines = lines.filter((l) => l.trim().length > 0);
     if (nonEmptyLines.length === 0) return content;
 
     const lastLine = nonEmptyLines[nonEmptyLines.length - 1]!;
-
-    // ── Detect: header with emoji + colon, no content after ──
-    // Pattern: "🎯 Concept:" or "📌 Target Audience —" with only 1-2 lines total
-    const headerPattern = /^[\u{1F300}-\u{1F9FF}]|^📋|^📊|^💼|^📈|^🎯|^🔥|^🎨|^📱|^🚀|^💰|^📌|^🏷️|^📝|^🌈|^🔝|^💪|^✨|^📢/u;
+    const headerPattern = /^[\u{1F300}-\u{1F9FF}]|^[📋📊💼📈🎯🔥🎨📱🚀💰📌🏷️📝🌈🔝💪✨📢]/u;
     const isTrailingHeader = headerPattern.test(lastLine.trim()) &&
       lastLine.trim().length < 60 &&
       nonEmptyLines.length >= 2 &&
-      // Check that this header appears to be a NEW section (not continuation of content)
       nonEmptyLines.indexOf(lastLine) >= nonEmptyLines.length - 2;
 
     if (isTrailingHeader) {
-      // Remove the empty header line(s)
       const lastHeaderIndex = lines.lastIndexOf(lastLine);
       return lines.slice(0, lastHeaderIndex).join("\n").trimEnd();
     }

@@ -33,33 +33,37 @@ export async function businessHandler(ctx: BotContext): Promise<void> {
 }
 
 /**
- * Safely reply to a Telegram chat using HTML parse mode.
- * AI-generated content often contains characters (_ * [ `) that break
- * Telegram's Markdown parser. HTML parse_mode is more resilient:
- *  - Only <, >, & need escaping
- *  - All markdown characters (_ * [ ] ( )) are safe in HTML mode
- *  - Supports <b>, <i>, <code>, <pre>, <a href=""> tags
+ * Escape Telegram MarkdownV2 special characters.
+ * Reference: https://core.telegram.org/bots/api#formatting-options
  *
- * Falls back to plain text if HTML parsing also fails.
+ * Characters that MUST be escaped: _ * [ ] ( ) ~ ` > # + - = | { } . !
+ * Backslash itself is also escaped to prevent escaping issues.
+ */
+function escapeMarkdownV2(text: string): string {
+  return text.replace(/([_*\[\]()~`>#+\-=|{}.!\\])/g, '\\$1');
+}
+
+/**
+ * Safely reply using MarkdownV2 with all characters escaped.
+ * This is the safest approach: every special char is backslash-escaped,
+ * so Telegram never fails parsing. AI output may contain _*[]() etc.
+ * from code snippets, emojis with modifiers, or structured formatting.
+ *
+ * Falls back to plain text if any edge case slips through.
  */
 async function safeReply(
   ctx: BotContext,
   text: string,
   extra?: Record<string, unknown>
 ): Promise<void> {
-  // Escape HTML entities to prevent tag injection (<, >, &)
-  const safeText = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  const safeText = escapeMarkdownV2(text);
 
   try {
-    await ctx.reply(safeText, { ...extra, parse_mode: "HTML" } as any);
+    await ctx.reply(safeText, { ...extra, parse_mode: "MarkdownV2" } as any);
   } catch (sendErr: unknown) {
     const sendMsg = sendErr instanceof Error ? sendErr.message : String(sendErr);
-    // If HTML parsing also fails (e.g. malformed tag), fall back to plain text
     if (sendMsg.includes("Can't parse entities") || sendMsg.includes("parse_mode")) {
-      log.warn("[safeReply] HTML parse failed, retrying as plain text", {
+      log.warn("[safeReply] MarkdownV2 parse failed, retrying as plain text", {
         error: sendMsg.slice(0, 100),
       });
       await ctx.reply(text, { ...extra, parse_mode: undefined } as any);

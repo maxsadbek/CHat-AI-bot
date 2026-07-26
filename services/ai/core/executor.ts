@@ -336,6 +336,123 @@ export class AIExecutor {
           errorRetryable = rawError.retryable;
         }
 
+        // ── RATE_LIMIT (429) — retry with exponential backoff on the SAME provider ──
+        // before switching to the next provider in the chain.
+        // Backoff: 500ms, 1s, 2s, 4s (max 3 retries), then fall through to failover.
+        if (errorCode === "RATE_LIMIT" || errorStatus === 429) {
+          const maxRateLimitRetries = 3;
+          for (let retry = 1; retry <= maxRateLimitRetries; retry++) {
+            const backoffMs = Math.min(500 * Math.pow(2, retry - 1), 4000);
+            const jitter = Math.random() * 200;
+            const waitMs = backoffMs + jitter;
+
+            log.warn(`[RATE_LIMIT] ${providerId} — retry ${retry}/${maxRateLimitRetries} in ${Math.round(waitMs)}ms`, {
+              feature,
+              backoffMs,
+              jitter: Math.round(jitter),
+              totalWaitMs: Math.round(waitMs),
+            });
+
+            await new Promise((resolve) => setTimeout(resolve, waitMs));
+
+            try {
+              const provider = this.registry.getProviderById(providerId);
+              const modelObj = modelId
+                ? provider.getModel(modelId) || provider.getDefaultModel()
+                : provider.getDefaultModel();
+              const resolvedModelId = modelObj?.id || providerId;
+              const continuationMessages = continuationCount > 0
+                ? [
+                    ...request.messages,
+                    { role: "assistant" as const, content: accumulatedContent },
+                  ]
+                : request.messages;
+
+              const retryResponse = await provider.chat({
+                ...request,
+                messages: continuationMessages,
+                modelId: resolvedModelId,
+                maxTokens,
+                temperature,
+              });
+
+              // Retry succeeded — proceed as normal
+              accumulatedContent += (accumulatedContent ? "\n\n" : "") + retryResponse.content;
+              const rawRetryResponse = retryResponse as unknown as Record<string, unknown>;
+              const retryFinishReason = rawRetryResponse.finishReason as string | undefined;
+
+              log.info(`[RATE_LIMIT] ${providerId} — retry ${retry}/${maxRateLimitRetries} succeeded after ${Math.round(waitMs)}ms`);
+
+              // Check if truncated and need continuation
+              if ((retryFinishReason === "max_tokens" || retryFinishReason === "length") &&
+                  continuationCount < AIExecutor.MAX_CONTINUATIONS) {
+                continuationCount++;
+                attempt--; // Stay on same provider for continuation
+              }
+
+              // We've recovered — reset the original error and continue normal flow
+              // First, re-parse as the parent try's response by setting variables
+              const recoveredResponse = retryResponse;
+              const recoveredContent = accumulatedContent;
+
+              // ── Continue from success path ──
+              const recoveredLatencyMs = Date.now() - startTime;
+              const recoveredPromptTokens = recoveredResponse.usage?.promptTokens || CostOptimizationStrategy.estimateTokenCount(userPrompt);
+              const recoveredCompletionTokens = recoveredResponse.usage?.completionTokens || CostOptimizationStrategy.estimateTokenCount(recoveredContent);
+              const recoveredTotalTokens = recoveredResponse.usage?.totalTokens || recoveredPromptTokens + recoveredCompletionTokens;
+              const recoveredCostUsd = aiConfig.calculateCost(resolvedModelId, recoveredPromptTokens, recoveredCompletionTokens);
+
+              if (!modelId) {
+                const mergedResponse: ChatResponse = {
+                  content: recoveredContent,
+                  usage: recoveredResponse.usage,
+                  model: recoveredResponse.model,
+                  provider: recoveredResponse.provider,
+                  costUsd: recoveredCostUsd,
+                };
+                responseCache.set(feature, providerId, request, mergedResponse);
+              }
+
+              if (userId) {
+                usageTracker.track(userId, feature, recoveredPromptTokens, recoveredCompletionTokens);
+              }
+
+              const recoveredRemaining = userId ? usageTracker.getRemainingDailyTokens(userId, userPlan) : 0;
+              AITelemetry.logRequest({
+                provider: recoveredResponse.provider || providerId,
+                model: resolvedModelId,
+                feature,
+                plan: userPlan || "FREE",
+                promptTokens: recoveredPromptTokens,
+                completionTokens: recoveredCompletionTokens,
+                totalTokens: recoveredTotalTokens,
+                requestedTokens: maxTokens,
+                remainingTokens: recoveredRemaining,
+                latencyMs: recoveredLatencyMs,
+                retries: attempt + continuationCount + retry,
+                estimatedCostUsd: recoveredCostUsd,
+                status: "success",
+                note: `rate-limit-retried ${retry}x`,
+              });
+
+              return {
+                content: recoveredContent,
+                usage: recoveredResponse.usage,
+                model: recoveredResponse.model,
+                provider: recoveredResponse.provider,
+                costUsd: recoveredCostUsd,
+              };
+            } catch (retryError) {
+              const retryMsg = retryError instanceof Error ? retryError.message : String(retryError);
+              log.warn(`[RATE_LIMIT] ${providerId} — retry ${retry}/${maxRateLimitRetries} failed: ${retryMsg.slice(0, 100)}`);
+              // Fall through to next retry or failover
+            }
+          }
+
+          // All rate limit retries exhausted — log and continue to failover
+          log.warn(`[RATE_LIMIT] ${providerId} — all ${maxRateLimitRetries} retries exhausted, failing over`);
+        }
+
         // Determine the model that was attempted (best-effort, non-critical)
         try {
           const prov = this.registry.getProviderById(providerId);

@@ -33,23 +33,33 @@ export async function businessHandler(ctx: BotContext): Promise<void> {
 }
 
 /**
- * Safely reply to a Telegram chat with fallback from Markdown to plain text.
+ * Safely reply to a Telegram chat using HTML parse mode.
  * AI-generated content often contains characters (_ * [ `) that break
- * Telegram's Markdown parser. This helper tries Markdown first, and if
- * parsing fails, re-sends without parse_mode.
+ * Telegram's Markdown parser. HTML parse_mode is more resilient:
+ *  - Only <, >, & need escaping
+ *  - All markdown characters (_ * [ ] ( )) are safe in HTML mode
+ *  - Supports <b>, <i>, <code>, <pre>, <a href=""> tags
+ *
+ * Falls back to plain text if HTML parsing also fails.
  */
 async function safeReply(
   ctx: BotContext,
   text: string,
   extra?: Record<string, unknown>
 ): Promise<void> {
+  // Escape HTML entities to prevent tag injection (<, >, &)
+  const safeText = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
   try {
-    await ctx.reply(text, { ...extra, parse_mode: "Markdown" } as any);
+    await ctx.reply(safeText, { ...extra, parse_mode: "HTML" } as any);
   } catch (sendErr: unknown) {
     const sendMsg = sendErr instanceof Error ? sendErr.message : String(sendErr);
-    // If the error is a Telegram parse error, retry without Markdown
+    // If HTML parsing also fails (e.g. malformed tag), fall back to plain text
     if (sendMsg.includes("Can't parse entities") || sendMsg.includes("parse_mode")) {
-      log.warn("[safeReply] Markdown parse failed, retrying as plain text", {
+      log.warn("[safeReply] HTML parse failed, retrying as plain text", {
         error: sendMsg.slice(0, 100),
       });
       await ctx.reply(text, { ...extra, parse_mode: undefined } as any);

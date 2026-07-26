@@ -156,7 +156,7 @@ export class AIConfig {
       },
       business: {
         FREE: { base: 400, max: 600 },
-        PREMIUM: { base: 1000, max: 1600 },
+        PREMIUM: { base: 800, max: 1400 },
         PRO: { base: 8000, max: 16000 },
         ENTERPRISE: { base: 16000, max: 32000 },
       },

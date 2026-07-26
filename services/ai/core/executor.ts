@@ -27,12 +27,21 @@ const log = logger.child("ai-executor");
  * Never say "All AI providers are currently unavailable".
  * Instead: tell the user we're retrying automatically.
  */
+/** Per-provider attempt timeout — 15 seconds max per single AI call */
+const PER_PROVIDER_TIMEOUT_MS = 15_000;
+
+/**
+ * Overall execution timeout — 45 seconds for the entire generation.
+ * If no provider responds within this window, we give up.
+ */
+const OVERALL_EXECUTION_TIMEOUT_MS = 45_000;
+
 const FRIENDLY_ERRORS: Record<FeatureType, string> = {
   chat: "⚠️ AI is currently under heavy load. Your request will retry automatically.",
   image: "⚠️ AI is currently under heavy load. Your request will retry automatically.",
   video: "⚠️ AI is currently under heavy load. Your request will retry automatically.",
   coding: "⚠️ AI is currently under heavy load. Your request will retry automatically.",
-  business: "⚠️ AI is currently under heavy load. Your request will retry automatically.",
+  business: "⚠️ AI server busy. Please try again.",
   translate: "⚠️ AI is currently under heavy load. Your request will retry automatically.",
   social: "⚠️ AI is currently under heavy load. Your request will retry automatically.",
 };
@@ -206,6 +215,7 @@ export class AIExecutor {
         continue;
       }
 
+      let attemptStartTime = Date.now();
       try {
         const provider = this.registry.getProviderById(providerId);
         const modelObj = modelId
@@ -221,28 +231,49 @@ export class AIExecutor {
             ]
           : request.messages;
 
-        // ── Pre-flight: Log the exact request about to be sent ──
-        const sysPromptPreview = request.systemPrompt
-          ? request.systemPrompt.slice(0, 200).replace(/\n/g, "\\n")
-          : "(none)";
-        const userMsgPreview = continuationMessages
-          .map((m) => `${m.role}:${m.content.slice(0, 100)}`)
-          .join(" | ");
-        if (feature === "image") {
-          console.log(`[IMAGE_PROVIDER_ATTEMPT] provider=${providerId} model=${resolvedModelId} attempt=${attempt + 1}/${providerChain.length} feature=${feature}`);
-        } else if (feature === "business") {
-          log.info(`[BUSINESS_EXECUTOR] Attempt ${attempt + 1}/${providerChain.length} — provider=${providerId} model=${resolvedModelId} maxTokens=${maxTokens} temp=${temperature} systemPrompt="${sysPromptPreview}"... messages="${userMsgPreview}"...`);
-        } else {
-          log.info(`[EXECUTOR] Attempt ${attempt + 1}/${providerChain.length} — ${feature} → ${providerId}/${resolvedModelId} maxTokens=${maxTokens} temp=${temperature}`);
+        // ── Log AI_ATTEMPT_START ──
+        attemptStartTime = Date.now();
+        console.log(`[AI_ATTEMPT_START] feature=${feature} provider=${providerId} model=${resolvedModelId} attempt=${attempt + 1}/${providerChain.length} maxTokens=${maxTokens}`);
+
+        // ── Execute provider.chat() with per-provider timeout ──
+        // If the provider hangs (no response, network stall, infinite loop),
+        // the timeout will abort and treat it as a provider failure,
+        // moving to the next provider in the chain.
+        const response = await this.executeWithTimeout(
+          provider.chat({
+            ...request,
+            messages: continuationMessages,
+            modelId: resolvedModelId,
+            maxTokens,
+            temperature,
+          }),
+          PER_PROVIDER_TIMEOUT_MS,
+          `Provider ${providerId} timed out after ${PER_PROVIDER_TIMEOUT_MS}ms`
+        );
+
+        // ── Log AI_ATTEMPT_END (success) ──
+        const attemptDuration = Date.now() - attemptStartTime;
+
+        // Check overall execution timeout — if we've been running too long,
+        // return what we have instead of continuing
+        if (Date.now() - startTime > OVERALL_EXECUTION_TIMEOUT_MS) {
+          log.warn(`[EXECUTOR] Overall execution timeout reached (${OVERALL_EXECUTION_TIMEOUT_MS}ms), returning accumulated content`);
+          if (accumulatedContent.length > 0) {
+            return {
+              content: accumulatedContent,
+              usage: response.usage,
+              model: response.model,
+              provider: response.provider,
+            };
+          }
+          throw new AIError(
+            FRIENDLY_ERRORS[feature] || "⚠️ AI server busy. Please try again.",
+            "TIMEOUT",
+            { retryable: true }
+          );
         }
 
-        const response = await provider.chat({
-          ...request,
-          messages: continuationMessages,
-          modelId: resolvedModelId,
-          maxTokens,
-          temperature,
-        });
+        console.log(`[AI_ATTEMPT_END] feature=${feature} provider=${providerId} model=${resolvedModelId} status=success duration=${attemptDuration}ms attempt=${attempt + 1}/${providerChain.length}`);
 
         // Append to accumulated content
         accumulatedContent += (accumulatedContent ? "\n\n" : "") + response.content;
@@ -549,6 +580,9 @@ export class AIExecutor {
           message: errorMsg,
         });
 
+        // Log AI_ATTEMPT_END (failure) for every feature
+        console.log(`[AI_ATTEMPT_END] feature=${feature} provider=${providerId} model=${attemptedModel} status=${errorCode} duration=${Date.now() - attemptStartTime}ms attempt=${attempt + 1}/${providerChain.length}`);
+
         // Feature-specific failure logs
         if (feature === "image") {
           console.log(`[IMAGE_PROVIDER_FAILED] provider=${providerId} model=${attemptedModel} status=${errorStatus ?? errorCode} error="${errorMsg.slice(0, 100)}"`);
@@ -630,6 +664,37 @@ export class AIExecutor {
       "PROVIDER_ERROR",
       { retryable: false }
     );
+  }
+
+  /**
+   * Execute a promise with a timeout.
+   * If the promise doesn't settle within the given time, reject with a timeout error.
+   * This prevents hanging AI providers from blocking the entire system.
+   */
+  private async executeWithTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    timeoutMessage: string
+  ): Promise<T> {
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => {
+        reject(new AIError(timeoutMessage, "TIMEOUT", {
+          statusCode: 408,
+          retryable: true,
+        }));
+      }, timeoutMs);
+    });
+
+    try {
+      const result = await Promise.race([promise, timeoutPromise]);
+      return result;
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+    }
   }
 
   /**

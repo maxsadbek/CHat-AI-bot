@@ -242,21 +242,50 @@ export class AIExecutor {
         const likelyTruncated = finishReason === "max_tokens" || finishReason === "length" ||
           (maxTokens > 100 && responseTokens >= maxTokens * 0.85);
 
-        // ── Auto-continuation: if response was truncated, request more ──
+        // Strategy 3 (Business AI): Detect incomplete trailing section
+        // If response ends with an emoji header + colon with no content after it
+        // (e.g. "📊 Market Analysis:" is the last line), the AI ran out of tokens
+        // mid-section. Force continuation.
+        const endsWithIncompleteSection = this.detectIncompleteSection(accumulatedContent, feature);
+
+        // ── Auto-continuation: if response was truncated or incomplete, request more ──
         if (
-          likelyTruncated &&
+          (likelyTruncated || endsWithIncompleteSection) &&
           continuationCount < AIExecutor.MAX_CONTINUATIONS
         ) {
           continuationCount++;
-          log.info("[CONTINUATION] Response truncated, requesting continuation", {
+          log.info("[CONTINUATION] Response truncated/incomplete, requesting continuation", {
             feature,
             provider: providerId,
             continuationCount,
             maxContinuations: AIExecutor.MAX_CONTINUATIONS,
             finishReason,
+            endsWithIncompleteSection,
+            likelyTruncated,
           });
 
-          // Re-use same provider for continuation (don't restart the chain)
+          // Replace the continuation message with a SPECIFIC prompt
+          // to avoid the AI re-generating the header or repeating content.
+          // The accumulated content already has the partial response.
+          // We tell it to continue from where it stopped.
+          if (continuationCount === 1) {
+            // On first continuation, update the stored request messages
+            // with a SPECIFIC continue prompt to avoid the AI re-generating
+            // the header or repeating content.
+            request.messages = [
+              ...request.messages,
+              { role: "assistant" as const, content: accumulatedContent },
+              { role: "user" as const, content: "Continue from where you stopped. Fill the section that was cut off. Do NOT repeat any text that is already above." },
+            ];
+            // NOTE: accumulatedContent is intentionally NOT reset here.
+            // It's already preserved in request.messages as an assistant entry.
+            // Keeping it prevents an empty assistant message from being
+            // appended in the continuationMessages builder below.
+            attempt--; // Stay on the same provider
+            continue;
+          }
+
+          // On subsequent continuations, use the standard approach
           attempt--; // Stay on the same provider
           continue;
         }
@@ -577,6 +606,58 @@ export class AIExecutor {
       "PROVIDER_ERROR",
       { retryable: false }
     );
+  }
+
+  /**
+   * Detect if the accumulated response ends with an incomplete section header.
+   * This is a common truncation pattern for Business AI: the AI writes
+   * a section header (emoji + title) but runs out of tokens before filling
+   * any content under it.
+   *
+   * Patterns detected as "incomplete":
+   *  - Last non-empty line is an emoji header with colon (e.g. "🎯 Concept:")
+   *  - Last line is an emoji followed by title with no content below
+   *  - Last line is a short (<60 chars) header-like line and the response
+   *    ends immediately after it
+   *
+   * Only applies to business feature for now.
+   */
+  private detectIncompleteSection(content: string, feature: FeatureType): boolean {
+    if (feature !== "business") return false;
+
+    const trimmed = content.trimEnd();
+    if (trimmed.length === 0) return false;
+
+    const lines = trimmed.split("\n");
+    const nonEmptyLines = lines.filter((l) => l.trim().length > 0);
+    if (nonEmptyLines.length === 0) return false;
+
+    const lastLine = nonEmptyLines[nonEmptyLines.length - 1]!.trim();
+
+    // ── Pattern 1: Line ends with colon (header: no content after) ──
+    // e.g. "🎯 Concept:" or "📊 Market:" or "📌 Target Audience:"
+    if (lastLine.endsWith(":") && lastLine.length < 60) {
+      return true;
+    }
+
+    // ── Pattern 2: Line has emoji + short text, looks like a header ──
+    // e.g. "🔥 Channels" or "🚀 Growth" or "📱 Content"
+    const headerLike = /^[\u{1F300}-\u{1F9FF}]|^[📋📊💼📈🎯🔥🎨📱🚀💰📌🏷️📝🌈🔝💪✨📢]/u.test(lastLine);
+    if (headerLike && lastLine.length < 50) {
+      // Check if this header appears to be a NEW section (not mid-content)
+      // by checking if it's at or near the end with no substantive content after
+      const lineIndex = nonEmptyLines.indexOf(lastLine);
+      if (lineIndex >= nonEmptyLines.length - 2) {
+        return true;
+      }
+    }
+
+    // ── Pattern 3: Ends with a separator line (━━━) ──
+    if (/^[━═─]+$/.test(lastLine)) {
+      return true;
+    }
+
+    return false;
   }
 }
 

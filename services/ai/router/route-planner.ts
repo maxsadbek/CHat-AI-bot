@@ -11,20 +11,20 @@ import type { RoutePlan } from "./types";
 
 /**
  * Default provider chains per task type.
- * These match the user's specified architecture:
- *   text:         Gemini → Cerebras → Mistral → OpenRouter
- *   image:        Gemini → Cerebras → Mistral → OpenRouter (prompt generation needs TEXT AI, not image generators)
- *   video_prompt: Gemini → Cerebras → Mistral
  *
  * NOTE: The "image" feature is used for IMAGE PROMPT GENERATION (text output),
  * not actual image generation.  Image generation uses provider-specific APIs
- * directly (bypassing the router).  Therefore the image chain uses TEXT providers.
+ * directly (bypassing the router).
+ *
+ * Stability and Flux are OpenAI-compatible text providers that are
+ * optimized for image-related text generation. They are tried FIRST
+ * for the image feature, with Gemini and OpenRouter as text fallbacks.
  *
  * Can be overridden via environment variables.
  */
 const DEFAULT_PRIORITY_CHAINS: Record<string, string> = {
   text: "gemini,cerebras,mistral,openrouter",
-  image: "gemini,cerebras,mistral,openrouter",
+  image: "stability,flux,gemini,openrouter",
   video_prompt: "gemini,cerebras,mistral",
 };
 

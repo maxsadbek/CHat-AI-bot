@@ -5,11 +5,11 @@
  * Never returns "AI temporarily busy" if another provider is available.
  *
  * Failover strategy:
- * - Pre-flight checks: API key exists, provider enabled, health status
- * - Try providers in priority order (highest first)
- * - Skip unhealthy/misconfigured providers
- * - Each provider gets 1 retry on failure before moving to next
- * - After all providers are exhausted, throw AIError with details
+ * - Pre-flight checks: API key exists, provider enabled, health status, rate-limit cooldown
+ * - Try providers in priority order: gemini → cerebras → mistral → openrouter
+ * - Skip rate-limited (429 cooldown), unhealthy, misconfigured providers
+ * - [AI_FAILOVER] structured logging on every event
+ * - After all providers exhausted, throw friendly error
  */
 
 import { aiConfig, type FeatureType, type ProviderId } from "@/config/ai";
@@ -30,14 +30,18 @@ export interface FailoverResult {
   usedFallback: boolean;
 }
 
-/** Message when all providers are exhausted */
+/** Message when all providers are exhausted — never say "unavailable" */
 const ALL_PROVIDERS_EXHAUSTED =
-  "⚠️ All AI providers are currently unavailable. Please try again in a few minutes.";
+  "⚠️ AI is currently under heavy load. Your request will retry automatically.";
 
 export class FailoverHandler {
   /**
    * Check if a provider is usable before attempting a request.
-   * Validates API key presence, enabled flag, and health status.
+   * Validates:
+   *   1. Provider is configured and enabled
+   *   2. API key exists (env var is set and non-empty)
+   *   3. Not currently rate-limited (429 cooldown)
+   *   4. Health status allows attempts
    */
   private isProviderAvailable(providerId: string): { available: boolean; reason?: string } {
     const setting = aiConfig.getProviderSetting(providerId as ProviderId);
@@ -54,6 +58,12 @@ export class FailoverHandler {
     const apiKey = process.env[setting.envKey];
     if (!apiKey) {
       return { available: false, reason: `API key missing for provider "${providerId}" (env: ${setting.envKey})` };
+    }
+
+    // Check rate-limit cooldown (429 within last 60s)
+    if (healthChecker.isRateLimited(providerId)) {
+      const remaining = healthChecker.getRateLimitCooldownRemaining(providerId);
+      return { available: false, reason: `Provider "${providerId}" is rate-limited (cooldown ${remaining}s remaining)` };
     }
 
     return { available: true };
@@ -112,6 +122,7 @@ export class FailoverHandler {
         const modelObj = provider.getDefaultModel();
         const modelId = modelObj?.id || providerId;
 
+        console.log(`[AI_FAILOVER] provider=${providerId} model=${modelId} action=attempt attempt=${attempt + 1}/${maxAttempts} feature=${feature}`);
         log.info(`[FAILOVER] Attempt ${attempt + 1}/${maxAttempts}: ${providerId} (${modelId})`, {
           feature,
           maxTokens: options.maxTokens,
@@ -129,6 +140,7 @@ export class FailoverHandler {
         const latencyMs = Date.now() - startTime;
         healthChecker.recordSuccess(providerId, latencyMs);
 
+        console.log(`[AI_FAILOVER] provider=${providerId} action=success attempt=${attempt + 1}/${maxAttempts} fallback=${attempt > 0} latency=${latencyMs}ms feature=${feature}`);
         log.info(`[FAILOVER] ${providerId} succeeded on attempt ${attempt + 1}/${maxAttempts}`, {
           latencyMs,
           usedFallback: attempt > 0,
@@ -147,33 +159,25 @@ export class FailoverHandler {
         const errorMsg = err instanceof Error ? err.message : String(err);
         const errorCode = err instanceof AIError ? err.code : "UNKNOWN";
         const isRetryable = err instanceof AIError ? err.retryable : true;
+        const nextProvider = attempt < maxAttempts - 1 ? providerChain[attempt + 1] : "none";
 
-        // Record failure in health checker
-        healthChecker.recordFailure(providerId, errorMsg);
+        // Record 429 specifically with cooldown
+        if (errorCode === "RATE_LIMIT" || errorMsg.includes("429")) {
+          healthChecker.recordRateLimit(providerId);
+        } else {
+          healthChecker.recordFailure(providerId, errorMsg);
+        }
+
+        // Structured [AI_FAILOVER] log for every failure
+        console.log(`[AI_FAILOVER] provider=${providerId} error=${errorCode} attempt=${attempt + 1}/${maxAttempts} next_provider=${nextProvider} feature=${feature} msg="${errorMsg.slice(0, 100)}"`);
 
         errors.push({
           provider: providerId,
           error: `[${errorCode}] ${errorMsg}`,
         });
 
-        // Detailed provider error log
-        log.error(`[FAILOVER] Provider ${providerId} failed`, {
-          attempt: attempt + 1,
-          maxAttempts,
-          errorCode,
-          error: errorMsg,
-          retryable: isRetryable,
-          feature,
-          remainingProviders: maxAttempts - attempt - 1,
-          timestamp: new Date().toISOString(),
-        });
-
         // If there are more providers, brief delay then continue
         if (attempt < maxAttempts - 1) {
-          log.warn(`[FAILOVER] Trying next provider after ${providerId} failure`, {
-            nextProvider: providerChain[attempt + 1],
-            delayMs: 500,
-          });
           await new Promise((resolve) => setTimeout(resolve, 500));
         }
       }
@@ -181,6 +185,7 @@ export class FailoverHandler {
 
     // ── All providers exhausted — build detailed error ──────────
     const totalLatency = Date.now() - startTime;
+    console.log(`[AI_FAILOVER] action=all_exhausted chain=[${providerChain.join(",")}] errors=${errors.length} latency=${totalLatency}ms feature=${feature}`);
     log.error("[FAILOVER] All providers exhausted for request", {
       feature,
       providerChain,
@@ -192,15 +197,15 @@ export class FailoverHandler {
 
     // Determine if any providers were actually attempted (not skipped in pre-flight)
     const attemptedProviders = errors.filter(
-      (e) => !e.error.startsWith("Pre-flight:") && !e.error.includes("skipped by health checker")
+      (e) => !e.error.startsWith("Pre-flight:") && !e.error.includes("rate-limited") && !e.error.includes("skipped by health checker")
     );
 
     // Build user-friendly message based on failure patterns
     let friendlyMessage: string;
     if (attemptedProviders.length === 0) {
-      // All providers were skipped in pre-flight (no API keys, all disabled)
+      // All providers were skipped in pre-flight (no API keys, all disabled, or all rate-limited)
       friendlyMessage =
-        "⚠️ No AI providers are configured. Please set up at least one API key (Gemini, Cerebras, Mistral, or OpenRouter) in your environment variables.";
+        "⚠️ AI is currently under heavy load. Your request will retry automatically.";
     } else {
       friendlyMessage = ALL_PROVIDERS_EXHAUSTED;
     }

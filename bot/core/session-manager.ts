@@ -27,7 +27,9 @@ export class SessionManager {
       selectedSocialPlatform: "all",
       selectedBusinessType: "startup_idea",
     selectedCodeLanguage: "Next.js",
-    selectedModel: process.env.OPENAI_MODEL || "gpt-4o-mini",
+    // Default model follows provider chain: Gemini → Cerebras → Mistral → OpenRouter
+    // Use Gemini (first in chain) as default, not OpenAI (no API key required for chain).
+    selectedModel: process.env.GEMINI_MODEL || "gemini-2.5-flash",
     currentProjectId: null,
     pendingProjectName: "",
     ...overrides,

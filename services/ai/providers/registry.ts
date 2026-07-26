@@ -111,9 +111,17 @@ export class ProviderRegistry {
   }
 
   getDefaultModel(): ProviderModel {
-    // Default model comes from OPENAI_MODEL env var
-    const defaultModelId = process.env.OPENAI_MODEL || "gpt-4o-mini";
-    return ALL_MODELS.find((m) => m.id === defaultModelId) ?? ALL_MODELS[0]!;
+    // Default model follows provider chain: Gemini → Cerebras → Mistral → OpenRouter
+    // Use Gemini (first in provider chain) as default.
+    // Never default to OpenAI unless explicitly configured.
+    const defaultModelId = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+    const model = ALL_MODELS.find((m) => m.id === defaultModelId);
+    if (model) return model;
+    // Fallback: find the first model from the default provider chain
+    const geminiModel = ALL_MODELS.find((m) => m.provider === "gemini");
+    if (geminiModel) return geminiModel;
+    // Last resort
+    return ALL_MODELS[0]!;
   }
 
   getModelName(modelId: string): string {

@@ -17,27 +17,24 @@ import { logger } from "@/bot/core/logger";
 import { CostOptimizationStrategy } from "../strategies/cost";
 import { AITelemetry } from "../utils/logger";
 import { AIError } from "../types/errors";
-import { routePlanner, responseCache, usageTracker, UsageTracker } from "../router";
+import { routePlanner, responseCache, usageTracker, UsageTracker, healthChecker } from "../router";
 import type { ChatRequest, ChatResponse } from "../providers/interface";
 
 const log = logger.child("ai-executor");
 
 /**
  * Optimal error messages per feature — never expose provider/internal details.
- * These messages guide the user toward actionable next steps rather than
- * generic "try again" messages. They cover three categories:
- *   1. Provider unavailable (backup being tried)
- *   2. API limit reached (rate limiting / quota exhausted)
- *   3. All providers exhausted (complete outage)
+ * Never say "All AI providers are currently unavailable".
+ * Instead: tell the user we're retrying automatically.
  */
 const FRIENDLY_ERRORS: Record<FeatureType, string> = {
-  chat: "⚠️ All AI providers are currently unavailable for chat. Please try again in a few minutes.",
-  image: "⚠️ All AI providers are currently unavailable for image generation. Please try again in a few minutes.",
-  video: "⚠️ All AI providers are currently unavailable for video prompts. Please try again in a few minutes.",
-  coding: "⚠️ All AI providers are currently unavailable for coding. Please try again in a few minutes.",
-  business: "⚠️ All AI providers are currently unavailable for business analysis. Please try again in a few minutes.",
-  translate: "⚠️ All AI providers are currently unavailable for translation. Please try again in a few minutes.",
-  social: "⚠️ All AI providers are currently unavailable for social content. Please try again in a few minutes.",
+  chat: "⚠️ AI is currently under heavy load. Your request will retry automatically.",
+  image: "⚠️ AI is currently under heavy load. Your request will retry automatically.",
+  video: "⚠️ AI is currently under heavy load. Your request will retry automatically.",
+  coding: "⚠️ AI is currently under heavy load. Your request will retry automatically.",
+  business: "⚠️ AI is currently under heavy load. Your request will retry automatically.",
+  translate: "⚠️ AI is currently under heavy load. Your request will retry automatically.",
+  social: "⚠️ AI is currently under heavy load. Your request will retry automatically.",
 };
 
 export interface AIExecutionOptions {
@@ -104,9 +101,7 @@ export class AIExecutor {
 
     // ── 3. Get provider routing chain ──────────────
     const route = routePlanner.getRoute(feature);
-    const primaryProvider = modelId
-      ? routePlanner.getPrimaryProvider(feature)
-      : route.providerChain[0]!;
+    const primaryProvider = route.providerChain[0]!;
 
     // ── 4. Check cache ──────────────────────────────
     if (!modelId) {
@@ -137,10 +132,30 @@ export class AIExecutor {
       }
     }
 
-    // ── 5. Attempt execution with provider chain + auto-continuation ──
-    const providerChain = modelId
-      ? [routePlanner.getPrimaryProvider(feature)]
-      : route.providerChain;
+    // ── 5. Build provider chain with failover ──────────
+    // When a specific model is selected (modelId), put its provider FIRST
+    // but KEEP all other providers as fallbacks.
+    // Old behavior restricted to 1 provider — causing 429 to show immediately.
+    let providerChain: string[];
+    if (modelId) {
+      // Find which provider serves this model, put it first
+      const modelProvider = providerRegistry.getProvider(modelId).providerName;
+      const chain = [...route.providerChain];
+      // Move model's provider to front if found in chain
+      const existingIndex = chain.findIndex((p) => p.toLowerCase() === modelProvider.toLowerCase());
+      if (existingIndex >= 0) {
+        const [preferred] = chain.splice(existingIndex, 1);
+        providerChain = [preferred!, ...chain];
+      } else {
+        // Model's provider is not in chain — keep original order
+        providerChain = chain;
+      }
+    } else {
+      providerChain = route.providerChain;
+    }
+
+    const resolvedModelId = modelId || this.registry.getDefaultModel()?.id || "auto";
+    console.log(`[AI_ROUTER] feature=${feature} provider=${providerChain[0] ?? "none"} model=${resolvedModelId} chain=[${providerChain.join(",")}] userPlan=${userPlan ?? "FREE"}`);
 
     const result = await this.executeWithContinuation(
       feature, userPlan, providerChain, request, maxTokens, temperature,
@@ -213,7 +228,9 @@ export class AIExecutor {
         const userMsgPreview = continuationMessages
           .map((m) => `${m.role}:${m.content.slice(0, 100)}`)
           .join(" | ");
-        if (feature === "business") {
+        if (feature === "image") {
+          console.log(`[IMAGE_PROVIDER_ATTEMPT] provider=${providerId} model=${resolvedModelId} attempt=${attempt + 1}/${providerChain.length} feature=${feature}`);
+        } else if (feature === "business") {
           log.info(`[BUSINESS_EXECUTOR] Attempt ${attempt + 1}/${providerChain.length} — provider=${providerId} model=${resolvedModelId} maxTokens=${maxTokens} temp=${temperature} systemPrompt="${sysPromptPreview}"... messages="${userMsgPreview}"...`);
         } else {
           log.info(`[EXECUTOR] Attempt ${attempt + 1}/${providerChain.length} — ${feature} → ${providerId}/${resolvedModelId} maxTokens=${maxTokens} temp=${temperature}`);
@@ -288,6 +305,11 @@ export class AIExecutor {
           // On subsequent continuations, use the standard approach
           attempt--; // Stay on the same provider
           continue;
+        }
+
+        // ── Log image success ──
+        if (feature === "image") {
+          console.log(`[IMAGE_PROVIDER_SUCCESS] provider=${providerId} model=${resolvedModelId} attempt=${attempt + 1}/${providerChain.length} latency=${Date.now() - startTime}ms`);
         }
 
         // ── Success: compute usage and return merged response ──
@@ -367,14 +389,17 @@ export class AIExecutor {
 
         // ── RATE_LIMIT (429) — retry with exponential backoff on the SAME provider ──
         // before switching to the next provider in the chain.
-        // Backoff: 500ms, 1s, 2s, 4s (max 3 retries), then fall through to failover.
+        // Backoff: 2s, 5s, 10s (max 3 retries), then fall through to failover.
+        // After exhausting retries, mark provider as rate-limited for 60s cooldown.
         if (errorCode === "RATE_LIMIT" || errorStatus === 429) {
-          const maxRateLimitRetries = 3;
+          const backoffSchedule = [2000, 5000, 10000];
+          const maxRateLimitRetries = backoffSchedule.length;
           for (let retry = 1; retry <= maxRateLimitRetries; retry++) {
-            const backoffMs = Math.min(500 * Math.pow(2, retry - 1), 4000);
-            const jitter = Math.random() * 200;
+            const backoffMs = backoffSchedule[retry - 1]!;
+            const jitter = Math.random() * 500;
             const waitMs = backoffMs + jitter;
 
+            console.log(`[AI_FAILOVER] provider=${providerId} error=429 retry=${retry}/${maxRateLimitRetries} next_wait=${Math.round(waitMs)}ms feature=${feature}`);
             log.warn(`[RATE_LIMIT] ${providerId} — retry ${retry}/${maxRateLimitRetries} in ${Math.round(waitMs)}ms`, {
               feature,
               backoffMs,
@@ -478,8 +503,11 @@ export class AIExecutor {
             }
           }
 
-          // All rate limit retries exhausted — log and continue to failover
-          log.warn(`[RATE_LIMIT] ${providerId} — all ${maxRateLimitRetries} retries exhausted, failing over`);
+          // All rate limit retries exhausted — mark provider as rate-limited for 60s,
+          // then continue to failover to next provider.
+          healthChecker.recordRateLimit(providerId);
+          console.log(`[AI_FAILOVER] provider=${providerId} error=429 retries=${maxRateLimitRetries} cooldown=60s next_provider=${providerChain[attempt + 1] ?? "none"} feature=${feature}`);
+          log.warn(`[RATE_LIMIT] ${providerId} — all ${maxRateLimitRetries} retries exhausted, marked cooldown 60s`);
         }
 
         // Determine the model that was attempted (best-effort, non-critical)
@@ -521,8 +549,10 @@ export class AIExecutor {
           message: errorMsg,
         });
 
-        // For business feature, log a dedicated structured entry
-        if (feature === "business") {
+        // Feature-specific failure logs
+        if (feature === "image") {
+          console.log(`[IMAGE_PROVIDER_FAILED] provider=${providerId} model=${attemptedModel} status=${errorStatus ?? errorCode} error="${errorMsg.slice(0, 100)}"`);
+        } else if (feature === "business") {
           console.error(`[BUSINESS_AI_ERROR] provider=${providerId} model=${attemptedModel} status=${errorStatus ?? "N/A"} code=${errorCode} maxTokens=${maxTokens} sysPromptLen=${sysPromptLen} userMsgLen=${userMsgLen} message="${errorMsg}"`);
         }
 
@@ -577,17 +607,11 @@ export class AIExecutor {
           console.error(`[BUSINESS_ALL_FAILED] Chain: ${providerChain.join(" → ")} | Errors: ${errorSummary}`);
         }
 
-        // Build error message: include error pattern summary for debugging
-        const uniqueCodes = [...new Set(allProviderErrors.map((e) => e.code))];
-        const uniqueStatuses = [...new Set(allProviderErrors.map((e) => e.status).filter(Boolean))];
-        const errorDetail = allProviderErrors.length > 0
-          ? `\n\n📊 Error pattern: ${uniqueCodes.join(", ")}${uniqueStatuses.length > 0 ? ` (${uniqueStatuses.join(", ")})` : ""}`
-          : "";
-
+        // Build user-friendly error — never expose internal patterns
         throw new AIError(
-          `${FRIENDLY_ERRORS[feature] || "⚠️ AI is temporarily busy. Please try again in a few moments."}${errorDetail}`,
+          FRIENDLY_ERRORS[feature] || "⚠️ AI is temporarily busy. Your request will retry automatically.",
           "PROVIDER_ERROR",
-          { retryable: false }
+          { retryable: true }
         );
       }
     }

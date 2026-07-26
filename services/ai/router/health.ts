@@ -20,6 +20,9 @@ const UNHEALTHY_THRESHOLD = 3;
 /** Cooldown period (ms) before retrying an unhealthy provider */
 const RECOVERY_COOLDOWN = 60_000;
 
+/** Cooldown period after 429 (ms) — 60 seconds */
+const RATE_LIMIT_COOLDOWN = 60_000;
+
 /** Interval (ms) between periodic health checks */
 const PERIODIC_CHECK_INTERVAL = 120_000;
 
@@ -28,6 +31,8 @@ const HEALTH_CHECK_PROMPT = "Reply with exactly one word: ok.";
 
 export class HealthChecker {
   private healthMap: Map<string, ProviderHealth> = new Map();
+  /** Tracks providers that received 429 — separate from general health */
+  private rateLimitedUntil: Map<string, number> = new Map();
   private periodicTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
@@ -210,14 +215,64 @@ export class HealthChecker {
     }
   }
 
-  /** Check if a provider should be attempted (not unhealthy or past cooldown) */
+  /** Check if a provider should be attempted (not unhealthy, not rate-limited, past cooldown) */
   shouldAttempt(providerId: string): boolean {
+    // Check rate-limit cooldown first (429-specific, faster check)
+    if (this.isRateLimited(providerId)) {
+      return false;
+    }
+
     const health = this.getHealth(providerId);
     if (!health) return true; // Unknown provider, allow attempt
     if (health.status === "healthy") return true;
     if (health.status === "degraded") return true; // Allow degraded providers
     // Unhealthy: only allow if cooldown passed
     return Date.now() - health.lastFailure > RECOVERY_COOLDOWN;
+  }
+
+  /**
+   * Mark a provider as rate-limited (429). Sets a 60-second cooldown
+   * during which no requests will be sent to this provider.
+   */
+  recordRateLimit(providerId: string): void {
+    const cooldownUntil = Date.now() + RATE_LIMIT_COOLDOWN;
+    this.rateLimitedUntil.set(providerId, cooldownUntil);
+
+    // Also update general health
+    const existing = this.healthMap.get(providerId);
+    if (existing) {
+      this.healthMap.set(providerId, {
+        ...existing,
+        status: "degraded",
+        lastFailure: Date.now(),
+        consecutiveFailures: existing.consecutiveFailures + 1,
+        error: "Rate limited (429) — 60s cooldown",
+      });
+    }
+
+    log.warn(`[HEALTH] ${providerId} rate-limited for 60s (until ${new Date(cooldownUntil).toISOString()})`);
+  }
+
+  /**
+   * Check if a provider is currently in rate-limit cooldown.
+   */
+  isRateLimited(providerId: string): boolean {
+    const cooldownUntil = this.rateLimitedUntil.get(providerId);
+    if (!cooldownUntil) return false;
+    if (Date.now() > cooldownUntil) {
+      // Cooldown expired — remove and allow
+      this.rateLimitedUntil.delete(providerId);
+      return false;
+    }
+    return true;
+  }
+
+  /** Get remaining cooldown seconds for a rate-limited provider */
+  getRateLimitCooldownRemaining(providerId: string): number {
+    const cooldownUntil = this.rateLimitedUntil.get(providerId);
+    if (!cooldownUntil) return 0;
+    const remaining = Math.ceil((cooldownUntil - Date.now()) / 1000);
+    return Math.max(0, remaining);
   }
 
   /** Run a single health check request against a provider */

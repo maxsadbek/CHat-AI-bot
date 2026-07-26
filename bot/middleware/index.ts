@@ -33,7 +33,7 @@ export async function rateLimitMiddleware(
   }
 
   const lang = ctx.session?.language ?? "en";
-  const { allowed } = rateLimiter.check(`user:${userId}`);
+  const { allowed } = await rateLimiter.check(`user:${userId}`);
 
   if (!allowed) {
     log.warn("Rate limit hit", { userId });

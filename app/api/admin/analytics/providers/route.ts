@@ -1,17 +1,17 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { analyticsService } from "@/services/analytics";
+import { verifyAdminSecret } from "@/lib/auth";
 
 /**
  * GET /api/admin/analytics/providers
  * Returns AI provider and model usage breakdown.
- * Protected by admin secret header.
+ * Protected by admin secret header (timing-safe comparison).
  *
  * Query params:
  *   - days: number (default 30) — lookback period
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.ADMIN_SECRET}`) {
+  if (!verifyAdminSecret(request.headers.get("authorization"), process.env.ADMIN_SECRET)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

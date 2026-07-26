@@ -149,9 +149,10 @@ npm run dev
 |----------|----------|-------------|
 | `TELEGRAM_BOT_TOKEN` | ✅ | Bot token from BotFather |
 | `TELEGRAM_WEBHOOK_URL` | ✅ | Public URL for webhook (e.g., `https://your-domain.com/api/webhook`) |
+| `TELEGRAM_WEBHOOK_SECRET` | ✅ | **SECURITY CRITICAL** — Random 32+ char hex string. Telegram sends this with every webhook. Without it, anyone can send fake updates to your bot. Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `DATABASE_URL` | ✅ | PostgreSQL connection string |
 | `ADMIN_IDS` | ✅ | Comma-separated Telegram user IDs for admin access |
-| `ADMIN_SECRET` | ✅ | Secret key for admin API endpoints |
+| `ADMIN_SECRET` | ✅ | **SECURITY CRITICAL** — Admin API secret. Must be at least 24 random characters. Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `GEMINI_API_KEY` | * | **Recommended** — Google Gemini API key (lowest cost, highest free tier limits) |
 | `CEREBRAS_API_KEY` | * | Cerebras API key |
 | `MISTRAL_API_KEY` | * | Mistral AI API key |
@@ -213,12 +214,13 @@ npx prisma studio
 
 ## 🔒 Security
 
-- **API authentication**: Admin endpoints protected by `ADMIN_SECRET` header
-- **Rate limiting**: Per-user rate limiting to prevent spam
+- **API authentication**: Admin endpoints protected by `ADMIN_SECRET` header (timing-safe comparison via `crypto.timingSafeEqual`)
+- **Rate limiting**: Per-user rate limiting (Upstash Redis on serverless, in-memory fallback)
+- **Webhook verification**: `TELEGRAM_WEBHOOK_SECRET` sent as `secret_token` to Telegram; verified with timing-safe comparison on every request — unauthorized requests are rejected immediately with 401
+- **ADMIN_SECRET validation**: At startup, checks for weak/default values and minimum length (24+ chars). In production, exits with clear error if insecure
 - **Daily limits**: Per-feature daily request limits for free/premium users
 - **Environment isolation**: All secrets via environment variables
 - **Input validation**: Zod schemas for API payloads
-- **Webhook verification**: Telegram secret token validation
 
 ---
 

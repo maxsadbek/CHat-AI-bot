@@ -8,6 +8,7 @@ import { BotStep } from "@/types";
 import { t, SUPPORTED_LANGUAGES } from "@/bot/localization";
 import type { SupportedLanguage } from "@/bot/localization";
 import { mainMenuKeyboard } from "@/bot/keyboards";
+import { safeEditMessageText } from "@/bot/utils/telegram";
 import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/utils/helpers";
 import { logger } from "@/bot/core/logger";
@@ -38,7 +39,7 @@ export async function handleLanguageSelection(ctx: BotContext): Promise<void> {
   // Step 1: Verify user exists (middleware must have set userId)
   if (!ctx.session.userId) {
     await ctx.answerCallbackQuery();
-    await ctx.editMessageText("❌ *Profile not found.* Please use /start again.", {
+    await safeEditMessageText(ctx, "❌ *Profile not found.* Please use /start again.", {
       parse_mode: "Markdown",
     });
     return;
@@ -62,7 +63,7 @@ export async function handleLanguageSelection(ctx: BotContext): Promise<void> {
       language: selectedLang,
       error: String(error),
     });
-    await ctx.editMessageText("❌ *Could not save your settings.* Please try /start again.", {
+    await safeEditMessageText(ctx, "❌ *Could not save your settings.* Please try /start again.", {
       parse_mode: "Markdown",
     });
     return;

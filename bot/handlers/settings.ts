@@ -12,6 +12,7 @@
 import type { BotContext } from "@/types";
 import { BotStep } from "@/types";
 import { t } from "@/bot/localization";
+import { safeEditMessageText } from "@/bot/utils/telegram";
 import { settingsKeyboard, modelProviderKeyboard, modelSelectionKeyboard, languageKeyboard, confirmKeyboard, backToMainKeyboard } from "@/bot/keyboards";
 import { sessionManager } from "@/bot/core/session-manager";
 
@@ -75,7 +76,7 @@ export async function settingsModelSelectHandler(ctx: BotContext, modelId: strin
   const lang = ctx.session.language;
   sessionManager.setModel(ctx.session, modelId);
 
-  await ctx.editMessageText(t(lang, "settings.model_changed", { model: modelId }), {
+  await safeEditMessageText(ctx, t(lang, "settings.model_changed", { model: modelId }), {
     parse_mode: "Markdown",
     reply_markup: settingsKeyboard,
   });

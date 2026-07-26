@@ -6,6 +6,7 @@
 
 import { env } from "@/config";
 import { prisma } from "@/lib/prisma";
+import { verifyAdminSecret } from "@/lib/auth";
 import { logger } from "@/bot/core/logger";
 import type { BotContext } from "@/types";
 
@@ -23,12 +24,14 @@ export function isAdmin(
 /**
  * Verify API request authorization header
  * Returns the admin Telegram ID if valid, or null if unauthorized.
+ *
+ * Uses timing-safe comparison via verifyAdminSecret() for Bearer token auth.
  */
 export function verifyApiAuth(authHeader: string | null): number | null {
   if (!authHeader) return null;
 
   // Support both Bearer token (for secret-based auth) and direct admin ID
-  if (authHeader === `Bearer ${env.ADMIN_SECRET}`) {
+  if (verifyAdminSecret(authHeader, env.ADMIN_SECRET)) {
     return 0; // system admin
   }
 

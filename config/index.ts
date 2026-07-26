@@ -8,6 +8,8 @@ const envSchema = z.object({
   // Telegram
   TELEGRAM_BOT_TOKEN: z.string().min(1, "TELEGRAM_BOT_TOKEN is required"),
   TELEGRAM_WEBHOOK_URL: z.string().url().optional(),
+  /** Webhook secret token for authenticating Telegram requests (min 32 chars). Generate with: crypto.randomBytes(32).toString('hex') */
+  TELEGRAM_WEBHOOK_SECRET: z.string().min(32, "TELEGRAM_WEBHOOK_SECRET must be at least 32 characters and randomly generated").optional(),
 
   // ─── OpenAI Compatible API ────────────────
   OPENAI_API_KEY: z.string().min(1, "OPENAI_API_KEY is required"),
@@ -76,7 +78,7 @@ const envSchema = z.object({
         .filter((n) => !isNaN(n))
     )
     .default(""),
-  ADMIN_SECRET: z.string().default("admin-secret"),
+  ADMIN_SECRET: z.string().min(24, "ADMIN_SECRET must be at least 24 characters and randomly generated"),
 
   // App
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
@@ -147,6 +149,10 @@ const envSchema = z.object({
   AI_DAILY_TOKEN_LIMIT_FREE: z.coerce.number().default(10000),
   AI_DAILY_TOKEN_LIMIT_PREMIUM: z.coerce.number().default(50000),
 
+  // ─── Upstash Redis (for serverless rate limiting) ───
+  UPSTASH_REDIS_REST_URL: z.string().url().optional(),
+  UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
+
   // ─── Stripe ───────────────────────────
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
@@ -163,9 +169,50 @@ const envSchema = z.object({
 
 });
 
+/**
+ * Known weak ADMIN_SECRET values that must never be used in production.
+ */
+const WEAK_ADMIN_SECRETS = new Set([
+  "admin-secret",
+  "changeme",
+  "secret",
+  "password",
+  "admin",
+  "changeme123",
+  "secret123",
+  "admin123",
+]);
+
 function getEnv() {
   try {
-    return envSchema.parse(process.env);
+    const parsed = envSchema.parse(process.env);
+
+    // Runtime ADMIN_SECRET validation
+    if (parsed.ADMIN_SECRET) {
+      if (parsed.ADMIN_SECRET.length < 24) {
+        console.error(
+          "❌ ADMIN_SECRET is too short (${parsed.ADMIN_SECRET.length} chars). " +
+          "It must be at least 24 characters. " +
+          "Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
+        );
+        if (process.env.NODE_ENV === "production") {
+          process.exit(1);
+        }
+      }
+
+      if (WEAK_ADMIN_SECRETS.has(parsed.ADMIN_SECRET.toLowerCase())) {
+        console.error(
+          `❌ ADMIN_SECRET is set to a known weak value ("${parsed.ADMIN_SECRET}"). ` +
+          "This is a security risk. " +
+          "Generate a random secret with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
+        );
+        if (process.env.NODE_ENV === "production") {
+          process.exit(1);
+        }
+      }
+    }
+
+    return parsed;
   } catch (error) {
     if (error instanceof z.ZodError) {
       const missing = error.errors

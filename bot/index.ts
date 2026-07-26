@@ -151,6 +151,7 @@ import {
   homeCancelKeyboard,
   premiumKeyboard,
 } from "@/bot/keyboards";
+import { safeAnswerCallbackQuery, safeEditMessageText } from "@/bot/utils/telegram";
 import { t } from "@/bot/localization";
 import type { SupportedLanguage } from "@/bot/localization";
 import { prisma } from "@/lib/prisma";
@@ -348,16 +349,16 @@ export function createBot(): Bot<BotContext> {
 
   // ─── Language Selection ───────────────────────────
   callbackRouter.register(/^lang:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await handleLanguageSelection(ctx);
   });
 
   // ─── Global Navigation ────────────────────────────
   callbackRouter.register("nav:home", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     resetSession(ctx.session, true);
     const lang = ctx.session.language;
-    await ctx.editMessageText(t(lang, "menu.main"), {
+    await safeEditMessageText(ctx, t(lang, "menu.main"), {
       parse_mode: "Markdown",
       reply_markup: mainMenuKeyboard,
     });
@@ -365,14 +366,14 @@ export function createBot(): Bot<BotContext> {
 
   // Back — return to previous context
   callbackRouter.register("nav:back", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     if (ctx.session.step === BotStep.PROJECTS || ctx.session.currentProjectId) {
       await projectsHandler(ctx);
       return;
     }
     resetSession(ctx.session, true);
     const lang = ctx.session.language;
-    await ctx.editMessageText(t(lang, "menu.main"), {
+    await safeEditMessageText(ctx, t(lang, "menu.main"), {
       parse_mode: "Markdown",
       reply_markup: mainMenuKeyboard,
     });
@@ -380,10 +381,10 @@ export function createBot(): Bot<BotContext> {
 
   // Cancel — cancel operation, reset, show Main Menu
   callbackRouter.register("nav:cancel", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     resetSession(ctx.session, true);
     const lang = ctx.session.language;
-    await ctx.editMessageText(t(lang, "cancel.done"), {
+    await safeEditMessageText(ctx, t(lang, "cancel.done"), {
       parse_mode: "Markdown",
       reply_markup: mainMenuKeyboard,
     });
@@ -391,10 +392,10 @@ export function createBot(): Bot<BotContext> {
 
   // Legacy menu:main callback (backward compatibility)
   callbackRouter.register("menu:main", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     resetSession(ctx.session, true);
     const lang = ctx.session.language;
-    await ctx.editMessageText(t(lang, "menu.main"), {
+    await safeEditMessageText(ctx, t(lang, "menu.main"), {
       parse_mode: "Markdown",
       reply_markup: mainMenuKeyboard,
     });
@@ -402,29 +403,29 @@ export function createBot(): Bot<BotContext> {
 
   // ─── Main Menu Feature Switches ───────────────────
   callbackRouter.register(/^feature:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     const feature = (ctx as any).match[1] as string;
     await handleFeatureSwitch(ctx, feature);
   });
 
   // ─── Chat Actions ─────────────────────────────────
   callbackRouter.register("chat:new", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await newChatHandler(ctx);
   });
   callbackRouter.register("chat:history", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await chatHistoryHandler(ctx);
   });
   callbackRouter.register(/^resume:chat:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await resumeChatHandler(ctx);
   });
   callbackRouter.register("chat:clear", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     const lang = ctx.session.language;
     sessionManager.clearMessages(ctx.session);
-    await ctx.editMessageText(t(lang, "chat.clear_done"), {
+    await safeEditMessageText(ctx, t(lang, "chat.clear_done"), {
       parse_mode: "Markdown",
       reply_markup: chatKeyboard,
     });
@@ -432,34 +433,34 @@ export function createBot(): Bot<BotContext> {
 
   // ─── Settings Navigation ──────────────────────────
   callbackRouter.register("settings:language", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await settingsLanguageHandler(ctx);
   });
   callbackRouter.register("settings:model", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await settingsModelHandler(ctx);
   });
   callbackRouter.register("settings:clear", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await settingsClearHandler(ctx);
   });
   callbackRouter.register("settings:privacy", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await settingsPrivacyHandler(ctx);
   });
   callbackRouter.register("settings:about", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await settingsAboutHandler(ctx);
   });
 
   // ─── Model Selection ─────────────────────────────
   callbackRouter.register("model:providers", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await settingsModelHandler(ctx);
   });
   callbackRouter.register(/^model:provider:(.+)/, async (ctx) => {
     const provider = (ctx as any).match[1] as string;
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await settingsModelProviderHandler(ctx, provider);
   });
   callbackRouter.register(/^model:select:(.+)/, async (ctx) => {
@@ -469,7 +470,7 @@ export function createBot(): Bot<BotContext> {
 
   // ─── Clear Conversation Confirmation ──────────────
   callbackRouter.register("clear:confirm", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     const lang = ctx.session.language;
     const userId = ctx.session.userId;
     try {
@@ -482,15 +483,15 @@ export function createBot(): Bot<BotContext> {
       log.error("Clear conversations error", { userId, error: String(error) });
     }
     sessionManager.clearMessages(ctx.session);
-    await ctx.editMessageText(t(lang, "settings.cleared"), {
+    await safeEditMessageText(ctx, t(lang, "settings.cleared"), {
       parse_mode: "Markdown",
       reply_markup: settingsKeyboard,
     });
   });
   callbackRouter.register("clear:cancel", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     const lang = ctx.session.language;
-    await ctx.editMessageText(t(lang, "settings.title"), {
+    await safeEditMessageText(ctx, t(lang, "settings.title"), {
       parse_mode: "Markdown",
       reply_markup: settingsKeyboard,
     });
@@ -498,7 +499,7 @@ export function createBot(): Bot<BotContext> {
 
   // ─── Help Center ──────────────────────────────────
   callbackRouter.register(/^help:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     const topic = (ctx as any).match[1] ?? "";
     if (topic === "tips") {
       await helpTipsHandler(ctx);
@@ -509,220 +510,220 @@ export function createBot(): Bot<BotContext> {
 
   // ─── Global History — SPECIFIC patterns first, then general ──
   callbackRouter.register("history:menu", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await historyMenuHandler(ctx);
   });
   callbackRouter.register(/^history:detail:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await historyDetailHandler(ctx, (ctx as any).match[1]!);
   });
   callbackRouter.register(/^history:continue:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await historyContinueHandler(ctx, (ctx as any).match[1]!);
   });
   // ⚠️ ALL DELETE PATTERNS: register MORE SPECIFIC (confirm) BEFORE general
   callbackRouter.register(/^history:delete:confirm:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await historyDeleteConfirmHandler(ctx, (ctx as any).match[1]!);
   });
   callbackRouter.register(/^history:delete:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await historyDeleteHandler(ctx, (ctx as any).match[1]!);
   });
 
   // ─── Admin Panel — MVP (5 menus) ─────────────────
   // Main menu
   callbackRouter.register("admin:panel", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await adminHandler(ctx);
   });
   // Dashboard
   callbackRouter.register("admin:dashboard", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await adminDashboardHandler(ctx);
   });
   // Users
   callbackRouter.register("admin:users", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await adminUsersHandler(ctx);
   });
   callbackRouter.register(/^admin:user:detail:(\d+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await adminUserDetailHandler(ctx, parseInt((ctx as any).match[1]!, 10));
   });
   callbackRouter.register(/^admin:user:givepremium:(\d+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await adminUserGivePremiumHandler(ctx, parseInt((ctx as any).match[1]!, 10));
   });
   callbackRouter.register(/^admin:user:removepremium:(\d+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await adminUserRemovePremiumHandler(ctx, parseInt((ctx as any).match[1]!, 10));
   });
   callbackRouter.register(/^admin:user:ban:(\d+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await adminUserBanHandler(ctx, parseInt((ctx as any).match[1]!, 10));
   });
   callbackRouter.register(/^admin:user:unban:(\d+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await adminUserUnbanHandler(ctx, parseInt((ctx as any).match[1]!, 10));
   });
   callbackRouter.register(/^admin:user:reset:(\d+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await adminUserResetHandler(ctx, parseInt((ctx as any).match[1]!, 10));
   });
   // Payments
   callbackRouter.register("admin:payments", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await adminPaymentsHandler(ctx);
   });
   callbackRouter.register(/^admin:payment:detail:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await adminPaymentDetailHandler(ctx, (ctx as any).match[1]!);
   });
   callbackRouter.register(/^admin:payment:approve:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await adminPaymentApproveHandler(ctx, (ctx as any).match[1]!);
   });
   callbackRouter.register(/^admin:payment:reject:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await adminPaymentRejectHandler(ctx, (ctx as any).match[1]!);
   });
   // Broadcast
   callbackRouter.register("admin:broadcast", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await adminBroadcastHandler(ctx);
   });
   callbackRouter.register("admin:broadcast:text", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await adminBroadcastTextHandler(ctx);
   });
   callbackRouter.register("admin:broadcast:photo", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await adminBroadcastPhotoHandler(ctx);
   });
   // Settings
   callbackRouter.register("admin:settings", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await adminSettingsHandler(ctx);
   });
   callbackRouter.register("admin:settings:maintenance", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await adminSettingsMaintenanceHandler(ctx);
   });
 
   // ─── Image History ──────────────────────────────
   callbackRouter.register("image:history", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await imageHistoryHandler(ctx);
   });
   callbackRouter.register(/^resume:image:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await resumeImageHandler(ctx);
   });
 
   // ─── Video History ──────────────────────────────
   callbackRouter.register("video:history", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await videoHistoryHandler(ctx);
   });
   callbackRouter.register(/^resume:video:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await resumeVideoHandler(ctx);
   });
   callbackRouter.register(/^video:regenerate:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await regenerateVideoHandler(ctx);
   });
 
   // ─── Projects ────────────────────────────────────
   callbackRouter.register("project:list", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await projectsHandler(ctx);
   });
   callbackRouter.register("project:create", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await projectCreateHandler(ctx);
   });
   callbackRouter.register(/^project:open:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await projectOpenHandler(ctx, (ctx as any).match[1]!);
   });
   callbackRouter.register("project:rename", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await projectRenameHandler(ctx);
   });
   callbackRouter.register("project:delete", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await projectDeleteHandler(ctx);
   });
   callbackRouter.register(/^project:delete:confirm:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await projectDeleteConfirmHandler(ctx, (ctx as any).match[1]!);
   });
   callbackRouter.register(/^project:delete:cancel:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await projectDeleteCancelHandler(ctx, (ctx as any).match[1]!);
   });
   callbackRouter.register("project:hub:chat", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await projectHubChatHandler(ctx);
   });
   callbackRouter.register("project:hub:images", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await projectHubImagesHandler(ctx);
   });
   callbackRouter.register("project:hub:videos", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await projectHubVideosHandler(ctx);
   });
   callbackRouter.register("project:hub:files", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await projectHubFilesHandler(ctx);
   });
   callbackRouter.register("project:hub:notes", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await projectHubNotesHandler(ctx);
   });
   callbackRouter.register("project:hub:history", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await projectHubHistoryHandler(ctx);
   });
   callbackRouter.register("project:file:upload", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await projectFileUploadHandler(ctx);
   });
   callbackRouter.register("project:note:create", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await projectNoteCreateHandler(ctx);
   });
   callbackRouter.register(/^project:note:view:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await projectNoteViewHandler(ctx, (ctx as any).match[1]!);
   });
   callbackRouter.register(/^project:note:pin:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await projectNotePinHandler(ctx, (ctx as any).match[1]!);
   });
   callbackRouter.register(/^project:note:delete:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await projectNoteDeleteHandler(ctx, (ctx as any).match[1]!);
   });
 
   // ─── Premium ──────────────────────────────────────
   callbackRouter.register(/^premium:plan:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await premiumPlanHandler(ctx, (ctx as any).match[1]!);
   });
   callbackRouter.register(/^premium:subscribe:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await premiumUpgradeHandler(ctx, (ctx as any).match[1]!);
   });
   callbackRouter.register("premium:back", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await premiumHandler(ctx);
   });
   callbackRouter.register("premium:upgrade", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await premiumHandler(ctx);
   });
 
@@ -730,7 +731,7 @@ export function createBot(): Bot<BotContext> {
   // User clicks "📷 Send Receipt" — wait for photo
   // The planId is already stored in session tempData by manualPaymentShowHandler
   callbackRouter.register("manual:payment:receipt", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     const planId = ctx.session.tempData.manualPaymentPlan ?? "pro_monthly";
     log.debug("Manual payment receipt callback triggered", {
       userId: ctx.from?.id,
@@ -746,52 +747,52 @@ export function createBot(): Bot<BotContext> {
   // Status-only button shown after approve/reject (displays "✅ Approved" or "❌ Rejected")
   // No-op: the button is display-only, just acknowledge the callback to remove loading state
   callbackRouter.register("manual:payment:done", async (ctx) => {
-    await ctx.answerCallbackQuery("Payment already processed.");
+    await safeAnswerCallbackQuery(ctx, "Payment already processed.");
   });
 
   // Admin approves a manual payment
   callbackRouter.register(/^admin:manual:approve:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await manualPaymentApproveHandler(ctx, (ctx as any).match[1]!);
   });
 
   // Admin rejects a manual payment
   callbackRouter.register(/^admin:manual:reject:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await manualPaymentRejectHandler(ctx, (ctx as any).match[1]!);
   });
 
   // ─── Result Actions (future-ready) ────────────────
   callbackRouter.register("result:copy", async (ctx) => {
-    await ctx.answerCallbackQuery("📋 Copied to clipboard!");
+    await safeAnswerCallbackQuery(ctx, "📋 Copied to clipboard!");
   });
   callbackRouter.register("result:regenerate", async (ctx) => {
-    await ctx.answerCallbackQuery("🔄 Regenerating...");
+    await safeAnswerCallbackQuery(ctx, "🔄 Regenerating...");
   });
 
   // ─── Feature History (Coding / Business / Translate) ──
   callbackRouter.register("coding:history", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await codingHistoryHandler(ctx);
   });
   callbackRouter.register(/^resume:coding:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await resumeCodingHandler(ctx);
   });
   callbackRouter.register("business:history", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await businessHistoryHandler(ctx);
   });
   callbackRouter.register(/^resume:business:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await resumeBusinessHandler(ctx);
   });
   callbackRouter.register("translate:history", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await translateHistoryHandler(ctx);
   });
   callbackRouter.register(/^resume:translate:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     await resumeTranslateHandler(ctx);
   });
 
@@ -799,7 +800,7 @@ export function createBot(): Bot<BotContext> {
   // These use greedy patterns — must be registered last to avoid
   // matching more specific patterns like <feature>:history.
   callbackRouter.register(/^video:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     const raw = (ctx as any).match[1] ?? "";
     // Map keyboard slugs to proper platform names
     const VIDEO_PLATFORM_MAP: Record<string, import("@/types").VideoPlatform> = {
@@ -816,14 +817,14 @@ export function createBot(): Bot<BotContext> {
     const platformName = platform === "all" ? "All Platforms" : platform;
     sessionManager.setStep(ctx.session, BotStep.VIDEO_PROMPT);
     log.info("[SESSION] Video platform selected", { platform, step: BotStep.VIDEO_PROMPT });
-    await ctx.editMessageText(
+    await safeEditMessageText(ctx, 
       t(lang, "video.platform_selected", { platform: platformName }),
       { parse_mode: "Markdown" }
     );
   });
 
   callbackRouter.register(/^image:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     const raw = (ctx as any).match[1] ?? "";
     // Map keyboard slugs to proper platform names
     const IMAGE_PLATFORM_MAP: Record<string, import("@/types").ImagePlatform> = {
@@ -840,14 +841,14 @@ export function createBot(): Bot<BotContext> {
     const platformName = platform === "all" ? "All Platforms" : platform;
     sessionManager.setStep(ctx.session, BotStep.IMAGE_PROMPT);
     log.info("[SESSION] Image platform selected", { platform, step: BotStep.IMAGE_PROMPT });
-    await ctx.editMessageText(
+    await safeEditMessageText(ctx, 
       t(lang, "image.platform_selected", { platform: platformName }),
       { parse_mode: "Markdown" }
     );
   });
 
   callbackRouter.register(/^social:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     const raw = (ctx as any).match[1] ?? "";
     const platform: import("@/types").SocialPlatform | "all" =
       raw === "all" || !raw ? "all" : (raw as import("@/types").SocialPlatform);
@@ -855,32 +856,32 @@ export function createBot(): Bot<BotContext> {
     const lang = ctx.session.language;
     const platformName = platform === "all" ? "All Platforms" : platform;
     sessionManager.setStep(ctx.session, BotStep.SOCIAL_MEDIA);
-    await ctx.editMessageText(
+    await safeEditMessageText(ctx, 
       t(lang, "social.platform_selected", { platform: platformName }),
       { parse_mode: "Markdown" }
     );
   });
 
   callbackRouter.register(/^business:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     const businessType = ((ctx as any).match[1] ?? "startup_idea") as import("@/types").BusinessContentType;
     ctx.session.selectedBusinessType = businessType;
     const lang = ctx.session.language;
     const typeName = businessType.replace(/_/g, " ");
     sessionManager.setStep(ctx.session, BotStep.BUSINESS);
-    await ctx.editMessageText(
+    await safeEditMessageText(ctx, 
       t(lang, "business.type_selected", { type: typeName }),
       { parse_mode: "Markdown" }
     );
   });
 
   callbackRouter.register(/^coding:(.+)/, async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswerCallbackQuery(ctx);
     const language = ((ctx as any).match[1] ?? "Next.js") as import("@/types").CodeLanguage;
     ctx.session.selectedCodeLanguage = language;
     const lang = ctx.session.language;
     sessionManager.setStep(ctx.session, BotStep.CODING);
-    await ctx.editMessageText(
+    await safeEditMessageText(ctx, 
       t(lang, "coding.language_selected", { language }),
       { parse_mode: "Markdown" }
     );
@@ -893,7 +894,7 @@ export function createBot(): Bot<BotContext> {
     const handled = await callbackRouter.match(ctx);
     if (!handled) {
       log.warn("Unhandled callback query", { data: ctx.callbackQuery?.data, userId: ctx.from?.id });
-      await ctx.answerCallbackQuery();
+      await safeAnswerCallbackQuery(ctx);
     }
   });
 

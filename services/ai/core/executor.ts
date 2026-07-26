@@ -27,14 +27,14 @@ const log = logger.child("ai-executor");
  * Never say "All AI providers are currently unavailable".
  * Instead: tell the user we're retrying automatically.
  */
-/** Per-provider attempt timeout — 15 seconds max per single AI call */
-const PER_PROVIDER_TIMEOUT_MS = 15_000;
+/** Per-provider attempt timeout — 30 seconds max per single AI call */
+const PER_PROVIDER_TIMEOUT_MS = 30_000;
 
 /**
- * Overall execution timeout — 20 seconds for the entire generation.
+ * Overall execution timeout — 50 seconds for the entire generation.
  * If no provider responds within this window, we give up.
  */
-const OVERALL_EXECUTION_TIMEOUT_MS = 20_000;
+const OVERALL_EXECUTION_TIMEOUT_MS = 50_000;
 
 const FRIENDLY_ERRORS: Record<FeatureType, string> = {
   chat: "⚠️ AI is currently under heavy load. Your request will retry automatically.",

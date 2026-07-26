@@ -10,6 +10,7 @@ const TELEGRAM_API = "https://api.telegram.org/bot";
 async function setWebhook(): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const webhookUrl = process.env.TELEGRAM_WEBHOOK_URL;
+  const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
 
   if (!token) {
     console.error("❌ TELEGRAM_BOT_TOKEN is not set");
@@ -18,6 +19,12 @@ async function setWebhook(): Promise<void> {
 
   if (!webhookUrl) {
     console.error("❌ TELEGRAM_WEBHOOK_URL is not set");
+    process.exit(1);
+  }
+
+  if (!webhookSecret) {
+    console.error("❌ TELEGRAM_WEBHOOK_SECRET is not set (required for webhook security)");
+    console.error("   Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"");
     process.exit(1);
   }
 
@@ -30,6 +37,7 @@ async function setWebhook(): Promise<void> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         url: fullWebhookUrl,
+        secret_token: webhookSecret,
         allowed_updates: [
           "message",
           "callback_query",
@@ -45,6 +53,7 @@ async function setWebhook(): Promise<void> {
     if (data.ok) {
       console.log("✅ Webhook set successfully!");
       console.log(`   URL: ${fullWebhookUrl}`);
+      console.log(`   Secret token: ${webhookSecret.slice(0, 8)}... (${webhookSecret.length} chars)`);
     } else {
       console.error("❌ Failed to set webhook:", data.description);
     }

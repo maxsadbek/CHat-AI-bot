@@ -244,6 +244,14 @@ export class AIExecutor {
         attemptStartTime = Date.now();
         console.log(`[AI_ATTEMPT_START] feature=${feature} provider=${providerId} model=${resolvedModelId} attempt=${attempt + 1}/${providerChain.length} maxTokens=${maxTokens}`);
 
+        // ── TEMP DEBUG: Log the EXACT system prompt and model being sent to provider ──
+        const sysPromptToSend = request.systemPrompt || "(none)";
+        const sysPromptPreview = sysPromptToSend.length > 300 ? sysPromptToSend.slice(0, 300) + "..." : sysPromptToSend;
+        console.log(`[FINAL_SYSTEM_PROMPT] feature=${feature} provider=${providerId} model=${resolvedModelId} length=${sysPromptToSend.length} preview="${sysPromptPreview}"`);
+        console.log(`[FINAL_MODEL] feature=${feature} provider=${providerId} model=${resolvedModelId}`);
+        console.log(`[FINAL_PROVIDER] feature=${feature} provider=${providerId} chain=[${providerChain.join(",")}]`);
+        console.log(`[FINAL_MESSAGES] feature=${feature} count=${continuationMessages.length} roles=[${continuationMessages.map(m => m.role).join(",")}] userContent="${(continuationMessages.find(m => m.role === "user")?.content || "").slice(0, 80)}"`);
+
         // ── Execute provider.chat() with per-provider timeout ──
         // If the provider hangs (no response, network stall, infinite loop),
         // the timeout will abort and treat it as a provider failure,

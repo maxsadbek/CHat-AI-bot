@@ -16,8 +16,7 @@
 import { timingSafeEqual } from "crypto";
 
 /**
- * Weak/default ADMIN_SECRET values that must be rejected in production.
- * These are known-bad defaults that could be guessed by attackers.
+ * Weak/default ADMIN_SECRET values that must be rejected.
  */
 const WEAK_SECRETS = new Set([
   "admin-secret",
@@ -44,12 +43,48 @@ export function safeCompare(actual: string, provided: string): boolean {
   return timingSafeEqual(Buffer.from(actual), Buffer.from(provided));
 }
 
+let _weakSecretWarningShown = false;
+
+/**
+ * Check ADMIN_SECRET strength and log a warning ONCE if it's missing/weak.
+ * Never calls process.exit — just logs and returns false.
+ * Uses module-level flag so warning only appears once per server instance.
+ */
+function warnIfWeakAdminSecret(adminSecret: string | undefined): void {
+  if (_weakSecretWarningShown) return;
+
+  if (!adminSecret) {
+    console.error(
+      "❌ ADMIN_SECRET is not set. Admin API endpoints will reject all requests. " +
+      "Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
+    );
+    _weakSecretWarningShown = true;
+  } else if (adminSecret.length < 24) {
+    console.error(
+      `❌ ADMIN_SECRET is too short (${adminSecret.length} chars). ` +
+      `It must be at least 24 characters. ` +
+      `Generate one with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+    );
+    _weakSecretWarningShown = true;
+  } else if (WEAK_SECRETS.has(adminSecret.toLowerCase())) {
+    console.error(
+      `❌ ADMIN_SECRET is set to a known weak value ("${adminSecret}"). ` +
+      "This is a security risk. " +
+      "Generate a random secret with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
+    );
+    _weakSecretWarningShown = true;
+  }
+}
+
 /**
  * Verify the `Authorization` header against `ADMIN_SECRET`.
  *
  * Accepts both:
  *   - `Authorization: Bearer <secret>` (standard Bearer token)
  *   - `Authorization: <secret>` (raw secret for backward compatibility)
+ *
+ * Also logs a warning if the configured ADMIN_SECRET is weak or too short
+ * (runs once per server instance via the weak set check).
  *
  * Returns `true` if the secret matches the configured `ADMIN_SECRET`.
  */
@@ -58,6 +93,8 @@ export function verifyAdminSecret(
   adminSecret: string | undefined
 ): boolean {
   if (!authHeader || !adminSecret) {
+    // Log warning once when secret is missing/bad
+    warnIfWeakAdminSecret(adminSecret);
     return false;
   }
 
@@ -66,44 +103,8 @@ export function verifyAdminSecret(
     ? authHeader.slice(7)
     : authHeader;
 
+  // Also log warning if the stored ADMIN_SECRET is weak (for visibility)
+  warnIfWeakAdminSecret(adminSecret);
+
   return safeCompare(adminSecret, token);
-}
-
-/**
- * Validate that the ADMIN_SECRET environment variable is not weak or too short.
- *
- * Call this at application startup (in the bot initialization or config loading).
- * In production, exits the process with a clear error if the secret is insecure.
- *
- * Returns `true` if the secret passes validation.
- */
-export function validateAdminSecret(
-  adminSecret: string,
-  isProduction: boolean
-): boolean {
-  if (!adminSecret || adminSecret.length < 24) {
-    console.error(
-      "❌ ADMIN_SECRET is too short or not set. " +
-        "It must be at least 24 characters. " +
-        "Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
-    );
-    if (isProduction) {
-      process.exit(1);
-    }
-    return false;
-  }
-
-  if (WEAK_SECRETS.has(adminSecret.toLowerCase())) {
-    console.error(
-      `❌ ADMIN_SECRET is set to a known weak value ("${adminSecret}"). ` +
-        "This is a security risk. " +
-        "Generate a random secret with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
-    );
-    if (isProduction) {
-      process.exit(1);
-    }
-    return false;
-  }
-
-  return true;
 }

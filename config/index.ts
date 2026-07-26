@@ -174,20 +174,6 @@ const envSchema = z.object({
 
 });
 
-/**
- * Known weak ADMIN_SECRET values that must never be used in production.
- */
-const WEAK_ADMIN_SECRETS = new Set([
-  "admin-secret",
-  "changeme",
-  "secret",
-  "password",
-  "admin",
-  "changeme123",
-  "secret123",
-  "admin123",
-]);
-
 function getEnv() {
   try {
     return envSchema.parse(process.env);
@@ -208,60 +194,6 @@ export const env = {
   isDev: process.env.NODE_ENV === "development",
   isProd: process.env.NODE_ENV === "production",
 } as const;
-
-/**
- * 🔐 Runtime environment validation — logs warnings only, never crashes.
- *
- * Runs at module load time when `@/config` is imported, but since ALL env
- * vars are now `.optional()` in the Zod schema, the build will never fail
- * due to missing env vars. If critical vars are missing/weak, clear warnings
- * are printed so operators know to fix them.
- *
- * The admin routes protect themselves via `verifyAdminSecret()` at request
- * time — a weak or missing ADMIN_SECRET simply means admin API returns 401.
- * The bot itself works regardless.
- */
-export function validateEnvRuntime(): void {
-  const adminSecret = env.ADMIN_SECRET;
-
-  // ── TELEGRAM_BOT_TOKEN ──
-  if (!env.TELEGRAM_BOT_TOKEN) {
-    console.error("❌ TELEGRAM_BOT_TOKEN is not set. The bot will not respond to commands until this is configured.");
-  }
-
-  // ── DATABASE_URL ──
-  if (!env.DATABASE_URL) {
-    console.error("❌ DATABASE_URL is not set. The database will not work until this is configured.");
-  }
-
-  // ── ADMIN_SECRET ──
-  if (!adminSecret) {
-    console.error(
-      "❌ ADMIN_SECRET is not set. Admin API endpoints will reject all requests. " +
-      "Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
-    );
-  } else if (adminSecret.length < 24) {
-    console.error(
-      `❌ ADMIN_SECRET is too short (${adminSecret.length} chars). ` +
-      `It must be at least 24 characters. ` +
-      `Generate one with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
-    );
-  } else if (WEAK_ADMIN_SECRETS.has(adminSecret.toLowerCase())) {
-    console.error(
-      `❌ ADMIN_SECRET is set to a known weak value ("${adminSecret}"). ` +
-      "This is a security risk. " +
-      "Generate a random secret with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
-    );
-  }
-
-  // ── At least one AI provider key ──
-  if (!env.GEMINI_API_KEY && !env.OPENAI_API_KEY) {
-    console.warn(
-      "⚠️ Neither GEMINI_API_KEY nor OPENAI_API_KEY is configured. " +
-      "AI features will not work until at least one AI provider key is set."
-    );
-  }
-}
 
 export const config = {
   app: {

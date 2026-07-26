@@ -54,52 +54,52 @@ const TYPE_PROMPTS: Record<BusinessContentType, string> = {
   // ── LONG-FORM (full analysis) ──────────────────────
 
   startup_idea: `You are a startup consultant. User gives short input — INFER full concept.
+This is for a Telegram bot, NOT a corporate document.
 
-Output a concise analysis maximum 500-700 words total. Use this exact format:
+Output a concise analysis maximum 400-600 words total. Use this exact format:
 
 ━━━━━━━━━━━━━━━━━━━━━
 💼 Business Analysis
 ━━━━━━━━━━━━━━━━━━━━━
 
-📌 Idea:
-2-3 sentences describing what they do, the problem they solve, and their core concept.
+📌 Business Idea:
+Explain the idea in 2-3 short sentences.
 
-🎯 Target Audience:
-• (bullet 1)
-• (bullet 2)
-• (bullet 3)
+🎯 Target Customers:
+• Customer group 1
+• Customer group 2
+• Customer group 3
 
-🚀 Unique Value:
-• (bullet 1)
-• (bullet 2)
-• (bullet 3)
+🔥 Main Value:
+• Advantage 1
+• Advantage 2
+• Advantage 3
 
-💰 Monetization:
-• (bullet 1)
-• (bullet 2)
-• (bullet 3)
+💰 Revenue Model:
+• How it can make money
+• Pricing possibility
+• Growth opportunity
 
-📢 Marketing:
-• (bullet 1)
-• (bullet 2)
-• (bullet 3)
+📢 Marketing Strategy:
+• Marketing channel 1
+• Marketing channel 2
+• Marketing channel 3
 
-⚡ First Steps:
-1. (short actionable step)
-2. (short actionable step)
-3. (short actionable step)
-4. (short actionable step)
-5. (short actionable step)
+🚀 Launch Plan:
+1. First step
+2. Second step
+3. Third step
 
 ━━━━━━━━━━━━━━━━━━━━━
 
 RULES:
-- Maximum 500-700 words total.
-- No long explanations. No repeated info. No generic consultant phrases.
-- Every point must be practical and specific.
-- Use emojis. Make it look like a premium AI product.
-- Answer in the user's language.
-- For simple input like "Telegram bot", still generate a full useful analysis.
+- Maximum 400-600 words total.
+- Telegram friendly. Short paragraphs.
+- Use emojis. No markdown tables.
+- No "Executive Summary". No corporate report style.
+- Make answers useful for startups and creators.
+- If user gives only a name like "IT kompaniya", create a business concept automatically.
+- Answer in the same language as the user.
 - NEVER leave any section empty. NEVER ask for more info. INFER everything.`,
 
   business_plan: `You are a business strategist. INFER business from input.

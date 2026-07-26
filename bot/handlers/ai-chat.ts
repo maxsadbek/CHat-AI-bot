@@ -9,7 +9,7 @@ import { BotStep } from "@/types";
 import { aiChatService } from "@/services/ai/chat";
 import { providerRegistry } from "@/services/ai/providers";
 import { chatKeyboard } from "@/bot/keyboards";
-import { splitMessage } from "@/utils/markdown";
+import { splitMessage, sendAIMessage, escapeMarkdownLegacy } from "@/utils/markdown";
 import { t } from "@/bot/localization";
 import { logger } from "@/bot/core/logger";
 import { usageService } from "@/services/usage";
@@ -75,14 +75,15 @@ export async function aiChatHandler(ctx: BotContext): Promise<void> {
       selectedModel
     );
 
-    // Split and send long responses
+    // Split and send long responses with safe HTML parsing
     const chunks = splitMessage(response.content);
     for (const chunk of chunks) {
-      await ctx.reply(chunk, {
-        parse_mode: "Markdown",
-        reply_markup:
-          chunks.indexOf(chunk) === chunks.length - 1 ? chatKeyboard : undefined,
-      });
+      const isLast = chunks.indexOf(chunk) === chunks.length - 1;
+      await sendAIMessage(
+        (text, extra) => ctx.reply(text, extra as any),
+        chunk,
+        { reply_markup: isLast ? chatKeyboard : undefined } as any
+      );
     }
   } catch (error) {
     log.error("AI Chat error", { userId, error: String(error) });

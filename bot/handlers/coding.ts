@@ -4,6 +4,7 @@ import { codingAIService } from "@/services/ai/coding";
 import { codingKeyboard } from "@/bot/keyboards";
 import { clearModeData } from "@/bot/session";
 import { t } from "@/bot/localization";
+import { splitMessage, sendAIMessage } from "@/utils/markdown";
 import { logger } from "@/bot/core/logger";
 import {
   createConversation,
@@ -83,10 +84,11 @@ export async function codingGenerateHandler(ctx: BotContext): Promise<void> {
     const response = `${t(lang, "coding.result_title", { language })}\n\n${result.code}`;
 
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});
-    await ctx.reply(response, {
-      parse_mode: "Markdown",
-      reply_markup: codingKeyboard,
-    });
+    await sendAIMessage(
+      (text, extra) => ctx.reply(text, extra as any),
+      response,
+      { reply_markup: codingKeyboard } as any
+    );
   } catch (error) {
     log.error("Coding AI error", { userId, error: String(error) });
     await ctx.api.deleteMessage(ctx.chat!.id, startMsg.message_id).catch(() => {});

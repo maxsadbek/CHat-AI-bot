@@ -128,3 +128,55 @@ export function stripMarkdown(text: string): string {
     .replace(/`(.*?)`/g, "$1")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
 }
+
+/**
+ * AI Message Sanitizer
+ *
+ * Safely prepares AI-generated text for Telegram.
+ * AI responses often contain markdown/metadata characters that break Telegram's parser.
+ *
+ * Strategy: Use HTML parse_mode, which is more forgiving than Markdown.
+ * We only allow basic HTML tags (bold, italic, code, links) and escape everything else.
+ *
+ * If the text still fails to send, the caller should retry with parse_mode: undefined (plain text).
+ */
+
+/**
+ * Escape text for safe Telegram HTML parsing.
+ * Escapes: & < > and removes entities that could break parsing.
+ */
+export function sanitizeForTelegram(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/**
+ * Smart Telegram message sender.
+ * Tries HTML parse_mode first, falls back to plain text on parse failure.
+ * This is the SAFEST way to send AI-generated content to Telegram.
+ *
+ * @param sendFn - Function that sends the message (e.g., ctx.reply or ctx.editMessageText)
+ * @param text - The text to send
+ * @param extra - Additional send options (reply_markup, etc.)
+ * @returns The result of the successful send attempt
+ */
+export async function sendAIMessage<T>(
+  sendFn: (text: string, extra?: Record<string, unknown>) => Promise<T>,
+  text: string,
+  extra?: Record<string, unknown>
+): Promise<T> {
+  // First attempt: HTML parse_mode with sanitized text
+  const safeHtml = sanitizeForTelegram(text);
+  try {
+    return await sendFn(safeHtml, { ...extra, parse_mode: "HTML" } as any);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // If HTML parsing fails, fall back to plain text
+    if (msg.includes("parse") || msg.includes("entity") || msg.includes("Can't parse")) {
+      return await sendFn(text, { ...extra, parse_mode: undefined } as any);
+    }
+    throw err;
+  }
+}

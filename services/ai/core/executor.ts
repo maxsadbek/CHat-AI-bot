@@ -28,13 +28,13 @@ const log = logger.child("ai-executor");
  * Instead: tell the user we're retrying automatically.
  */
 /** Per-provider attempt timeout — 15 seconds max per single AI call */
-const PER_PROVIDER_TIMEOUT_MS = 15_000;
+const PER_PROVIDER_TIMEOUT_MS = 60_000;
 
 /**
- * Overall execution timeout — 45 seconds for the entire generation.
+ * Overall execution timeout — 90 seconds for the entire generation.
  * If no provider responds within this window, we give up.
  */
-const OVERALL_EXECUTION_TIMEOUT_MS = 45_000;
+const OVERALL_EXECUTION_TIMEOUT_MS = 90_000;
 
 const FRIENDLY_ERRORS: Record<FeatureType, string> = {
   chat: "⚠️ AI is currently under heavy load. Your request will retry automatically.",
@@ -165,6 +165,7 @@ export class AIExecutor {
 
     const resolvedModelId = modelId || this.registry.getDefaultModel()?.id || "auto";
     console.log(`[AI_ROUTER] feature=${feature} provider=${providerChain[0] ?? "none"} model=${resolvedModelId} chain=[${providerChain.join(",")}] userPlan=${userPlan ?? "FREE"}`);
+    console.log(`[AI_REQUEST] feature=${feature} provider=${providerChain[0] ?? "none"} model=${resolvedModelId} tokens=${maxTokens} chain=[${providerChain.join(",")}] userPlan=${userPlan ?? "FREE"}`);
 
     const result = await this.executeWithContinuation(
       feature, userPlan, providerChain, request, maxTokens, temperature,
@@ -203,7 +204,7 @@ export class AIExecutor {
     for (let attempt = 0; attempt < providerChain.length; attempt++) {
       const providerId = providerChain[attempt]!;
 
-      // ── Pre-flight: Check API key and enabled status ─────────
+      // ── Pre-flight: Check API key, enabled status, and health ──
       const setting = aiConfig.getProviderSetting(providerId as ProviderId);
       if (!setting || !setting.enabled) {
         log.warn(`[EXECUTOR] Skipping ${providerId}: provider is disabled or not configured`);
@@ -212,6 +213,14 @@ export class AIExecutor {
       const apiKey = process.env[setting.envKey];
       if (!apiKey) {
         log.warn(`[EXECUTOR] Skipping ${providerId}: API key missing (env: ${setting.envKey})`);
+        continue;
+      }
+
+      // ── Health check: skip rate-limited or unhealthy providers ──
+      if (!healthChecker.shouldAttempt(providerId)) {
+        const cooldownSec = healthChecker.getRateLimitCooldownRemaining(providerId);
+        log.warn(`[EXECUTOR] Skipping ${providerId}: health check failed (rate-limited: ${cooldownSec > 0})`);
+        console.log(`[AI_SWITCH] from=${providerId} to=${providerChain[attempt + 1] ?? "none"} reason=health_check_blocked cooldown=${cooldownSec}s feature=${feature}`);
         continue;
       }
 
@@ -274,6 +283,7 @@ export class AIExecutor {
         }
 
         console.log(`[AI_ATTEMPT_END] feature=${feature} provider=${providerId} model=${resolvedModelId} status=success duration=${attemptDuration}ms attempt=${attempt + 1}/${providerChain.length}`);
+        console.log(`[AI_SUCCESS] feature=${feature} provider=${providerId} model=${resolvedModelId} duration=${attemptDuration}ms tokens=${maxTokens} attempt=${attempt + 1}/${providerChain.length}`);
 
         // Append to accumulated content
         accumulatedContent += (accumulatedContent ? "\n\n" : "") + response.content;
@@ -530,6 +540,7 @@ export class AIExecutor {
             } catch (retryError) {
               const retryMsg = retryError instanceof Error ? retryError.message : String(retryError);
               log.warn(`[RATE_LIMIT] ${providerId} — retry ${retry}/${maxRateLimitRetries} failed: ${retryMsg.slice(0, 100)}`);
+              console.log(`[AI_FAIL] feature=${feature} provider=${providerId} error=RATE_LIMIT_RETRY_FAILED attempt=${retry}/${maxRateLimitRetries} message="${retryMsg.slice(0, 100)}"`);
               // Fall through to next retry or failover
             }
           }
@@ -538,6 +549,7 @@ export class AIExecutor {
           // then continue to failover to next provider.
           healthChecker.recordRateLimit(providerId);
           console.log(`[AI_FAILOVER] provider=${providerId} error=429 retries=${maxRateLimitRetries} cooldown=60s next_provider=${providerChain[attempt + 1] ?? "none"} feature=${feature}`);
+          console.log(`[AI_SWITCH] from=${providerId} to=${providerChain[attempt + 1] ?? "none"} reason=429_RATE_LIMIT_EXHAUSTED retries=${maxRateLimitRetries} cooldown=60s feature=${feature}`);
           log.warn(`[RATE_LIMIT] ${providerId} — all ${maxRateLimitRetries} retries exhausted, marked cooldown 60s`);
         }
 
@@ -582,6 +594,7 @@ export class AIExecutor {
 
         // Log AI_ATTEMPT_END (failure) for every feature
         console.log(`[AI_ATTEMPT_END] feature=${feature} provider=${providerId} model=${attemptedModel} status=${errorCode} duration=${Date.now() - attemptStartTime}ms attempt=${attempt + 1}/${providerChain.length}`);
+        console.log(`[AI_FAIL] feature=${feature} provider=${providerId} model=${attemptedModel} error=${errorCode} status=${errorStatus ?? "?"} duration=${Date.now() - attemptStartTime}ms attempt=${attempt + 1}/${providerChain.length}`);
 
         // Feature-specific failure logs
         if (feature === "image") {
@@ -626,8 +639,10 @@ export class AIExecutor {
           };
         }
 
-        // If more providers available, try next after brief delay
+        // If more providers available, log switch and try next
         if (attempt < providerChain.length - 1) {
+          const nextProvider = providerChain[attempt + 1] ?? "none";
+          console.log(`[AI_SWITCH] from=${providerId} to=${nextProvider} reason=${errorCode} status=${errorStatus ?? "?"} feature=${feature}`);
           await new Promise((resolve) => setTimeout(resolve, 1000));
           continue;
         }

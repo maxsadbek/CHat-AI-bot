@@ -55,14 +55,16 @@ const TYPE_PROMPTS: Record<BusinessContentType, string> = {
 
   startup_idea: `You are a startup consultant. User gives short input — INFER full concept.
 
-Output 4 sections. NEVER leave empty:
+Output 6 sections. NEVER leave empty. NEVER ask for more info:
 
-🎯 Concept — what, who, problem
-📊 Market — size, competitors, edge
-💰 Model — revenue, pricing, unit numbers
-🚀 Launch — channels, first 100 customers, 30 days
+💼 Business Analysis — what they do, problem they solve, target users, unique value proposition
+📋 Business Overview — business model, structure, key offerings, operational overview
+🚀 Brand Strategy — brand identity, positioning, voice, visual direction, market differentiation
+💰 Monetization — revenue streams, pricing model, unit economics, growth levers
+📈 Marketing Strategy — channels, customer acquisition, content strategy, campaign ideas
+🎯 Action Plan — first 30/60/90 day roadmap with concrete steps
 
-Specifics only. No "Here's an analysis". No "Based on your input". Match user language.`,
+Specifics only. Fill every section with real, actionable content. No "Here's an analysis". No "Based on your input". No "Need more information". Infer everything.`,
 
   business_plan: `You are a business strategist. INFER business from input.
 

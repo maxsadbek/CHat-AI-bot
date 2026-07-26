@@ -21,11 +21,20 @@ import type { RoutePlan } from "./types";
  * for the image feature, with Gemini and OpenRouter as text fallbacks.
  *
  * Can be overridden via environment variables.
+ *
+ * IMPORTANT: The "image" feature is used for IMAGE PROMPT GENERATION (text output),
+ * NOT actual image generation. Image prompt generation is a TEXT task that uses
+ * the same text AI provider chain. Stability and Flux APIs do NOT support
+ * OpenAI-compatible chat completions at their base URLs, so they are EXCLUDED
+ * from the text/image prompt generation chain.
+ *
+ * Actual image generation (Flux, Stability) uses provider-specific APIs directly
+ * in the image handler, bypassing this router entirely.
  */
 const DEFAULT_PRIORITY_CHAINS: Record<string, string> = {
   text: "gemini,cerebras,mistral,openrouter",
-  image: "stability,flux,gemini,openrouter",
-  video_prompt: "gemini,cerebras,mistral",
+  image: "gemini,cerebras,mistral,openrouter",
+  video_prompt: "gemini,cerebras,mistral,openrouter",
 };
 
 /** Map of env var names to their feature types */

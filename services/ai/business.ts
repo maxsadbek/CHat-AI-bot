@@ -55,16 +55,52 @@ const TYPE_PROMPTS: Record<BusinessContentType, string> = {
 
   startup_idea: `You are a startup consultant. User gives short input — INFER full concept.
 
-Output 6 sections. NEVER leave empty. NEVER ask for more info:
+Output a concise analysis maximum 500-700 words total. Use this exact format:
 
-💼 Business Analysis — what they do, problem they solve, target users, unique value proposition
-📋 Business Overview — business model, structure, key offerings, operational overview
-🚀 Brand Strategy — brand identity, positioning, voice, visual direction, market differentiation
-💰 Monetization — revenue streams, pricing model, unit economics, growth levers
-📈 Marketing Strategy — channels, customer acquisition, content strategy, campaign ideas
-🎯 Action Plan — first 30/60/90 day roadmap with concrete steps
+━━━━━━━━━━━━━━━━━━━━━
+💼 Business Analysis
+━━━━━━━━━━━━━━━━━━━━━
 
-Specifics only. Fill every section with real, actionable content. No "Here's an analysis". No "Based on your input". No "Need more information". Infer everything.`,
+📌 Idea:
+2-3 sentences describing what they do, the problem they solve, and their core concept.
+
+🎯 Target Audience:
+• (bullet 1)
+• (bullet 2)
+• (bullet 3)
+
+🚀 Unique Value:
+• (bullet 1)
+• (bullet 2)
+• (bullet 3)
+
+💰 Monetization:
+• (bullet 1)
+• (bullet 2)
+• (bullet 3)
+
+📢 Marketing:
+• (bullet 1)
+• (bullet 2)
+• (bullet 3)
+
+⚡ First Steps:
+1. (short actionable step)
+2. (short actionable step)
+3. (short actionable step)
+4. (short actionable step)
+5. (short actionable step)
+
+━━━━━━━━━━━━━━━━━━━━━
+
+RULES:
+- Maximum 500-700 words total.
+- No long explanations. No repeated info. No generic consultant phrases.
+- Every point must be practical and specific.
+- Use emojis. Make it look like a premium AI product.
+- Answer in the user's language.
+- For simple input like "Telegram bot", still generate a full useful analysis.
+- NEVER leave any section empty. NEVER ask for more info. INFER everything.`,
 
   business_plan: `You are a business strategist. INFER business from input.
 

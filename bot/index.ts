@@ -252,7 +252,7 @@ async function handleFeatureSwitch(ctx: BotContext, feature: string): Promise<vo
  * Create and configure the Telegram bot
  */
 export function createBot(): Bot<BotContext> {
-  const bot = new Bot<BotContext>(env.TELEGRAM_BOT_TOKEN);
+  const bot = new Bot<BotContext>(env.TELEGRAM_BOT_TOKEN!);
 
   // ─── 1. Session Middleware ─────────────────────────
   // Uses Prisma-backed storage so sessions survive serverless cold starts.

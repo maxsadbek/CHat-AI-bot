@@ -1,19 +1,26 @@
 /**
  * Authentication Helpers
  *
- * Provides timing-safe comparison utilities for admin API secret verification.
- * All admin API routes MUST use `verifyAdminSecret()` instead of direct
- * string comparison to prevent timing attacks.
+ * Provides session-based admin authentication using httpOnly cookies.
+ * All admin API routes should use `verifyAdminSession(request)` instead of
+ * the old Bearer token approach.
  *
- * Usage:
- *   import { verifyAdminSecret } from "@/lib/auth";
- *   const authHeader = request.headers.get("authorization");
- *   if (!verifyAdminSecret(authHeader)) {
- *     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
- *   }
+ * Flow:
+ *   1. Admin visits /admin/login and submits password
+ *   2. POST /api/admin/login verifies password, sets `admin_session` cookie
+ *   3. Next.js middleware redirects /admin/* to /admin/login if no cookie
+ *   4. API routes verify the cookie via verifyAdminSession()
+ *   5. POST /api/admin/logout clears the cookie
+ *
+ * Cookie:
+ *   - Name: admin_session
+ *   - Value: timestamp.HMAC-SHA256(admin_secret, "admin_session:" + timestamp)
+ *   - httpOnly, secure, sameSite=strict
+ *   - Expires: 12 hours
  */
 
-import { timingSafeEqual } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
+import type { NextRequest } from "next/server";
 
 /**
  * Weak/default ADMIN_SECRET values that must be rejected.
@@ -29,6 +36,11 @@ const WEAK_SECRETS = new Set([
   "admin123",
 ]);
 
+const SESSION_COOKIE_NAME = "admin_session";
+const SESSION_DURATION_MS = 12 * 60 * 60 * 1000; // 12 hours
+
+let _weakSecretWarningShown = false;
+
 /**
  * Timing-safe comparison of two strings.
  *
@@ -42,8 +54,6 @@ export function safeCompare(actual: string, provided: string): boolean {
   }
   return timingSafeEqual(Buffer.from(actual), Buffer.from(provided));
 }
-
-let _weakSecretWarningShown = false;
 
 /**
  * Check ADMIN_SECRET strength and log a warning ONCE if it's missing/weak.
@@ -79,12 +89,11 @@ function warnIfWeakAdminSecret(adminSecret: string | undefined): void {
 /**
  * Verify the `Authorization` header against `ADMIN_SECRET`.
  *
+ * DEPRECATED: Use verifyAdminSession() instead.
+ *
  * Accepts both:
  *   - `Authorization: Bearer <secret>` (standard Bearer token)
  *   - `Authorization: <secret>` (raw secret for backward compatibility)
- *
- * Also logs a warning if the configured ADMIN_SECRET is weak or too short
- * (runs once per server instance via the weak set check).
  *
  * Returns `true` if the secret matches the configured `ADMIN_SECRET`.
  */
@@ -93,18 +102,83 @@ export function verifyAdminSecret(
   adminSecret: string | undefined
 ): boolean {
   if (!authHeader || !adminSecret) {
-    // Log warning once when secret is missing/bad
     warnIfWeakAdminSecret(adminSecret);
     return false;
   }
 
-  // Strip "Bearer " prefix if present
   const token = authHeader.startsWith("Bearer ")
     ? authHeader.slice(7)
     : authHeader;
 
-  // Also log warning if the stored ADMIN_SECRET is weak (for visibility)
   warnIfWeakAdminSecret(adminSecret);
 
   return safeCompare(adminSecret, token);
+}
+
+// ─── Session Token Helpers ──────────────────────────────────────────
+
+/**
+ * Sign a new admin session token (HMAC-SHA256).
+ * Returns: `${timestamp}.${hex_signature}`
+ */
+export function signAdminToken(adminSecret: string): string {
+  const timestamp = Date.now().toString();
+  const hmac = createHmac("sha256", adminSecret)
+    .update(`admin_session:${timestamp}`)
+    .digest("hex");
+  return `${timestamp}.${hmac}`;
+}
+
+/**
+ * Verify an admin session token.
+ * Checks HMAC signature and 12-hour expiry.
+ */
+export function verifyAdminToken(
+  token: string,
+  adminSecret: string
+): boolean {
+  if (!token || !adminSecret) return false;
+
+  const parts = token.split(".");
+  if (parts.length !== 2) return false;
+
+  const [timestampStr, signature] = parts;
+  if (!timestampStr || !signature) return false;
+
+  const timestamp = parseInt(timestampStr, 10);
+  if (isNaN(timestamp)) return false;
+  if (Date.now() - timestamp > SESSION_DURATION_MS) return false;
+
+  const expectedHmac = createHmac("sha256", adminSecret)
+    .update(`admin_session:${timestampStr}`)
+    .digest("hex");
+
+  if (expectedHmac.length !== signature.length) return false;
+  return timingSafeEqual(
+    Buffer.from(expectedHmac),
+    Buffer.from(signature)
+  );
+}
+
+/**
+ * Extract and verify the admin_session cookie from a NextRequest.
+ * Returns `true` if valid, `false` otherwise (401 should be returned).
+ *
+ * Usage in API routes:
+ *   import { verifyAdminSession } from "@/lib/auth";
+ *   if (!verifyAdminSession(request)) {
+ *     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+ *   }
+ */
+export function verifyAdminSession(request: NextRequest): boolean {
+  const secret = process.env.ADMIN_SECRET;
+  if (!secret) {
+    warnIfWeakAdminSecret(secret);
+    return false;
+  }
+  // secret is narrowed to string here
+  const cookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  if (!cookie) return false;
+
+  return verifyAdminToken(cookie, secret);
 }

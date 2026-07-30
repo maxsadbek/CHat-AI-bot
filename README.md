@@ -214,7 +214,7 @@ npx prisma studio
 
 ## 🔒 Security
 
-- **API authentication**: Admin endpoints protected by `ADMIN_SECRET` header (timing-safe comparison via `crypto.timingSafeEqual`)
+- **Web admin auth**: Login via `/admin/login` — enter `ADMIN_SECRET` as password. Sets an httpOnly, secure, sameSite=strict `admin_session` cookie (HMAC-SHA256 signed, 12-hour expiry). Next.js middleware redirects unauthenticated requests to `/admin/login`. All `/api/admin/*` routes verify the cookie signature on every request via timing-safe comparison.
 - **Rate limiting**: Per-user rate limiting (Upstash Redis on serverless, in-memory fallback)
 - **Webhook verification**: `TELEGRAM_WEBHOOK_SECRET` sent as `secret_token` to Telegram; verified with timing-safe comparison on every request — unauthorized requests are rejected immediately with 401
 - **ADMIN_SECRET validation**: At startup, checks for weak/default values and minimum length (24+ chars). In production, exits with clear error if insecure

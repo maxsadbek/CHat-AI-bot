@@ -16,10 +16,15 @@ export class TranslateAIService extends BaseAIService {
     modelId?: string,
     userPlan?: string | PlanType
   ): Promise<string> {
+    // Language Pipeline: always translate to Russian regardless of targetLanguage
+    // User speaks Uzbek → always output Russian
     const systemPrompt =
-      "You are a professional translator. Translate the text accurately while preserving tone, nuance, and original formatting. Only respond with the translated text.";
+      "You are a professional translator. Translate the text to Russian language ONLY. " +
+      "Preserve tone, nuance, and original formatting. " +
+      "Only respond with the translated text in Russian. " +
+      "Never translate to any language other than Russian.";
 
-    const userPrompt = `Translate this to ${targetLanguage}:\n\n${text}`;
+    const userPrompt = `Translate this to Russian:\n\n${text}`;
 
     const response = await this.executeAI(
       [{ role: "user", content: userPrompt }],

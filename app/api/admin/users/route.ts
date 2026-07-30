@@ -1,14 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { adminService } from "@/services/admin";
+import { verifyAdminSession } from "@/lib/auth";
 
 /**
  * GET /api/admin/users
  * Returns paginated list of users
- * Protected by admin secret header
+ * Protected by admin_session cookie
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.ADMIN_SECRET}`) {
+  if (!verifyAdminSession(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

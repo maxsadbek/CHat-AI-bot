@@ -1,15 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { verifyApiAuth } from "@/services/admin/admin-guard";
+import { verifyAdminSession } from "@/lib/auth";
 import { userManagementService } from "@/services/admin/user-management";
 
 /**
  * GET /api/admin/users/search?q=term&page=1&limit=20
  * Search users by name or username
- * Protected by admin secret header
+ * Protected by admin_session cookie
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const adminId = verifyApiAuth(request.headers.get("authorization"));
-  if (!adminId) {
+  if (!verifyAdminSession(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

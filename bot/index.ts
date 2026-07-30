@@ -40,6 +40,7 @@ import { prismaSessionStorage } from "@/bot/core/session-storage";
 import { modeManager } from "@/bot/core/mode-manager";
 import { callbackRouter } from "@/bot/core/router";
 import { logger } from "@/bot/core/logger";
+import { voiceManager } from "@/services/voice";
 import { startHandler } from "@/bot/handlers/start";
 import {
   aiChatHandler,
@@ -269,6 +270,18 @@ export function createBot(): Bot<BotContext> {
   registerMiddleware(bot);
 
   log.info("Bot session storage: Prisma (persistent)");
+
+  // ─── 3. Voice System Init ──────────────────────────────
+  log.info("Jarvis Voice Manager initializing...");
+  voiceManager.init().then(() => {
+    log.info("Jarvis Voice Manager ready");
+    // Play startup sequence — non-blocking, don't await
+    voiceManager.playStartupSequence().catch(() => {
+      log.debug("Startup sound skipped (no WAV file or TTS)");
+    });
+  }).catch((err) => {
+    log.warn("Voice Manager init failed (non-critical)", { error: String(err) });
+  });
 
   log.info("Bot initializing...", { model: env.OPENAI_MODEL });
 
@@ -1051,3 +1064,18 @@ export function createBot(): Bot<BotContext> {
  * Bot instance for use in API routes
  */
 export const bot = createBot();
+
+// ─── Graceful Shutdown ────────────────────────────────
+// Play the goodbye sound on process termination
+if (typeof process !== "undefined") {
+  const shutdownSignals: NodeJS.Signals[] = ["SIGINT", "SIGTERM", "SIGQUIT"];
+  for (const signal of shutdownSignals) {
+    process.once(signal, async () => {
+      log.info(`Received ${signal} — shutting down gracefully...`);
+      await voiceManager.playShutdownSequence().catch(() => {
+        log.debug("Shutdown sound skipped");
+      });
+      process.exit(0);
+    });
+  }
+}

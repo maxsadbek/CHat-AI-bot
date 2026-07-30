@@ -6,7 +6,7 @@
  * Optimized: concise system prompt, reduced token usage.
  */
 
-import { BaseAIService } from "./base";
+import { BaseAIService, RUSSIAN_ONLY_INSTRUCTION } from "./base";
 import { providerRegistry } from "./providers";
 import type { ChatMessage } from "./providers";
 import type { AIChatResponse } from "@/types";
@@ -55,6 +55,9 @@ export class AIChatService extends BaseAIService {
 
   /**
    * Stream a response from the AI
+   * NOTE: Uses the same Russian-only enforcement as executeAI().
+   * The RUSSIAN_ONLY_INSTRUCTION is appended to the system prompt
+   * before passing to the provider's streaming method.
    */
   async *streamChat(
     messages: Array<{ role: "user" | "assistant"; content: string }>,
@@ -63,6 +66,10 @@ export class AIChatService extends BaseAIService {
     userPlan?: string | PlanType
   ): AsyncGenerator<string> {
     const provider = providerRegistry.getProvider(modelId);
+
+    // Compose full system prompt with Russian-only instruction
+    // Uses the same constant from BaseAIService.executeAI() for consistency
+    const fullSystemPrompt = this.systemPrompt + RUSSIAN_ONLY_INSTRUCTION;
 
     if (!provider.streamChat) {
       const response = await this.chat(messages, userMessage, modelId, userPlan);
@@ -80,7 +87,7 @@ export class AIChatService extends BaseAIService {
 
     const stream = provider.streamChat({
       messages: allMessages,
-      systemPrompt: this.systemPrompt,
+      systemPrompt: fullSystemPrompt,
       modelId,
       feature: "chat",
       userPlan,

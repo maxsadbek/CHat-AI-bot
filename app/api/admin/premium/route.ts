@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { verifyApiAuth } from "@/services/admin/admin-guard";
+import { verifyAdminSession } from "@/lib/auth";
 import { premiumManagementService } from "@/services/admin/premium-management";
 
 /**
@@ -8,8 +8,7 @@ import { premiumManagementService } from "@/services/admin/premium-management";
  * Query params: view=stats|users, page=1, limit=20
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const adminId = verifyApiAuth(request.headers.get("authorization"));
-  if (!adminId) {
+  if (!verifyAdminSession(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -38,14 +37,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
  * Body: { action: "grant" | "revoke" | "extend", userId: number, planId?: string, days?: number }
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const adminId = verifyApiAuth(request.headers.get("authorization"));
-  if (!adminId) {
+  if (!verifyAdminSession(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
     const body = await request.json();
     const { action, userId, planId, days } = body;
+    const adminId: number = 0; // System admin (authenticated via cookie)
 
     if (!userId || typeof userId !== "number") {
       return NextResponse.json({ error: "Valid userId is required" }, { status: 400 });

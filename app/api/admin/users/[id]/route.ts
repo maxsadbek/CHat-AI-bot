@@ -1,18 +1,17 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { verifyApiAuth, logAdminAction } from "@/services/admin/admin-guard";
+import { verifyAdminSession } from "@/lib/auth";
 import { userManagementService } from "@/services/admin/user-management";
 
 /**
  * GET /api/admin/users/[id]
  * Returns detailed user information
- * Protected by admin secret header
+ * Protected by admin_session cookie
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const adminId = verifyApiAuth(request.headers.get("authorization"));
-  if (!adminId) {
+  if (!verifyAdminSession(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -44,8 +43,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const adminId = verifyApiAuth(request.headers.get("authorization"));
-  if (!adminId) {
+  if (!verifyAdminSession(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -58,6 +56,7 @@ export async function PATCH(
 
     const body = await request.json();
     const { action, dailyLimit } = body;
+    const adminId = 0; // System admin (authenticated via cookie)
 
     switch (action) {
       case "toggle_premium": {
@@ -92,8 +91,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const adminId = verifyApiAuth(request.headers.get("authorization"));
-  if (!adminId) {
+  if (!verifyAdminSession(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -104,7 +102,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Invalid user ID" }, { status: 400 });
     }
 
-    await userManagementService.deleteUserData(userId, adminId);
+    await userManagementService.deleteUserData(userId, 0);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Admin user delete error:", error);

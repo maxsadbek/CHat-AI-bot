@@ -1,14 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { adminService } from "@/services/admin";
-import { verifyAdminSecret } from "@/lib/auth";
+import { verifyAdminSession } from "@/lib/auth";
 
 /**
  * POST /api/admin/broadcast
  * Broadcast a message to all users
- * Protected by admin secret header (timing-safe comparison)
+ * Protected by admin_session cookie
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  if (!verifyAdminSecret(request.headers.get("authorization"), process.env.ADMIN_SECRET)) {
+  if (!verifyAdminSession(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

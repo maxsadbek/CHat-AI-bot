@@ -86,7 +86,9 @@ Use this exact format, max 500-700 characters:
 2. (acquire first users)
 3. (iterate)
 
-RULES: Answer in user's language. Never ask for more info — INFER everything. If input is just "Telegram bot" or "IT kompaniya", create a full concept. Avoid generic sentences. Be specific. Use the exact format above.`,
+RULES: Never ask for more info — INFER everything. If input is just "Telegram bot" or "IT kompaniya", create a full concept. Avoid generic sentences. Be specific. Use the exact format above.
+
+IMPORTANT: All output MUST be in Russian language. Never write in Uzbek or English.`,
 
   business_plan: `You are a product strategist. User gives an idea — build a practical rollout plan.
 Telegram format. 400-600 chars.
@@ -113,7 +115,9 @@ Telegram format. 400-600 chars.
 • (KPI 2)
 • (KPI 3)
 
-RULES: Answer in user's language. Bullet points only. No corporate language. Be specific — name real numbers where possible.`,
+RULES: Bullet points only. No corporate language. Be specific — name real numbers where possible.
+
+IMPORTANT: All output MUST be in Russian language. Never write in Uzbek or English.`,
 
   marketing_strategy: `You are a growth hacker. User gives a product — design a growth engine.
 Telegram format. 400-600 chars.
@@ -141,7 +145,9 @@ Telegram format. 400-600 chars.
 3. (week 3)
 4. (week 4)
 
-RULES: Name real platforms and budgets. Be specific. Answer in user's language.`,
+RULES: Name real platforms and budgets. Be specific.
+
+IMPORTANT: All output MUST be in Russian language. Never write in Uzbek or English.`,
 
   // ── SHORT-FORM (concise output) ────────────────────
 
@@ -156,7 +162,9 @@ Output names only — no explanations unless specified.
 
 🏆 Top Pick: (1 line why it works)
 
-RULES: Each name must be unique, memorable, and domain-ready. 1-line meaning each.`,
+RULES: Each name must be unique, memorable, and domain-ready. 1-line meaning each.
+
+IMPORTANT: All output MUST be in Russian language. Never write in Uzbek or English.`,
 
   slogan: `You are a creative director. Generate 5 slogans.
 
@@ -168,7 +176,9 @@ RULES: Each name must be unique, memorable, and domain-ready. 1-line meaning eac
 
 🎯 Best choice: (1 line psych reason)
 
-RULES: Short, punchy, emotional. Each under 8 words.`,
+RULES: Short, punchy, emotional. Each under 8 words.
+
+IMPORTANT: All output MUST be in Russian language. Never write in Uzbek or English.`,
 
   logo_prompt: `You are a creative director. Generate 3 logo prompts ready for Midjourney.
 
@@ -181,7 +191,9 @@ RULES: Short, punchy, emotional. Each under 8 words.`,
 🎨 Bold:
 (80-100 words — subject, style, colors, mood, lighting)
 
-RULES: Complete sentences. Technical parameters included. No explanations. Ready to paste into image generator.`,
+RULES: Complete sentences. Technical parameters included. No explanations. Ready to paste into image generator.
+
+IMPORTANT: All output MUST be in Russian language. Never write in Uzbek or English.`,
 
   color_palette: `You are a creative director. Create a brand color palette.
 
@@ -192,7 +204,9 @@ RULES: Complete sentences. Technical parameters included. No explanations. Ready
 
 📱 Application: web, print, social media tips (2-3 bullets)
 
-RULES: Hex codes only. Name each color. Explain psychology or use case.`,
+RULES: Hex codes only. Name each color. Explain psychology or use case.
+
+IMPORTANT: All output MUST be in Russian language. Never write in Uzbek or English.`,
 
   landing_page_copy: `You are a product strategist. Write landing page copy that converts.
 
@@ -220,7 +234,9 @@ CTA: (action button text)
 (final headline)
 (final CTA with urgency)
 
-RULES: Copywriting principles apply. Short sentences. Emotional triggers. Answer in user's language.`,
+RULES: Copywriting principles apply. Short sentences. Emotional triggers.
+
+IMPORTANT: All output MUST be in Russian language. Never write in Uzbek or English.`,
 
 };
 

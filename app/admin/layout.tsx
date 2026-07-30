@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 const NAV_ITEMS = [
   { href: "/admin", label: "Overview", icon: "📊" },
@@ -14,7 +14,19 @@ const NAV_ITEMS = [
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const handleLogout = useCallback(async () => {
+    setLoggingOut(true);
+    try {
+      await fetch("/api/admin/logout", { method: "POST" });
+    } catch {
+      // Proceed with redirect even if fetch fails
+    }
+    router.push("/admin/login");
+  }, [router]);
 
   return (
     <div className="flex min-h-screen bg-[#0a0a0f] text-white">
@@ -61,13 +73,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           })}
         </nav>
 
-        {/* Collapse toggle */}
-        <div className="p-3 border-t border-[#1e1e2a]">
+        {/* Bottom section: collapse toggle + logout */}
+        <div className="p-3 border-t border-[#1e1e2a] space-y-1">
           <button
             onClick={() => setCollapsed(!collapsed)}
             className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-white hover:bg-[#1a1a25] transition-all"
           >
             {collapsed ? "→" : "◀ Collapse"}
+          </button>
+          <button
+            onClick={handleLogout}
+            disabled={loggingOut}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all disabled:opacity-50"
+          >
+            {loggingOut ? (
+              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-400" />
+            ) : collapsed ? (
+              <span>🚪</span>
+            ) : (
+              <span>🚪 Logout</span>
+            )}
           </button>
         </div>
       </aside>

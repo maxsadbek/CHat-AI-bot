@@ -1,17 +1,17 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { analyticsService } from "@/services/analytics";
-import { verifyAdminSecret } from "@/lib/auth";
+import { verifyAdminSession } from "@/lib/auth";
 
 /**
  * GET /api/admin/analytics/retention
  * Returns user retention stats (returning users rate).
- * Protected by admin secret header (timing-safe comparison).
+ * Protected by admin_session cookie.
  *
  * Query params:
  *   - days: number (default 30) — lookback period
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!verifyAdminSecret(request.headers.get("authorization"), process.env.ADMIN_SECRET)) {
+  if (!verifyAdminSession(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

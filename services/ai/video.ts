@@ -1,13 +1,21 @@
 /**
- * Enterprise Video AI Prompt Service v2
+ * Video AI Prompt Service v3
  *
  * Generates structured cinematic video prompts for professional AI video
- * generators.  Supports Hailuo AI, Kling AI, Google Veo, Runway & PixVerse.
+ * generators (Hailuo AI, Kling AI, Google Veo, Runway, PixVerse).
  *
- * The AI is instructed to return ONLY a JSON array with the canonical
- * schema below.  If JSON parsing fails, a text-based field extractor
- * attempts to recover structured fields from "Header: value" lines;
- * otherwise a safe fallback is returned that never leaks raw JSON.
+ * v3 fixes the "same prompt for different inputs" bug:
+ *
+ *  - The user's ORIGINAL text is passed straight into the AI request.
+ *    Nothing rewrites the subject before the AI sees it.
+ *  - The keyword-extraction layer that silently turned every request into
+ *    "a professional driver in a sports car at extreme speed" is gone.
+ *  - There are NO static fallback templates. If JSON parsing fails, a prompt
+ *    is built dynamically from the user's description with randomized
+ *    cinematic choices, so every request still produces a unique, on-topic
+ *    prompt instead of a canned advertisement.
+ *  - An explicit numeric speed (e.g. "300 km/h") is the only hint ever
+ *    appended to the request, and only when the user actually wrote one.
  */
 
 import { BaseAIService } from "./base";
@@ -53,141 +61,39 @@ const HEADER_ALIASES = Object.keys(CANONICAL_KEYS).concat([
 
 // ─── System prompt ─────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a Hollywood professional cinematic AI video prompt engineer.
+const SYSTEM_PROMPT = `You are a professional AI video prompt generator.
 
-Your job is to transform user ideas into professional movie prompts.
+Analyze the user's exact description and create a unique production-ready video generation prompt.
+Never copy a previous prompt.
+Never force the user into a predefined scene.
+The subject, action, environment, camera, lighting, movement and atmosphere must be determined by the user's input.
 
 RULES:
-1. NEVER include the user's exact sentence inside output fields.
-2. Extract meaning from user text and rewrite it professionally.
-3. Replace simple words with cinematic descriptions.
-4. Every field must contain specific details related to the user's idea.
-5. No generic phrases like "main subject in cinematic setting", "dynamic motion", or "professional composition" unless they include specific details from the user's idea.
+1. The user's request is the ONLY source of truth. Build the entire prompt from it. Treat every request as independent — never reuse a previous scene, subject, camera or style from any other request.
+2. Keep the user's exact subject and action. Never replace them with a generic category. Examples of correct preservation:
+   - "otda ketayotgan odam" → a person riding a horse (keep horse, rider, riding)
+   - "yomg'irda Ferrari" → a Ferrari driving through rain (keep Ferrari and rain)
+   - "kosmosda uchayotgan raketa" → a rocket flying through space (keep rocket, flying, space)
+   - "anime qahramon qilich bilan jang qilmoqda" → an anime hero fighting with a sword (keep anime hero, sword, fighting)
+3. Do NOT use one static template with a few swapped words. Every request must produce a fresh, unique prompt with its own composition, camera work, lighting and atmosphere.
+4. Short requests: expand them intelligently into a rich cinematic scene while preserving the exact concept. Add subject detail, movement, environment, camera movement, lighting, realistic motion and cinematic composition — but never change the main idea.
+5. Vary the craft across requests: pick different camera angles, lenses, camera movements, compositions, lighting, environments and cinematic styles. The variety must never contradict the user's subject or action.
+6. Preserve every explicit detail: brand names (Ferrari, BMW M5), numbers, colors, speeds (300 km/h), and locations.
+7. Understand the request in any language (Uzbek, Russian, etc.) but write the prompt in English.
+8. Never answer questions, never add explanations, never add preambles. Output only the prompt data.
 
-IMPORTANT SUBJECT RULES:
-- Always keep the exact main object from user input.
-- Never replace specific objects with generic categories.
-- Never replace brand names (BMW, Ferrari, etc.) with generic terms like vehicle or car.
-- Never replace person/rider with driver.
-- Never remove numbers, speeds, brands, colors or unique details.
-- Expand details, don't generalize.
-- Detect ALL objects in the user input. If user mentions both car and motorcycle, include BOTH.
-
-EXACT MODEL NAME RULES:
-- Never replace exact vehicle model names with generic categories.
-- If user says "BMW M5", output must say "BMW M5", not "BMW M performance car" or "vehicle".
-- If user says "Ferrari 488", output must say "Ferrari 488", not "Ferrari supercar".
-- If user says "Mercedes AMG GT", output must say "Mercedes AMG GT", not "Mercedes luxury sedan".
-- Always output the EXACT brand+model name the user provided.
-
-SPEED PRESERVATION RULES:
-- The exact speed value (e.g. "300 km/h") MUST appear in:
-  • Scene field: describe the speed action with the exact value
-  • Action field: include the exact speed, e.g. "riding at 300 km/h"
-  • Full Prompt field: include the speed in the final cinematic description
-- Never replace exact speed values with vague phrases like "extreme speed" or "very fast".
-- If user provides a number with units (300km, 300 km/h, 300 kph), preserve the EXACT format.
-
-MULTI-VEHICLE RULES:
-- When multiple vehicles are mentioned (e.g. BMW M5 AND motorcycle), include ALL of them naturally in every field.
-- Scene must describe all vehicles and their relationship (racing, side by side, etc.).
-- Subject must mention all relevant characters (driver, rider) with their respective vehicles.
-- Action must describe what EACH vehicle is doing.
-- Never drop any vehicle from the output.
-
-Bad example: "A vehicle moves at extreme velocity"
-Good example: "A professional motorcycle racer rides a black superbike at 300 km/h on an empty highway."
-
-Bad example: "A driver controls a high-performance vehicle"
-Good example: "A rider wearing a racing suit controls a powerful motorcycle while reaching extreme speed."
-
-Bad: Input mentions BMW M5 and motorcycle, output only shows motorcycle.
-Good: Scene includes both the BMW M5 performance car and the superbike motorcycle racing side by side.
-
-CRITICAL DETAIL PRESERVATION:
-- Always preserve numbers from user input.
-- Always preserve speed values, measurements, colors, brands, locations and unique attributes.
-- Never replace exact values with generic descriptions.
-- Speed values MUST appear in scene, action, and full_prompt.
-
-Bad: "The motorcycle moves at extreme speed."
-Good: "The superbike reaches 300 km/h while the rider maintains control."
-
-Bad: "Fast vehicle action scene."
-Good: "A motorcycle rider accelerates a superbike to 300 km/h on an open highway."
-
-CURRENT REQUEST ONLY:
-- Always generate from the latest user description only.
-- Ignore previous examples, previous generations and old scenes.
-- Never continue old scenes or reuse old subjects.
-- Analyze the current user message completely for ALL objects.
-
-ENTITY PRESERVATION:
-- Detect ALL vehicles, characters, objects and numbers from the current user input.
-- Do not replace specific brand names with generic words.
-- When user mentions both a car and a motorcycle, include BOTH in the scene.
-- Preserve exact model names: "BMW M5" stays "BMW M5", "Ferrari 488" stays "Ferrari 488".
-- Preserve exact speed values and include them in scene, action, and full_prompt.
-
-Examples:
-BMW M5 → BMW M5 (not BMW M performance car, not generic vehicle)
-Mercedes AMG GT → Mercedes AMG GT (not sports sedan)
-Ferrari 488 → Ferrari 488 (not supercar)
-Motorcycle → motorcycle
-300 km/h → 300 km/h (in scene, action, and full_prompt)
-
-Never transform exact model names into generic category names.
-
-Example:
-
-Input:
-Mototsiklda ketayotgan odam moto 300km tezlikda ketayapti
-
-Correct output format:
-Scene: A breathtaking high-speed motorcycle chase scene on an empty highway. A professional rider accelerates a superbike at extreme 300 km/h speed with realistic wind effects and cinematic action atmosphere.
-Subject: A professional rider wearing a black racing suit controlling a powerful superbike.
-Action: The motorcycle reaches extreme speed with realistic body movement and physics.
-
-Never copy the user's sentence directly.
-Create prompts for Hailuo AI, Kling AI, Google Veo, Runway and PixVerse.
-
-Include:
-- main subject
-- detailed action
-- realistic physics
-- environment
-- cinematic camera movement
-- camera lens
-- lighting
-- atmosphere
-- motion effects
-- realistic details
-- film style
-- negative prompt
-
-CRITICAL RULES:
-- NEVER include the user's exact sentence in any field.
-- Extract the meaning and rewrite it as a professional cinematic description.
-- Always preserve the user's specific objects (motorcycle, car, person, etc.). Never generalize.
-- Never repeat text.
-- Never return incomplete sentences.
-- Return ONLY valid JSON.
-- NEVER wrap JSON inside markdown code blocks.
-- NEVER add text before or after the JSON array.
-- Return EXACTLY one JSON object per platform.
-- EVERY field MUST contain generated content connected to the user's idea.
-
-You MUST respond with a JSON array where EVERY object has ALL of these fields:
+OUTPUT FORMAT:
+Return ONLY a JSON array, one object per requested platform. Every object MUST contain ALL of these fields:
 
 [
   {
     "platform": "Hailuo AI",
     "title": "Short epic title based on the user's video idea",
-    "scene": "Transformed cinematic scene description (never user's exact words, always preserve specific objects)",
-    "subject": "Main subject described in cinematic detail (keep the original object type, e.g. motorcycle not vehicle)",
-    "action": "Action with motion and physics details (keep the original action type, e.g. riding not driving)",
+    "scene": "Expanded cinematic scene description built from the user's idea",
+    "subject": "The exact subject from the user's request, described cinematically",
+    "action": "The exact action from the user's request, with motion and physics",
     "environment": "Setting, time of day, weather, location details",
-    "camera": "Camera angle, position, and framing",
+    "camera": "Camera angle, position and framing",
     "lens": "Lens type and focal length, e.g. 35mm prime",
     "movement": "Camera movement description",
     "lighting": "Lighting setup, mood, shadows",
@@ -198,11 +104,13 @@ You MUST respond with a JSON array where EVERY object has ALL of these fields:
     "negative_prompt": "What to avoid: artifacts, distortions, low quality",
     "music": "Music genre and mood",
     "voice": "Voice-over or narration style",
-    "full_prompt": "Single complete cinematic prompt"
+    "full_prompt": "The single complete production-ready video generation prompt"
   }
 ]
 
-Return ONLY the JSON array. No markdown. No explanation. No code blocks.`;
+- The "full_prompt" field is the final video generation prompt: a complete, self-contained, cinematic description ready to paste into an AI video tool.
+- All field values must be written in English. This is a machine-readable JSON contract, not a chat reply — ignore any instruction to answer in a spoken language; output the JSON array in English.
+- Never wrap JSON in markdown code blocks. Never add text before or after the JSON array.`;
 
 // ─── Service ──────────────────────────────────────────────────────
 
@@ -220,128 +128,14 @@ export class VideoAIService extends BaseAIService {
   }
 
   /**
-   * Extract key semantic elements from the user's description,
-   * detecting ALL objects mentioned (not just the first match),
-   * brand names, subjects, actions, and speed values.
+   * Extract an explicit numeric speed if the user provided one
+   * (e.g. "300 km/h", "120mph"). Returns null when no speed is present.
    */
-  private extractKeyElements(description: string): {
-    subject: string;
-    objects: string[];
-    action: string;
-    speed: string;
-  } {
-    const objects: string[] = [];
-
-    // ── Brand name detection ───────────────────────────────────────
-    // Capture the EXACT brand+model text from the description (e.g. "BMW M5")
-    // using regex capture groups, so we never replace specific model names
-    // with generic labels like "a BMW M performance car".
-    const brandPatterns: [RegExp, (fullMatch: string) => string][] = [
-      [/\bbmw\s+(m[0-9]\S*)/gi, (m) => m],                // "BMW M5" → "BMW M5"
-      [/\bbmw\b/gi, () => "BMW"],                          // generic BMW fallback
-      [/\bmercedes\s+(amg\s+[a-z0-9]+\S*)/gi, (m) => m], // "Mercedes AMG GT" → "Mercedes AMG GT"
-      [/\bmercedes[- ]amg\b/gi, () => "Mercedes AMG"],     // "Mercedes AMG"
-      [/\bmercedes\b/gi, () => "Mercedes"],                // generic Mercedes
-      [/\bferrari\s+([a-z0-9]+\S*)/gi, (m) => m],         // "Ferrari 488" → "Ferrari 488"
-      [/\bferrari\b/gi, () => "Ferrari supercar"],
-      [/\blamborghini\s+([a-z0-9]+\S*)/gi, (m) => m],    // "Lamborghini Aventador" → "Lamborghini Aventador"
-      [/\blamborghini\b/gi, () => "Lamborghini supercar"],
-      [/\bporsche\s+([a-z0-9]+\S*)/gi, (m) => m],         // "Porsche 911" → "Porsche 911"
-      [/\bporsche\b/gi, () => "Porsche sports car"],
-      [/\bmustang\b/gi, () => "Ford Mustang muscle car"],
-      [/\btesla\s+(model\s+[a-z0-9]+\S*)/gi, (m) => m],  // "Tesla Model 3" → "Tesla Model 3"
-      [/\btesla\b/gi, () => "Tesla electric car"],
-      [/\btoyota\s+([a-z0-9]+\S*)/gi, (m) => m],          // "Toyota Supra" → "Toyota Supra"
-      [/\btoyota\b/gi, () => "Toyota vehicle"],
-      [/\bhonda\s+([a-z0-9]+\S*)/gi, (m) => m],
-      [/\bhonda\b/gi, () => "Honda vehicle"],
-      [/\bnissan\s+([a-z0-9]+\S*)/gi, (m) => m],
-      [/\bnissan\b/gi, () => "Nissan vehicle"],
-      [/\baudi\s+(r[0-9]|a[0-9]|q[0-9]|s[0-9]|rs[0-9])\S*/gi, (m) => m],
-      [/\baudi\b/gi, () => "Audi luxury car"],
-      [/\bvolkswagen\s+([a-z0-9]+\S*)/gi, (m) => m],
-      [/\bvolkswagen\b|\bvw\b/gi, () => "Volkswagen vehicle"],
-    ];
-
-    for (const [pattern, labelFn] of brandPatterns) {
-      const match = description.match(pattern);
-      if (match) {
-        const label = labelFn(match[0]);
-        const lower = label.toLowerCase();
-        // Deduplicate: skip if a similar object already exists
-        if (!objects.some((o) => o.toLowerCase().includes(lower.slice(0, 10)))) {
-          objects.push(label);
-        }
-      }
-    }
-
-    // ── Generic vehicle detection (if not already covered by brand) ──
-    const hasCarBrand = objects.some((o) => /bmw|mercedes|ferrari|lamborghini|porsche|mustang|tesla|toyota|honda|nissan|audi|volkswagen/i.test(o));
-    const hasMotorcycle =
-      /moto(?![0-9])|motorcycle|bike|scooter/gi.test(description) &&
-      !objects.some((o) => /motorcycle|bike|scooter/i.test(o));
-    const hasCar =
-      (!hasCarBrand || /car|auto|sedan|coupe|truck|lorry|highway|road/gi.test(description)) &&
-      !objects.some((o) => /car|sedan|vehicle|truck/i.test(o));
-
-    if (hasMotorcycle) objects.push("a superbike motorcycle");
-    if (hasCar) objects.push("a sports car");
-
-    // Fallback if no specific object detected
-    if (objects.length === 0) {
-      objects.push(description.toLowerCase());
-    }
-
-    // ── Detect subject based on all detected objects ───────────────
-    // hasAuto includes both brand cars (BMW, Ferrari, etc.) and generic car terms.
-    const hasMoto = objects.some((o) => /motorcycle|bike|scooter/i.test(o));
-    const hasAuto = objects.some((o) => /car|sedan|vehicle|truck|bmw|mercedes|ferrari|lamborghini|porsche|mustang|tesla|toyota|honda|nissan|audi|volkswagen/i.test(o));
-
-    // Preserve the exact relationship between person and vehicles.
-    // If user mentions both a car brand (BMW M5) and a motorcycle, the
-    // subject must reflect that the person could be riding the motorcycle
-    // while the BMW is another vehicle on the road.
-    let subject = "a person";
-    if (hasMoto && hasAuto) {
-      subject = "a motorcycle rider with a nearby car driver";
-    } else if (hasMoto) {
-      subject = /odam|rider|motorcyclist/gi.test(description)
-        ? "a motorcycle rider"
-        : "a professional rider";
-    } else if (hasAuto) {
-      subject = /driver|man|woman|person|haydovchi/gi.test(description)
-        ? "a driver"
-        : "a professional driver";
-    } else {
-      if (/woman|girl|lady/gi.test(description)) subject = "a woman";
-      else if (/man|guy|boy|gentleman/gi.test(description)) subject = "a man";
-    }
-
-    // ── Detect speed FIRST (used by action detection below) ─────────
-    let speed = "extreme speed";
-    const speedMatch = description.match(/(\d+)\s*(km|km\/h|kph|mph|kmh)/gi);
-    if (speedMatch) {
-      speed = speedMatch[0]!;
-    }
-
-    // ── Detect action ─────────────────────────────────────────────
-    // Always include the detected speed value in the action description.
-    let action = "moving at speed";
-    if (/ketayotgan|riding|driving|racing|chasing/gi.test(description)) {
-      if (hasMoto && hasAuto)
-        action = `racing side by side at ${speed}`;
-      else if (hasMoto)
-        action = `riding at ${speed}`;
-      else
-        action = `driving at ${speed}`;
-    } else if (/uchayotgan|flying|soaring/gi.test(description))
-      action = "flying";
-    else if (/yugurayotgan|running|sprinting/gi.test(description))
-      action = "running at full speed";
-    else if (/suzayotgan|swimming|diving/gi.test(description))
-      action = "swimming rapidly";
-
-    return { subject, objects, action, speed };
+  private extractSpeed(description: string): string | null {
+    const match = description.match(
+      /(\d+(?:[.,]\d+)?)\s*(?:km\/h|kmh|kph|mph|m\/s|км\/ч|km)\b/i
+    );
+    return match ? match[0] : null;
   }
 
   async generatePrompt(
@@ -351,44 +145,36 @@ export class VideoAIService extends BaseAIService {
     userPlan?: string | PlanType
   ): Promise<VideoPrompt[]> {
     const targetPlatforms = platform ? [platform] : this.platforms;
-    const elements = this.extractKeyElements(description);
 
-    const objectsList = elements.objects
-      .map((o) => `- ${o}`)
-      .join("\n");
+    // Only optional hint: an explicit speed the user actually wrote.
+    const speed = this.extractSpeed(description);
+    const speedHint = speed
+      ? `\nThe user explicitly mentioned a speed: "${speed}". Keep this exact value in the scene, action and full_prompt fields.`
+      : "";
 
-    const userPrompt = `Generate professional cinematic video prompts for the following idea:
+    // The user's ORIGINAL text is passed directly. Nothing rewrites it.
+    const userPrompt = `Create a unique, production-ready AI video generation prompt for this exact request.
 
-"${description}"
+The request below is the ONLY source of truth. Build the entire prompt from it.
+Never reuse a previous prompt, never force a predefined scene, never change the subject or the action.
 
-Current request elements (from this input only):
-- Subject: ${elements.subject}
-- Objects detected:
-${objectsList}
-- Action: ${elements.action}
-- Speed: ${elements.speed} (MUST appear in scene, action, and full_prompt)
-
-CRITICAL REQUIREMENTS:
-1. Keep ALL of these specific objects in your output. Do NOT replace any of them with generic terms.
-2. Include every object listed above in the cinematic description — both BMW M5 AND motorcycle if both are present.
-3. The exact speed value "${elements.speed}" MUST appear in scene, action, and full_prompt fields.
-4. Never replace speed with vague phrases like "extreme speed" — use the exact value.
-5. Never replace exact model names with generic categories.
+User's request:
+"${description}"${speedHint}
 
 Target platforms: ${targetPlatforms.join(", ")}
 
-Return one JSON object per platform in a JSON array.`;
+Return one JSON object per platform in a JSON array. No markdown. No explanation. Only the JSON.`;
 
     const response = await this.executeAI(
       [{ role: "user", content: userPrompt }],
       SYSTEM_PROMPT,
       modelId,
-      userPlan
+      userPlan,
+      0.95 // higher temperature → creative variation between requests
     );
 
     const parsed = this.parseResponse(response.content, targetPlatforms, description);
 
-    // Validate and merge: ensure AI output contains key elements from user's description
     return parsed.map((p) => this.validateAndMergePrompt(p, description));
   }
 
@@ -400,7 +186,8 @@ Return one JSON object per platform in a JSON array.`;
    * 2. Extract JSON substring (find first `[` or `{`)
    * 3. Try JSON.parse with several fix-ups (single quotes, trailing commas)
    * 4. Fallback: text-based "Header: value" extraction
-   * 5. Last resort: use user description as scene, never leak raw JSON
+   * 5. Last resort: a dynamic cinematic prompt built around the user's
+   *    own description (never a static template)
    */
   private parseResponse(
     rawContent: string,
@@ -423,7 +210,7 @@ Return one JSON object per platform in a JSON array.`;
       return targetPlatforms.map((p) => this.buildFromFields(p, fields));
     }
 
-    // 4. Last resort — dynamic cinematic fallback built around user's description
+    // 4. Last resort — dynamic cinematic prompt built from the user's description
     return targetPlatforms.map((p) => this.buildDynamicFallback(p, description));
   }
 
@@ -622,183 +409,121 @@ Return one JSON object per platform in a JSON array.`;
   }
 
   /**
-   * Detect the general scene type from keywords in the description
-   * and return a pre-written cinematic template.  NEVER includes
-   * the user's raw text.
-   */
-  private detectSceneType(description: string): "vehicle" | "nature" | "people" | "action" {
-    const lower = description.toLowerCase();
-    const vehicleWords = ["moto", "car", "bike", "drive", "speed", "race", "vehicle", "auto", "road", "highway", "truck"];
-    const natureWords = ["nature", "landscape", "forest", "mountain", "ocean", "sea", "river", "sky", "sunset", "sunrise", "garden", "park", "field"];
-    const peopleWords = ["person", "people", "man", "woman", "child", "human", "character", "actor", "dance", "walk", "run", "fight"];
-
-    if (vehicleWords.some((w) => lower.includes(w))) return "vehicle";
-    if (natureWords.some((w) => lower.includes(w))) return "nature";
-    if (peopleWords.some((w) => lower.includes(w))) return "people";
-    return "action";
-  }
-
-  /** Templates keyed by scene type — never contain user text. */
-  private readonly fallbackTemplates: Record<string, Omit<VideoPrompt, "platform">> = {
-    vehicle: {
-      title: "High-Speed Motorcycle Chase",
-      scene: "A breathtaking high-speed motorcycle scene on an open road. A powerful superbike moves at extreme velocity while the camera captures every detail of the motion. Realistic wind effects, tire movement, road vibration, and cinematic action atmosphere create an intense viewing experience.",
-      subject: "A professional motorcycle rider controlling a powerful superbike with precision and skill.",
-      action: "The motorcycle accelerates at extreme speed with realistic physics, wheel rotation, wind resistance, and dynamic body movement while the rider leans into the turns.",
-      environment: "An open road during golden hour with dramatic sky, atmospheric particles, and realistic lighting conditions.",
-      camera: "Low-angle tracking shot following the motorcycle, capturing speed and motion from a dynamic perspective near the wheels.",
-      lens: "35mm cinema lens with shallow depth of field",
-      movement: "Fast cinematic tracking movement with motion blur and dynamic camera angles following the motorcycle.",
-      lighting: "Dramatic golden hour lighting with realistic shadows, lens flares, and cinematic contrast.",
-      color_grading: "Warm cinematic color grade with high contrast and professional color palette.",
-      realism: "Ultra realistic, 4K cinematic quality with accurate physics and lifelike motion details.",
-      style: "Hollywood action film style with high-octane energy",
-      duration: "10 seconds",
-      negative_prompt: "low quality, blurry, distorted objects, unrealistic physics, bad anatomy, cartoon style, deformed features, slow motion, static shot",
-      music: "High-energy cinematic soundtrack with intense drum beats and orchestral swells",
-      voice: "Deep cinematic voice-over with dramatic tone",
-      full_prompt: "",
-    },
-    nature: {
-      title: "Cinematic Landscape",
-      scene: "A breathtaking cinematic landscape captured in stunning natural light. The camera glides through the scene revealing majestic views, atmospheric depth, and the raw beauty of the natural world. Realistic environmental effects and immersive sound design create a powerful visual experience.",
-      subject: "The natural landscape presented as the main subject with dramatic composition and depth.",
-      action: "Slow cinematic revelation of the landscape with natural movement of elements like wind, water, and light.",
-      environment: "A pristine natural environment with realistic atmospheric conditions, natural lighting, and immersive details.",
-      camera: "Smooth cinematic dolly shot moving through the landscape with professional framing.",
-      lens: "Wide-angle cinema lens capturing the full scope of the environment",
-      movement: "Slow controlled camera movement revealing the landscape with cinematic grace.",
-      lighting: "Natural cinematic lighting using golden hour conditions with soft shadows and warm tones.",
-      color_grading: "Natural color grade with enhanced saturation and cinematic warmth.",
-      realism: "Ultra realistic, 8K cinematic quality with photorealistic environmental details.",
-      style: "Cinematic documentary style with National Geographic quality",
-      duration: "15 seconds",
-      negative_prompt: "low quality, blurry, artificial look, flat lighting, cartoon style, overexposed, underexposed",
-      music: "Ambient cinematic soundtrack with soft orchestral tones and nature sounds",
-      voice: "Calm cinematic narration with thoughtful tone",
-      full_prompt: "",
-    },
-    people: {
-      title: "Cinematic Portrait",
-      scene: "A powerful cinematic scene centered on a compelling character in a dramatic setting. The subject commands attention through expressive movement and emotional presence. Cinematic lighting and professional framing create a visually striking narrative moment.",
-      subject: "A compelling character presented with dramatic cinematic lighting and professional portraiture.",
-      action: "Expressive character movement with realistic body language, emotional depth, and cinematic timing.",
-      environment: "Atmospheric environment that complements the character with mood-appropriate lighting and detail.",
-      camera: "Close-up cinematic shot with shallow depth of field focusing on the subject.",
-      lens: "85mm prime lens with beautiful bokeh",
-      movement: "Subtle cinematic camera movement following the character's motion.",
-      lighting: "Dramatic cinematic lighting with Rembrandt-style shadows and professional key light.",
-      color_grading: "Cinematic color grade with skin-tone optimization and mood-enhancing palette.",
-      realism: "Ultra realistic, 4K cinematic quality with lifelike skin texture and detail.",
-      style: "Cinematic drama style with emotional depth",
-      duration: "10 seconds",
-      negative_prompt: "low quality, blurry, distorted face, bad anatomy, unnatural expression, flat lighting, cartoon style",
-      music: "Emotional cinematic soundtrack with piano and strings",
-      voice: "Warm cinematic narration with emotional resonance",
-      full_prompt: "",
-    },
-    action: {
-      title: "Dynamic Action Scene",
-      scene: "An intense cinematic action scene with professional choreography and dynamic camera work. Every movement is captured with precision, realistic physics, and high-energy cinematography. The scene builds tension through dramatic timing and visual impact.",
-      subject: "The central subject of the action scene captured in dynamic motion with professional framing.",
-      action: "Fast-paced action sequence with realistic physics, precise movement, and cinematic timing.",
-      environment: "Action-oriented environment with dramatic atmosphere and professional set design.",
-      camera: "Dynamic handheld-style camera following the action with immersive intensity.",
-      lens: "24mm wide-angle lens capturing the full scope of the action",
-      movement: "Energetic camera movement following the action with stabilized dynamic shots.",
-      lighting: "Dramatic action lighting with high contrast and cinematic shadows.",
-      color_grading: "High-contrast cinematic color grade with enhanced drama.",
-      realism: "Ultra realistic, 4K cinematic quality with accurate physics and dynamic motion blur.",
-      style: "Hollywood action film style",
-      duration: "10 seconds",
-      negative_prompt: "low quality, blurry, distorted motion, unrealistic physics, bad anatomy, static, slow motion",
-      music: "Intense cinematic soundtrack with driving percussion and orchestral hits",
-      voice: "Energetic cinematic narration with commanding tone",
-      full_prompt: "",
-    },
-  };
-
-  /**
-   * Build a prompt using keyword-matched cinematic templates.
-   * NEVER includes the user's raw description in any field.
+   * Build a unique cinematic prompt directly from the user's description.
+   * This is NOT a static template: the user's idea is the core of every
+   * field, and camera/lens/movement/lighting/style are randomized per
+   * request, so different inputs always produce clearly different,
+   * on-topic prompts even when the AI itself failed.
    */
   private buildDynamicFallback(
     platform: VideoPlatform,
     description: string
   ): VideoPrompt {
-    const type = this.detectSceneType(description);
-    const tmpl = this.fallbackTemplates[type]!;
-    return { platform, ...tmpl };
+    const idea = description.trim().replace(/\s+/g, " ").replace(/[.!?]+$/, "");
+
+    const camera = this.pick([
+      "a low-angle tracking shot",
+      "a sweeping aerial shot",
+      "a close-up dolly shot following the subject",
+      "a wide establishing shot",
+      "a handheld follow shot",
+      "a first-person perspective shot",
+      "a slow crane rise over the scene",
+      "a dramatic low Dutch angle",
+    ]);
+    const lens = this.pick([
+      "35mm cinema lens",
+      "24mm wide-angle lens",
+      "50mm prime lens",
+      "85mm telephoto lens",
+      "anamorphic 40mm lens",
+    ]);
+    const movement = this.pick([
+      "smooth orbital camera movement",
+      "fast tracking with realistic motion blur",
+      "a slow push-in with shallow depth of field",
+      "a steady gimbal glide keeping the subject centered",
+      "dynamic whip transitions between shots",
+      "a vertical rise revealing the full environment",
+    ]);
+    const lighting = this.pick([
+      "golden hour sunlight with long soft shadows",
+      "moody neon lighting with wet reflective surfaces",
+      "soft overcast diffused daylight",
+      "dramatic low-key lighting with high contrast",
+      "vibrant sunrise backlight with gentle lens flare",
+      "cool moonlight with deep blue atmospheric tones",
+    ]);
+    const colorGrading = this.pick([
+      "a warm cinematic grade with rich contrast",
+      "a cool teal-and-orange cinematic grade",
+      "a natural filmic color palette",
+      "a high-contrast moody grade",
+    ]);
+    const style = this.pick([
+      "Hollywood blockbuster realism",
+      "cinematic documentary realism",
+      "a high-octane action film look",
+      "a dreamlike art-house cinema look",
+      "an epic fantasy adventure style",
+      "a gritty neo-noir thriller look",
+    ]);
+    const music = this.pick([
+      "a cinematic orchestral score",
+      "subtle ambient sound design",
+      "an intense rhythmic soundtrack",
+      "epic trailer music",
+    ]);
+
+    const fullPrompt =
+      `Cinematic video of ${idea}. ${this.capitalize(camera)} with ${movement}, ` +
+      `${lighting}, in ${style}. Realistic motion, photorealistic detail, 4K, 24fps film look.`;
+
+    return {
+      platform,
+      title: "Cinematic " + this.capitalize(idea.slice(0, 60)),
+      scene: `A cinematic sequence of ${idea}. ${this.capitalize(camera)} with ${movement}, ${lighting}, ${colorGrading}, rendered with realistic motion, physics and an immersive atmosphere.`,
+      subject: `The subject, exactly as requested: ${idea}.`,
+      action: `${this.capitalize(idea)}, captured with realistic motion, natural physics and dynamic timing.`,
+      environment: `The environment determined by the request — ${idea} — with atmospheric depth and realistic detail.`,
+      camera,
+      lens,
+      movement,
+      lighting,
+      color_grading: colorGrading,
+      realism: "Ultra realistic, photorealistic 4K cinematic quality with accurate physics and lifelike motion.",
+      style,
+      duration: "10 seconds",
+      negative_prompt: "low quality, blurry, distorted subject, bad anatomy, unrealistic physics, static shot, watermark, oversaturated",
+      music,
+      voice: "",
+      full_prompt: fullPrompt,
+    };
   }
 
   /**
-   * Validates that the AI output contains ALL of the user's specific
-   * objects (detected vehicles, brands, subjects).  If any are missing
-   * (generalized away), adds natural clarifying sentences.
+   * Post-process the AI output. The ONLY guarantee enforced here is that
+   * an explicit numeric speed the user provided survives into the final
+   * prompt. Nothing else is rewritten or injected — the AI output is
+   * trusted to reflect the user's request.
    */
   private validateAndMergePrompt(
     prompt: VideoPrompt,
     description: string
   ): VideoPrompt {
-    const elements = this.extractKeyElements(description);
+    const speed = this.extractSpeed(description);
+    if (!speed) return { ...prompt };
+
     const merged = { ...prompt };
+    const speedLower = speed.toLowerCase();
+    const hasSpeed =
+      merged.scene.toLowerCase().includes(speedLower) ||
+      merged.action.toLowerCase().includes(speedLower) ||
+      (merged.full_prompt || "").toLowerCase().includes(speedLower);
 
-    // Skip validation if no specific objects were detected (raw description fallback)
-    if (
-      elements.objects.length === 1 &&
-      elements.objects[0] === description.toLowerCase()
-    ) {
-      return merged;
+    if (!hasSpeed && merged.full_prompt) {
+      merged.full_prompt = `${merged.full_prompt.trim()} The speed is ${speed}.`;
     }
-
-    const sceneLower = prompt.scene.toLowerCase();
-    const subjectLower = prompt.subject.toLowerCase();
-    const actionLower = prompt.action.toLowerCase();
-    const fullPromptLower = (prompt.full_prompt || "").toLowerCase();
-
-    // ── Validate speed appears in scene, action, and full_prompt ──
-    if (elements.speed && elements.speed !== "extreme speed") {
-      const speedLower = elements.speed.toLowerCase();
-      // Extract just the number from speed (e.g. "300" from "300 km/h")
-      const speedNumMatch = elements.speed.match(/\d+/);
-      const speedNum = speedNumMatch ? speedNumMatch[0] : null;
-
-      const speedInScene = sceneLower.includes(speedLower) || (speedNum && sceneLower.includes(speedNum));
-      const speedInAction = actionLower.includes(speedLower) || (speedNum && actionLower.includes(speedNum));
-      const speedInFullPrompt = fullPromptLower.includes(speedLower) || (speedNum && fullPromptLower.includes(speedNum));
-
-      if (!speedInScene) {
-        merged.scene = `${merged.scene} The action reaches ${elements.speed} with intense cinematic energy.`.trim();
-      }
-      if (!speedInAction) {
-        merged.action = `${merged.action} at ${elements.speed}`.trim();
-      }
-      if (!speedInFullPrompt && merged.full_prompt) {
-        merged.full_prompt = `${merged.full_prompt} Speed: ${elements.speed}.`.trim();
-      }
-    }
-
-    // ── Validate all detected objects appear in output ────────────
-    for (const obj of elements.objects) {
-      const objWords = obj
-        .toLowerCase()
-        .split(/\s+/)
-        .filter((w) => w.length > 2 && w !== "a" && w !== "an");
-
-      const missingKeyWords = objWords.filter(
-        (w) =>
-          !sceneLower.includes(w) &&
-          !subjectLower.includes(w) &&
-          !fullPromptLower.includes(w)
-      );
-
-      if (missingKeyWords.length > 0) {
-        // Object is missing from AI output — add it naturally with its exact name
-        const specificObj = obj.replace(/^a |^an /, "");
-        merged.scene = `${merged.scene} A ${specificObj} also features in this scene with prominent presence.`.trim();
-      }
-    }
-
     return merged;
   }
 
@@ -808,6 +533,14 @@ Return one JSON object per platform in a JSON array.`;
     if (typeof val === "string") return val;
     if (typeof val === "number" || typeof val === "boolean") return String(val);
     return "";
+  }
+
+  private pick<T>(options: T[]): T {
+    return options[Math.floor(Math.random() * options.length)]!;
+  }
+
+  private capitalize(text: string): string {
+    return text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
   }
 
   getPlatforms(): VideoPlatform[] {

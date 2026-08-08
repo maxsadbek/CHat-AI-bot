@@ -93,6 +93,7 @@ export class GeminiProviderImpl implements AIProvider {
           : undefined,
         model: resolvedModel.id,
         provider: "gemini",
+        finishReason: result.response.candidates?.[0]?.finishReason ?? undefined,
       };
     } catch (err) {
       log.error("Gemini provider error", { error: String(err) });

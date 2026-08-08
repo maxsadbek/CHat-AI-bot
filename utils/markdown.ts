@@ -92,6 +92,9 @@ export function numberedItem(index: number, text: string): string {
 
 /**
  * Split long message into chunks for Telegram
+ *
+ * Never splits inside a fenced code block (``` ... ```) so Telegram formatting
+ * entities are never broken across separate messages.
  */
 export function splitMessage(text: string, maxLength: number = 4096): string[] {
   const chunks: string[] = [];
@@ -103,17 +106,68 @@ export function splitMessage(text: string, maxLength: number = 4096): string[] {
       break;
     }
 
-    // Try to split at a natural boundary
-    const splitIndex = remaining.lastIndexOf("\n\n", maxLength);
-    const cutIndex =
-      splitIndex > maxLength / 2 ? splitIndex : remaining.lastIndexOf(" ", maxLength);
-    const actualCut = cutIndex > 0 ? cutIndex : maxLength;
+    const actualCut = findSafeSplitIndex(remaining, maxLength);
+    let cut = actualCut;
+    let chunk = remaining.slice(0, cut);
 
-    chunks.push(remaining.slice(0, actualCut));
-    remaining = remaining.slice(actualCut).trim();
+    // If we were forced to cut inside a fenced code block (a single block
+    // larger than maxLength), close the fence in this chunk and reopen it in
+    // the next one so Telegram formatting entities stay valid. Reserve room
+    // for the closing fence so chunks never exceed maxLength.
+    if ((chunk.match(/```/g) || []).length % 2 !== 0) {
+      cut = Math.max(1, Math.min(cut, maxLength - 4));
+      chunk = remaining.slice(0, cut);
+      chunk += "\n```";
+      chunks.push(chunk);
+      remaining = "```\n" + remaining.slice(cut).trim();
+      continue;
+    }
+
+    chunks.push(chunk);
+    remaining = remaining.slice(cut).trim();
   }
 
   return chunks;
+}
+
+/**
+ * Find a safe split index for a long message: as close to maxLength as possible,
+ * preferring paragraph boundaries, and never splitting inside a fenced code block.
+ */
+function findSafeSplitIndex(text: string, maxLength: number): number {
+  let inFence = false;
+  let paragraphCut = -1;
+  let lineCut = -1;
+  let wordCut = -1;
+
+  const limit = Math.min(maxLength, text.length);
+
+  for (let i = 0; i <= limit; i++) {
+    // Fenced code block opener/closer: "```" (+ optional language tag)
+    if (text.startsWith("```", i)) {
+      inFence = !inFence;
+      i += 2; // skip the remaining fence characters
+      continue;
+    }
+
+    if (inFence) continue; // never cut inside a code block
+
+    const ch = text[i];
+    if (ch === "\n") {
+      if (text.startsWith("\n\n", i - 1)) {
+        paragraphCut = i - 1;
+      }
+      lineCut = i;
+    } else if (ch === " ") {
+      wordCut = i;
+    }
+  }
+
+  // Prefer the boundary closest to maxLength; paragraph breaks are only used
+  // when they are beyond the midpoint (avoids tiny chunks).
+  const best =
+    paragraphCut > maxLength / 2 ? paragraphCut : Math.max(wordCut, lineCut);
+  return best >= 0 ? best : maxLength;
 }
 
 /**

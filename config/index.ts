@@ -144,9 +144,9 @@ const envSchema = z.object({
   AI_DAILY_BUSINESS_LIMIT_PREMIUM: z.coerce.number().default(300),
   AI_DAILY_TRANSLATE_LIMIT_PREMIUM: z.coerce.number().default(300),
 
-  // ─── Token Limits (per-plan env overrides — fallback for features without specific policies) ──
-  FREE_MAX_TOKENS: z.coerce.number().default(600),
-  PREMIUM_MAX_TOKENS: z.coerce.number().default(1400),
+  // ─── Token Limits (per-plan env overrides — the authoritative plan caps) ──
+  FREE_MAX_TOKENS: z.coerce.number().default(500),
+  PREMIUM_MAX_TOKENS: z.coerce.number().default(1000),
   PRO_MAX_TOKENS: z.coerce.number().default(8000),
   ENTERPRISE_MAX_TOKENS: z.coerce.number().default(16000),
 

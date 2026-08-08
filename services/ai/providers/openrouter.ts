@@ -87,6 +87,7 @@ export class OpenRouterProviderImpl implements AIProvider {
           : undefined,
         model: resolvedModel.id,
         provider: "openrouter",
+        finishReason: choice.finish_reason ?? undefined,
       };
     } catch (err) {
       log.error("OpenRouter provider error", { error: String(err) });

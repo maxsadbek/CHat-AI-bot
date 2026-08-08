@@ -79,6 +79,7 @@ export class OpenAIProviderImpl implements AIProvider {
           : undefined,
         model: resolvedModel.id,
         provider: "openai",
+        finishReason: choice.finish_reason ?? undefined,
       };
     } catch (err) {
       log.error("OpenAI provider error", { error: String(err) });

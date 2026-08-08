@@ -120,73 +120,59 @@ export class AIConfig {
     },
     // ─── Professional Token Limits per Feature and Plan ───────────
     //
-    // These are the AUTHORITATIVE limits.  The FREE_MAX_TOKENS / 
-    // PREMIUM_MAX_TOKENS / PRO_MAX_TOKENS / ENTERPRISE_MAX_TOKENS env
-    // vars can ONLY RAISE these values (see getMaxTokens for the 50%
-    // minimum floor clamp).  They can never reduce quality below the
-    // professional defaults.
+    // These are the AUTHORITATIVE defaults. The FREE_MAX_TOKENS /
+    // PREMIUM_MAX_TOKENS / PRO_MAX_TOKENS / ENTERPRISE_MAX_TOKENS env vars
+    // act as plan-wide CAPS that can raise the limits above these defaults
+    // (see getMaxTokens). The feature max below defines the default cap when
+    // the plan env var is not set.
     //
+    // Plan caps (default when env var unset): FREE=500 · PREMIUM=1000.
     // Feature-based differentiation:
-    //   Video & Coding — highest (prompt engineering needs many tokens)
+    //   Video & Coding — higher bases (prompt engineering needs many tokens)
     //   Chat & Translate — moderate
     //   Image & Social — medium
     //   Business — high (strategy docs need room)
     //
-    // ─── Feature-Specific Token Limits per Plan ────────────────────
-    //
-    // These are the AUTHORITATIVE feature+plan limits.
-    // Env vars (FREE_MAX_TOKENS, PREMIUM_MAX_TOKENS) serve as general
-    // plan-wide fallbacks when no feature-specific policy is configured.
-    //
-    // Feature-based differentiation:
-    //   Chat — short conversational responses (lowest)
-    //   Coding — long code blocks, full implementations (highest)
-    //   Business — detailed strategies, plans, analysis (high)
-    //   Video — cinematic scene descriptions (high)
-    //   Image — professional prompt engineering (medium)
-    //   Social — marketing content, campaigns (medium)
-    //   Translate — sentence-level, shorter output (lowest)
-    //
     tokenPolicies: {
       chat: {
-        FREE: { base: 400, max: 600 },
-        PREMIUM: { base: 800, max: 1400 },
+        FREE: { base: 400, max: 500 },
+        PREMIUM: { base: 800, max: 1000 },
         PRO: { base: 4000, max: 8000 },
         ENTERPRISE: { base: 8000, max: 16000 },
       },
       business: {
-        FREE: { base: 400, max: 600 },
-        PREMIUM: { base: 800, max: 1400 },
+        FREE: { base: 400, max: 500 },
+        PREMIUM: { base: 800, max: 1000 },
         PRO: { base: 8000, max: 16000 },
         ENTERPRISE: { base: 16000, max: 32000 },
       },
       coding: {
-        FREE: { base: 600, max: 800 },
-        PREMIUM: { base: 1200, max: 2000 },
+        FREE: { base: 400, max: 500 },
+        PREMIUM: { base: 800, max: 1000 },
         PRO: { base: 12000, max: 24000 },
         ENTERPRISE: { base: 24000, max: 48000 },
       },
       image: {
-        FREE: { base: 400, max: 600 },
-        PREMIUM: { base: 800, max: 1400 },
+        FREE: { base: 400, max: 500 },
+        PREMIUM: { base: 800, max: 1000 },
         PRO: { base: 4000, max: 8000 },
         ENTERPRISE: { base: 8000, max: 16000 },
       },
       video: {
-        FREE: { base: 600, max: 800 },
-        PREMIUM: { base: 1200, max: 1800 },
+        FREE: { base: 400, max: 500 },
+        PREMIUM: { base: 800, max: 1000 },
         PRO: { base: 8000, max: 16000 },
         ENTERPRISE: { base: 16000, max: 32000 },
       },
       translate: {
-        FREE: { base: 400, max: 600 },
-        PREMIUM: { base: 800, max: 1400 },
+        FREE: { base: 400, max: 500 },
+        PREMIUM: { base: 800, max: 1000 },
         PRO: { base: 3000, max: 6000 },
         ENTERPRISE: { base: 6000, max: 12000 },
       },
       social: {
-        FREE: { base: 400, max: 600 },
-        PREMIUM: { base: 800, max: 1400 },
+        FREE: { base: 400, max: 500 },
+        PREMIUM: { base: 800, max: 1000 },
         PRO: { base: 5000, max: 10000 },
         ENTERPRISE: { base: 10000, max: 20000 },
       },
@@ -379,12 +365,14 @@ export class AIConfig {
    * Priority:
    *   1. User provided maxTokens (handled in caller via request.maxTokens)
    *   2. Plan-based environment limits (FREE_MAX_TOKENS / PREMIUM_MAX_TOKENS env vars)
-   *      — used as the starting base if set and above MIN_ENV_TOKEN_FLOOR
-   *   3. Feature-specific limits (from tokenPolicies) — used as the starting base
-   *      if no plan env limit is set; the feature's `max` value caps the final result
+   *      — the plan cap. When set (and above MIN_ENV_TOKEN_FLOOR) it REPLACES
+   *        the feature's `max` value, so FREE_MAX_TOKENS=500 / PREMIUM_MAX_TOKENS=1000
+   *        are always applied as the true plan ceilings.
+   *   3. Feature-specific limits (from tokenPolicies) — used when no plan env
+   *      limit is set; the feature's `max` value then caps the final result.
    *
    * All plans get dynamic scaling: longer/complex prompts get more output tokens,
-   * up to the feature's configured max limit.
+   * up to the plan cap.
    */
   static getMaxTokens(
     feature: FeatureType,
@@ -396,11 +384,13 @@ export class AIConfig {
     // ── Resolve token policy for this feature+plan ─────────────
     const policy =
       this.configData.tokenPolicies[feature]?.[planType] ??
-      this.configData.tokenPolicies[feature]?.FREE ?? { base: 400, max: 400 };
+      this.configData.tokenPolicies[feature]?.FREE ?? { base: 400, max: 500 };
 
     // ── Priority 2: Plan-based environment limits ──────────────
-    // Use plan env var as the starting base if set (e.g., FREE_MAX_TOKENS=600).
-    // Protected from accidentally low values via MIN_ENV_TOKEN_FLOOR.
+    // The plan env var is the authoritative CAP for the plan. E.g.
+    // FREE_MAX_TOKENS=500 means free users never get more than 500 output
+    // tokens (unless the env value is raised). Protected from accidentally
+    // low values via MIN_ENV_TOKEN_FLOOR.
     const envOverrides: Record<string, number | undefined> = {
       FREE: process.env.FREE_MAX_TOKENS ? Number(process.env.FREE_MAX_TOKENS) : undefined,
       PREMIUM: process.env.PREMIUM_MAX_TOKENS ? Number(process.env.PREMIUM_MAX_TOKENS) : undefined,
@@ -409,30 +399,33 @@ export class AIConfig {
     };
 
     const envBase = envOverrides[planType];
-    const effectiveBase =
+    const planCap =
       envBase !== undefined && envBase >= AIConfig.MIN_ENV_TOKEN_FLOOR
         ? envBase
-        : policy.base;
+        : policy.max;
 
-    // ── Priority 3: Feature-specific max caps the final value ──
-    // Dynamic scaling: longer prompts get more output tokens.
+    // Base for dynamic scaling never exceeds the plan cap.
+    const base = Math.min(policy.base, planCap);
+
+    // ── Priority 3: Dynamic scaling, capped by the plan cap ──
+    // Longer prompts get more output tokens, up to the plan ceiling.
     if (planType === "FREE") {
-      // FREE plan: conservative scaling, but allows up to feature max
+      // FREE plan: conservative scaling, but allows up to the plan cap
       if (promptLength > 4000) {
-        return policy.max;
+        return planCap;
       } else if (promptLength > 1000) {
-        return Math.min(policy.max, Math.round(effectiveBase * 1.3));
+        return Math.min(planCap, Math.round(base * 1.3));
       }
-      return Math.min(policy.max, effectiveBase);
+      return Math.min(planCap, base);
     }
 
     // PREMIUM/PRO/ENTERPRISE: more generous scaling
     if (promptLength > 4000) {
-      return policy.max;
+      return planCap;
     } else if (promptLength > 1000) {
-      return Math.min(policy.max, Math.round(effectiveBase * 1.5));
+      return Math.min(planCap, Math.round(base * 1.5));
     }
-    return Math.min(policy.max, effectiveBase);
+    return Math.min(planCap, base);
   }
 
   /**

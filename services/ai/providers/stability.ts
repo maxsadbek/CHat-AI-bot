@@ -87,6 +87,7 @@ export class StabilityProviderImpl implements AIProvider {
           : undefined,
         model: resolvedModel.id,
         provider: "stability",
+        finishReason: choice.finish_reason ?? undefined,
       };
     } catch (err) {
       log.error("Stability AI provider error", { error: String(err) });

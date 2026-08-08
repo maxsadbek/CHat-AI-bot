@@ -77,6 +77,7 @@ export class DeepSeekProviderImpl implements AIProvider {
           : undefined,
         model: resolvedModel.id,
         provider: "deepseek",
+        finishReason: choice.finish_reason ?? undefined,
       };
     } catch (err) {
       log.error("DeepSeek provider error", { error: String(err) });

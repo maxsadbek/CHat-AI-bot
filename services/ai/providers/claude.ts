@@ -95,6 +95,7 @@ export class ClaudeProviderImpl implements AIProvider {
           : undefined,
         model: resolvedModel.id,
         provider: "claude",
+        finishReason: completion.stop_reason ?? undefined,
       };
     } catch (err) {
       log.error("Claude provider error", { error: String(err) });

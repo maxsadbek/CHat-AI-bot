@@ -87,6 +87,7 @@ export class CerebrasProviderImpl implements AIProvider {
           : undefined,
         model: resolvedModel.id,
         provider: "cerebras",
+        finishReason: choice.finish_reason ?? undefined,
       };
     } catch (err) {
       log.error("Cerebras provider error", { error: String(err) });

@@ -30,6 +30,12 @@ export interface ChatResponse {
   model: string;
   provider: string;
   costUsd?: number;
+  /**
+   * Raw finish reason returned by the provider API.
+   * Used by the executor to detect truncated responses.
+   * Values: "stop", "end_turn", "length", "max_tokens", "MAX_TOKENS", etc.
+   */
+  finishReason?: string;
 }
 
 export interface ModelCapabilities {

@@ -14,7 +14,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "webhook:set": "tsx scripts/set-webhook.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:truncation": "tsx scripts/validate-truncation.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.113.0",

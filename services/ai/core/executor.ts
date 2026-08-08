@@ -56,8 +56,138 @@ export interface AIExecutionOptions {
 }
 
 export class AIExecutor {
-  /** Maximum number of automatic continuation requests when response is truncated */
-  private static readonly MAX_CONTINUATIONS = 2;
+  /**
+   * Maximum number of automatic continuation requests when response is truncated.
+   * Each continuation requests the remaining context from the same provider,
+   * so even long answers can be completed without ever sending a mid-sentence cut.
+   */
+  private static readonly MAX_CONTINUATIONS = 3;
+
+  /**
+   * Instruction sent to the model when the previous response was truncated.
+   * The partial response is appended as an assistant message BEFORE this prompt,
+   * so the model continues from the exact stopping point without repeating.
+   */
+  private static readonly CONTINUE_INSTRUCTION =
+    "Продолжи ровно с того места, где остановился — с последнего слова или предложения. " +
+    "НЕ повторяй уже написанный выше текст и не начинай ответ заново. " +
+    "Верни только продолжение.";
+
+  /**
+   * Final short instruction used when the continuation budget is exhausted but
+   * the response still ends mid-sentence — the model simply closes the last
+   * sentence so the user never sees a cut-off answer.
+   */
+  private static readonly FINISH_INSTRUCTION =
+    "Кратко закончи последнее предложение и поставь точку. " +
+    "Не начинай новых тем и не повторяй текст. Верни только завершение последней фразы.";
+
+  /**
+   * Provider finish reasons that mean the response hit the token limit.
+   * OpenAI: "length" · Gemini: "MAX_TOKENS" · Claude: "max_tokens".
+   * Compared case-insensitively ("max_tokens" / "MAX_TOKENS" / "length").
+   */
+  private static readonly TRUNCATED_FINISH_REASONS = new Set([
+    "length",
+    "max_tokens",
+    "max_output_tokens",
+    "maxtokens",
+  ]);
+
+  /** Read and normalize the finish reason from a provider response. */
+  private static getFinishReason(response: ChatResponse): string | undefined {
+    const raw = (response as unknown as Record<string, unknown>).finishReason;
+    if (typeof raw !== "string") return undefined;
+    const normalized = raw.trim().toLowerCase();
+    return normalized || undefined;
+  }
+
+  /**
+   * True when the text ends at a natural boundary (sentence end, closing quote,
+   * closing code fence, or trailing emoji). Used to detect responses that were
+   * cut off in the middle of a sentence.
+   */
+  private static endsWithCleanSentence(text: string): boolean {
+    const trimmed = text.trimEnd();
+    if (!trimmed) return false;
+
+    // Closing fenced code block
+    if (trimmed.endsWith("```")) return true;
+
+    const last = trimmed[trimmed.length - 1]!;
+
+    // Terminal punctuation: . ! ? …
+    if (".!?…".includes(last)) return true;
+
+    // Closing quote/bracket/paren — clean only when preceded by punctuation
+    // (e.g. "Готово!", «Отлично!»), not mid-emphasis markdown.
+    if (")]\"}»”’›*_~`".includes(last)) {
+      const prevLast = trimmed.slice(0, -1).trimEnd().slice(-1);
+      return prevLast ? ".!?…".includes(prevLast) : false;
+    }
+
+    // Trailing emoji (common for AI summaries)
+    if (/[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{FE0F}\u{2B50}\u{2705}]$/u.test(trimmed)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Detect whether a provider response was truncated and needs continuation.
+   *
+   * Strategy 1: explicit finish_reason from the provider API
+   *   (length / max_tokens / MAX_TOKENS).
+   * Strategy 2: response is near the maxTokens limit (>= 95%) — all features.
+   * Strategy 3: response ends mid-sentence with no terminal punctuation —
+   *   prose features only (chat, coding, business, translate, social). Image
+   *   and video prompts are deliberately written without trailing punctuation,
+   *   so the sentence heuristic would cause false continuations there.
+   */
+  private static isTruncatedResponse(
+    response: ChatResponse,
+    maxTokens: number,
+    feature?: FeatureType
+  ): boolean {
+    // Strategy 1: explicit finish reason
+    const finishReason = this.getFinishReason(response);
+    if (finishReason && this.TRUNCATED_FINISH_REASONS.has(finishReason)) {
+      return true;
+    }
+
+    const content = response.content?.trimEnd() ?? "";
+    if (!content) return false;
+
+    // Strategy 2: near the token limit (all features)
+    const responseTokens = CostOptimizationStrategy.estimateTokenCount(content);
+    if (maxTokens > 100 && responseTokens >= maxTokens * 0.95) {
+      return true;
+    }
+
+    // Strategy 3: ended in the middle of a sentence (prose features only).
+    // Minimum length avoids false positives on complete short answers.
+    const isProse = feature !== "image" && feature !== "video";
+    if (isProse && content.length >= 100 && !this.endsWithCleanSentence(content)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Merge the accumulated content with the continuation chunk.
+   * If the previous part ended mid-sentence, the continuation is glued with a
+   * single space so the final text reads naturally (no paragraph break inside
+   * a sentence). Otherwise a paragraph break is used.
+   */
+  private static joinContinuation(prev: string, next: string): string {
+    if (!prev) return next;
+    const trimmedNext = next.trimStart();
+    if (!trimmedNext) return prev;
+    const prevEndsClean = this.endsWithCleanSentence(prev);
+    return prevEndsClean ? `${prev}\n\n${trimmedNext}` : `${prev} ${trimmedNext}`;
+  }
 
   constructor(private registry: ProviderRegistry = providerRegistry) {}
 
@@ -182,11 +312,12 @@ export class AIExecutor {
   /**
    * Execute with automatic continuation for truncated responses.
    *
-   * When finish_reason is "max_tokens" or "length", the response was
-   * truncated. This method automatically requests a continuation by
-   * appending the partial response as context and re-requesting.
-   *
-   * Maximum 2 continuations to prevent infinite loops.
+   * When finish_reason is "max_tokens" or "length" (or the response ends
+   * mid-sentence), the response was truncated. This method automatically
+   * requests a continuation by appending the partial response as context and
+   * re-requesting. Continuations are bounded to prevent infinite loops; when
+   * the budget is exhausted a single short "finish the sentence" call ensures
+   * the final answer never ends mid-sentence.
    */
   private async executeWithContinuation(
     feature: FeatureType,
@@ -202,10 +333,13 @@ export class AIExecutor {
   ): Promise<ChatResponse> {
     let accumulatedContent = "";
     let continuationCount = 0;
+    // Set when the continuation budget was exhausted and a final short
+    // "finish the last sentence" call was already made (bounded to one).
+    let gracefulCompletionUsed = false;
     // Track ALL provider errors across the chain for comprehensive summary logging
     const allProviderErrors: Array<{ provider: string; model: string; code: string; status: number | undefined; message: string }> = [];
 
-    for (let attempt = 0; attempt < providerChain.length; attempt++) {
+    providerLoop: for (let attempt = 0; attempt < providerChain.length; attempt++) {
       const providerId = providerChain[attempt]!;
 
       // ── Pre-flight: Check API key, enabled status, and health ──
@@ -236,14 +370,6 @@ export class AIExecutor {
           : provider.getDefaultModel();
         const resolvedModelId = modelObj?.id || providerId;
 
-        // Build the request messages including any continuation context
-        const continuationMessages = continuationCount > 0
-          ? [
-              ...request.messages,
-              { role: "assistant" as const, content: accumulatedContent },
-            ]
-          : request.messages;
-
         // ── Log AI_ATTEMPT_START ──
         attemptStartTime = Date.now();
         console.log(`[AI_ATTEMPT_START] feature=${feature} provider=${providerId} model=${resolvedModelId} attempt=${attempt + 1}/${providerChain.length} maxTokens=${maxTokens}`);
@@ -252,10 +378,13 @@ export class AIExecutor {
         // If the provider hangs (no response, network stall, infinite loop),
         // the timeout will abort and treat it as a provider failure,
         // moving to the next provider in the chain.
+        // NOTE: when a continuation was triggered, the partial response and the
+        // continue instruction were appended to request.messages, so we always
+        // send request.messages as-is — no duplication of context.
         const response = await this.executeWithTimeout(
           provider.chat({
             ...request,
-            messages: continuationMessages,
+            messages: request.messages,
             modelId: resolvedModelId,
             maxTokens,
             temperature,
@@ -289,67 +418,68 @@ export class AIExecutor {
         console.log(`[AI_ATTEMPT_END] feature=${feature} provider=${providerId} model=${resolvedModelId} status=success duration=${attemptDuration}ms attempt=${attempt + 1}/${providerChain.length}`);
         console.log(`[AI_SUCCESS] feature=${feature} provider=${providerId} model=${resolvedModelId} duration=${attemptDuration}ms tokens=${maxTokens} attempt=${attempt + 1}/${providerChain.length}`);
 
-        // Append to accumulated content
-        accumulatedContent += (accumulatedContent ? "\n\n" : "") + response.content;
+        // Append to accumulated content (glues mid-sentence continuations naturally)
+        accumulatedContent = AIExecutor.joinContinuation(accumulatedContent, response.content);
 
         const responseUsage = response.usage;
         // ── Detect truncation ────────────────────────────────────────
-        // Strategy 1: Check for explicit finish_reason from provider API.
-        const rawResponse = response as unknown as Record<string, unknown>;
-        const finishReason = rawResponse.finishReason as string | undefined;
+        // Strategy 1: explicit finish_reason from the provider API
+        //   (e.g. OpenAI "length", Gemini "MAX_TOKENS", Claude "max_tokens").
+        // Strategy 2: response near the maxTokens limit (>= 95%).
+        // Strategy 3: response ends mid-sentence without terminal punctuation.
+        const finishReason = AIExecutor.getFinishReason(response);
+        const likelyTruncated = AIExecutor.isTruncatedResponse(response, maxTokens, feature);
 
-        // Strategy 2: Heuristic — if response is near the maxTokens limit,
-        // it was likely truncated.  Estimate tokens and compare to limit.
-        const responseTokens = CostOptimizationStrategy.estimateTokenCount(response.content);
-        const likelyTruncated = finishReason === "max_tokens" || finishReason === "length" ||
-          (!finishReason && maxTokens > 100 && responseTokens >= maxTokens * 0.95);
-
-        // Strategy 3 (Business AI): Detect incomplete trailing section
+        // Strategy 4 (Business AI): Detect incomplete trailing section
         // If response ends with an emoji header + colon with no content after it
         // (e.g. "📊 Market Analysis:" is the last line), the AI ran out of tokens
         // mid-section. Force continuation.
         const endsWithIncompleteSection = this.detectIncompleteSection(accumulatedContent, feature);
 
         // ── Auto-continuation: if response was truncated or incomplete, request more ──
-        if (
-          (likelyTruncated || endsWithIncompleteSection) &&
-          continuationCount < AIExecutor.MAX_CONTINUATIONS
-        ) {
-          continuationCount++;
-          log.info("[CONTINUATION] Response truncated/incomplete, requesting continuation", {
-            feature,
-            provider: providerId,
-            continuationCount,
-            maxContinuations: AIExecutor.MAX_CONTINUATIONS,
-            finishReason,
-            endsWithIncompleteSection,
-            likelyTruncated,
-          });
+        if (likelyTruncated || endsWithIncompleteSection) {
+          if (continuationCount < AIExecutor.MAX_CONTINUATIONS) {
+            continuationCount++;
+            log.info("[CONTINUATION] Response truncated/incomplete, requesting continuation", {
+              feature,
+              provider: providerId,
+              continuationCount,
+              maxContinuations: AIExecutor.MAX_CONTINUATIONS,
+              finishReason,
+              endsWithIncompleteSection,
+              likelyTruncated,
+            });
 
-          // Replace the continuation message with a SPECIFIC prompt
-          // to avoid the AI re-generating the header or repeating content.
-          // The accumulated content already has the partial response.
-          // We tell it to continue from where it stopped.
-          if (continuationCount === 1) {
-            // On first continuation, update the stored request messages
-            // with a SPECIFIC continue prompt to avoid the AI re-generating
-            // the header or repeating content.
+            // Append the partial response as an assistant message and ask the
+            // model to continue from the exact stopping point. The full context
+            // (original messages + partial + instruction) is sent on the next call.
             request.messages = [
               ...request.messages,
-              { role: "assistant" as const, content: accumulatedContent },
-              { role: "user" as const, content: "Continue from where you stopped. Fill the section that was cut off. Do NOT repeat any text that is already above." },
+              { role: "assistant" as const, content: response.content },
+              { role: "user" as const, content: AIExecutor.CONTINUE_INSTRUCTION },
             ];
-            // NOTE: accumulatedContent is intentionally NOT reset here.
-            // It's already preserved in request.messages as an assistant entry.
-            // Keeping it prevents an empty assistant message from being
-            // appended in the continuationMessages builder below.
-            attempt--; // Stay on the same provider
+
+            attempt--; // Stay on the same provider to continue
             continue;
           }
 
-          // On subsequent continuations, use the standard approach
-          attempt--; // Stay on the same provider
-          continue;
+          // Budget exhausted but the response still ends mid-sentence — do ONE
+          // final short completion so the user never sees a cut-off sentence.
+          if (!gracefulCompletionUsed && !AIExecutor.endsWithCleanSentence(accumulatedContent)) {
+            gracefulCompletionUsed = true;
+            log.info("[CONTINUATION] Final graceful completion to close the last sentence", {
+              feature,
+              provider: providerId,
+              accumulatedLength: accumulatedContent.length,
+            });
+            request.messages = [
+              ...request.messages,
+              { role: "assistant" as const, content: response.content },
+              { role: "user" as const, content: AIExecutor.FINISH_INSTRUCTION },
+            ];
+            attempt--; // Stay on the same provider
+            continue;
+          }
         }
 
         // ── Log image success ──
@@ -460,33 +590,32 @@ export class AIExecutor {
                 ? provider.getModel(modelId) || provider.getDefaultModel()
                 : provider.getDefaultModel();
               const resolvedModelId = modelObj?.id || providerId;
-              const continuationMessages = continuationCount > 0
-                ? [
-                    ...request.messages,
-                    { role: "assistant" as const, content: accumulatedContent },
-                  ]
-                : request.messages;
 
               const retryResponse = await provider.chat({
                 ...request,
-                messages: continuationMessages,
+                messages: request.messages,
                 modelId: resolvedModelId,
                 maxTokens,
                 temperature,
               });
 
               // Retry succeeded — proceed as normal
-              accumulatedContent += (accumulatedContent ? "\n\n" : "") + retryResponse.content;
-              const rawRetryResponse = retryResponse as unknown as Record<string, unknown>;
-              const retryFinishReason = rawRetryResponse.finishReason as string | undefined;
+              accumulatedContent = AIExecutor.joinContinuation(accumulatedContent, retryResponse.content);
 
               log.info(`[RATE_LIMIT] ${providerId} — retry ${retry}/${maxRateLimitRetries} succeeded after ${Math.round(waitMs)}ms`);
 
-              // Check if truncated and need continuation
-              if ((retryFinishReason === "max_tokens" || retryFinishReason === "length") &&
+              // If the retried response was ALSO truncated, request a continuation
+              // on the same provider instead of returning a cut-off answer.
+              if (AIExecutor.isTruncatedResponse(retryResponse, maxTokens, feature) &&
                   continuationCount < AIExecutor.MAX_CONTINUATIONS) {
                 continuationCount++;
+                request.messages = [
+                  ...request.messages,
+                  { role: "assistant" as const, content: retryResponse.content },
+                  { role: "user" as const, content: AIExecutor.CONTINUE_INSTRUCTION },
+                ];
                 attempt--; // Stay on same provider for continuation
+                continue providerLoop;
               }
 
               // We've recovered — reset the original error and continue normal flow
@@ -628,9 +757,25 @@ export class AIExecutor {
           error: errorMsg,
         });
 
-        // If we have accumulated content from a partial success, return it
+        // If more providers are available, fail over to the next one.
+        // When a partial (possibly mid-sentence) response was already received,
+        // the next provider continues from it instead of us returning a cut-off
+        // answer (request.messages already contains the partial + instruction).
+        if (attempt < providerChain.length - 1) {
+          const nextProvider = providerChain[attempt + 1] ?? "none";
+          if (accumulatedContent.length > 0) {
+            console.log(`[AI_SWITCH] from=${providerId} to=${nextProvider} reason=CONTINUATION_PROVIDER_FAILURE feature=${feature}`);
+          } else {
+            console.log(`[AI_SWITCH] from=${providerId} to=${nextProvider} reason=${errorCode} status=${errorStatus ?? "?"} feature=${feature}`);
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          continue;
+        }
+
+        // If we have accumulated content from a partial success and ALL providers
+        // failed, return the partial content (still better than an error message).
         if (accumulatedContent.length > 0) {
-          log.info("[CONTINUATION] Returning partial accumulated content after provider failure", {
+          log.info("[CONTINUATION] Returning partial accumulated content after all providers failed", {
             feature,
             provider: providerId,
             accumulatedLength: accumulatedContent.length,
@@ -641,14 +786,6 @@ export class AIExecutor {
             model: providerId,
             provider: providerId,
           };
-        }
-
-        // If more providers available, log switch and try next
-        if (attempt < providerChain.length - 1) {
-          const nextProvider = providerChain[attempt + 1] ?? "none";
-          console.log(`[AI_SWITCH] from=${providerId} to=${nextProvider} reason=${errorCode} status=${errorStatus ?? "?"} feature=${feature}`);
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          continue;
         }
 
         // ── All providers exhausted — comprehensive summary log ──
@@ -672,8 +809,9 @@ export class AIExecutor {
     // Should never reach here, but TypeScript safety
     // Also handles the case where all providers were skipped in pre-flight (never entered catch block)
     if (allProviderErrors.length === 0) {
+      console.error("[AI ALL PROVIDERS EXHAUSTED] No providers were attempted — check API keys and provider configuration");
       throw new AIError(
-        `⚠️ No AI providers are configured. Please set at least one API key (GEMINI_API_KEY, CEREBRAS_API_KEY, MISTRAL_API_KEY, or OPENROUTER_API_KEY).`,
+        "⚠️ AI is temporarily unavailable. Please try again in a few moments.",
         "CONFIG_ERROR",
         { retryable: false }
       );

@@ -79,6 +79,7 @@ export class OllamaProviderImpl implements AIProvider {
           : undefined,
         model: resolvedModel.id,
         provider: "ollama",
+        finishReason: choice.finish_reason ?? undefined,
       };
     } catch (err) {
       log.error("Ollama provider error", { error: String(err) });

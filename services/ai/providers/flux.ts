@@ -87,6 +87,7 @@ export class FluxProviderImpl implements AIProvider {
           : undefined,
         model: resolvedModel.id,
         provider: "flux",
+        finishReason: choice.finish_reason ?? undefined,
       };
     } catch (err) {
       log.error("Flux provider error", { error: String(err) });

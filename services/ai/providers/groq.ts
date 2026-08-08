@@ -81,6 +81,7 @@ export class GroqProviderImpl implements AIProvider {
           : undefined,
         model: resolvedModel.id,
         provider: "groq",
+        finishReason: choice.finish_reason ?? undefined,
       };
     } catch (err) {
       log.error("Groq provider error", { error: String(err) });

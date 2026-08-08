@@ -87,6 +87,7 @@ export class MistralProviderImpl implements AIProvider {
           : undefined,
         model: resolvedModel.id,
         provider: "mistral",
+        finishReason: choice.finish_reason ?? undefined,
       };
     } catch (err) {
       log.error("Mistral provider error", { error: String(err) });

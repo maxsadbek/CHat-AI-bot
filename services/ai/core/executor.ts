@@ -19,6 +19,7 @@ import { AITelemetry } from "../utils/logger";
 import { AIError } from "../types/errors";
 import { routePlanner, responseCache, usageTracker, UsageTracker, healthChecker } from "../router";
 import type { ChatRequest, ChatResponse } from "../providers/interface";
+import { userRepository } from "@/repositories/user";
 
 const log = logger.child("ai-executor");
 
@@ -207,8 +208,11 @@ export class AIExecutor {
 
     // ── 1. Check daily usage limits (per-feature requests + total tokens) ──
     if (userId) {
+      // Referral bonus pool extends the per-feature daily allowance
+      const bonusRequests = await userRepository.getBonusRequests(userId);
+
       // Check per-feature request count limit
-      if (usageTracker.isLimitReached(userId, userPlan, feature)) {
+      if (usageTracker.isLimitReached(userId, userPlan, feature, bonusRequests)) {
         throw new AIError(
           "⚠️ You've reached your daily limit for this feature. Please try again tomorrow or upgrade your plan.",
           "RATE_LIMIT",

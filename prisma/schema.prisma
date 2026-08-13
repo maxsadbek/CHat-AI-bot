@@ -24,6 +24,13 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   lastActiveAt  DateTime  @default(now())
+  lastReminderAt DateTime?                              // Retention: when the last "we miss you" reminder was sent
+  referralCode  String?   @unique                      // Unique shareable code, e.g. "Ab3xYz9q" (link: ?start=ref_<code>)
+  referredBy    Int?                                   // Internal ID of the user who referred this user
+  bonusRequests Int       @default(0)                  // Pool of extra free requests earned via referrals (consumed first)
+
+  referrer  User?  @relation("Referrals", fields: [referredBy], references: [id])
+  referrals User[] @relation("Referrals")
 
   conversations Conversation[]
   messages      Message[]

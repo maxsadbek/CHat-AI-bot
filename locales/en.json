@@ -10,13 +10,18 @@
     "greeting": "Hey {name}! 👋",
     "description": "Your all-in-one AI platform for:\n\n🤖 *AI Chat* — Smart conversations\n🎬 *Video AI* — Cinematic prompts\n🎨 *Image AI* — Stunning visuals\n📱 *Social Media* — Viral content\n💻 *Coding* — Production code\n💼 *Business* — Growth strategies\n🌍 *Translate* — Global reach",
     "cta": "🚀 *Ready to create something amazing?*\nChoose a feature below 👇",
-    "date": "📅 {date}"
+    "date": "📅 {date}",
+    "tour_invite": "🎯 *Let's explore together!*\n\nYou have 7 amazing features waiting for you. Try each one once — it's all free! 🚀",
+    "tour": "🚀 *Quick Tour — Try It!*\n\nTap any button below and try each feature:\n\n🤖 *AI Chat* — ask anything\n🎨 *Image AI* — visual ideas\n🎬 *Video AI* — cinematic prompts\n💻 *Coding* — write code\n📱 *Social* — social media content\n💼 *Business* — business ideas\n🌍 *Translate* — any language\n\nYou can always return to the main menu with 🏠!"
   },
   "menu": {
     "main": "🏠 *Main Menu*\n\nChoose a feature below:"
   },
   "cancel": {
     "done": "❌ *Cancelled*\n\nCurrent operation has been cancelled.\n\nUse /menu to see the main menu or /start to restart."
+  },
+  "retention": {
+    "reminder": "🥺 *We missed you!*\n\nIt's been a few days since your last visit. Come try the new AI features — it's all free! 🚀\n\n_Tap /start to get back in._"
   },
   "mode": {
     "switched": {
@@ -130,7 +135,16 @@
     "messages": "*Messages:* {count}",
     "last_active": "*Last Active:* {date}",
     "upgrade": "━━━━━━━━━━━━━━━━━━━━━\n⭐ *Unlock Premium*\n\nGet unlimited requests, priority support,\nand exclusive features!\n━━━━━━━━━━━━━━━━━━━━━",
-    "error": "❌ *Error loading profile*\n\nPlease try again later."
+    "error": "❌ *Error loading profile*\n\nPlease try again later.",
+    "referral_title": "🤝 *Invite & Earn*",
+    "referral_bonus": "🎁 *Bonus requests:* {bonus}",
+    "referral_count": "👥 *Friends joined:* {count}",
+    "referral_link": "🔗 *Your referral link:*\n{link}\n\n_Share it — when a friend joins, you both get {bonus} free requests!_",
+    "referral_hint": "💡 Invite a friend and earn {bonus} free requests!"
+  },
+  "referral": {
+    "notify_referrer": "🎉 *Congratulations!* 🎉\n\nA new user joined through your personal link!\n\n🎁 *+{bonus} free requests* have been added to your account.\n\nTap /profile to see your bonus.",
+    "bonus_received": "🎁 *You got a bonus!*\n\nYou joined through a friend's referral link, so you received *+{bonus} free requests*!\n\nEnjoy! 🚀"
   },
   "help": {
     "title": "━━━━━━━━━━━━━━━━━━━━━\n❓ *Help Center*\n━━━━━━━━━━━━━━━━━━━━━\n\nChoose a topic below to learn more 👇",

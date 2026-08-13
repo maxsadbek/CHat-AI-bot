@@ -355,8 +355,6 @@ export interface SystemHealth {
     database: ComponentHealth;
     openai: ComponentHealth;
     gemini: ComponentHealth;
-    claude: ComponentHealth;
-    deepseek: ComponentHealth;
     telegram: ComponentHealth;
     paymentProviders: ComponentHealth;
     memory: ComponentHealth;

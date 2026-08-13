@@ -17,7 +17,8 @@ const log = logger.child("user-service");
 export class UserService {
   /**
    * Find or create user by Telegram info.
-   * Returns user with full relations.
+   * Returns { user, created } — "created: true" on first signup,
+   * which the /start handler uses to attribute referrals.
    */
   async findOrCreate(from: {
     id: number;
@@ -39,6 +40,13 @@ export class UserService {
       languageCode: from.language_code,
       dailyLimit,
     });
+  }
+
+  /**
+   * Get the user's remaining referral bonus requests
+   */
+  async getBonusRequests(userId: number): Promise<number> {
+    return await userRepository.getBonusRequests(userId);
   }
 
   /**
@@ -98,11 +106,13 @@ export class UserService {
       return { allowed: true, used: 0, limit: 50 };
     }
 
-    const isLimited = user.requestsToday >= user.dailyLimit;
+    // Referral bonus pool extends the daily allowance (consumed first)
+    const effectiveLimit = (user.dailyLimit ?? 50) + (user.bonusRequests ?? 0);
+    const isLimited = user.requestsToday >= effectiveLimit;
     return {
       allowed: !isLimited,
       used: user.requestsToday,
-      limit: user.dailyLimit,
+      limit: effectiveLimit,
     };
   }
 

@@ -7,7 +7,7 @@ import type { BotContext } from "@/types";
 import { BotStep } from "@/types";
 import { t, SUPPORTED_LANGUAGES } from "@/bot/localization";
 import type { SupportedLanguage } from "@/bot/localization";
-import { mainMenuKeyboard } from "@/bot/keyboards";
+import { mainMenuKeyboard, onboardingStartKeyboard } from "@/bot/keyboards";
 import { safeEditMessageText } from "@/bot/utils/telegram";
 import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/utils/helpers";
@@ -113,5 +113,18 @@ export async function handleLanguageSelection(ctx: BotContext): Promise<void> {
       reply_markup: mainMenuKeyboard,
       link_preview_options: { is_disabled: true },
     });
+  }
+
+  // ─── Interactive onboarding invite (first-use only) ──
+  // Encourages the new user to try each main feature once.
+  // Clicking the button opens the guided tour with one button per feature.
+  try {
+    await ctx.reply(t(selectedLang, "welcome.tour_invite"), {
+      parse_mode: "Markdown",
+      reply_markup: onboardingStartKeyboard,
+    });
+  } catch (error) {
+    // Non-critical — the main menu already lists all features
+    log.debug("Onboarding invite failed (non-critical)", { error: String(error) });
   }
 }

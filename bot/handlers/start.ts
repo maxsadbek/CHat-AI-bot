@@ -6,6 +6,10 @@ import { resetSession } from "@/bot/session";
 import { t, SUPPORTED_LANGUAGES, resolveLanguage } from "@/bot/localization";
 import type { SupportedLanguage } from "@/bot/localization";
 import { userSettingsRepository } from "@/repositories/settings";
+import { referralService } from "@/services/referral";
+import { logger } from "@/bot/core/logger";
+
+const log = logger.child("start-handler");
 
 /**
  * /start command handler
@@ -23,10 +27,30 @@ import { userSettingsRepository } from "@/repositories/settings";
  *   - All future /start commands open only the Main Menu
  */
 export async function startHandler(ctx: BotContext): Promise<void> {
+  // ─── Referral flag ────────────────────────────────
+  // The middleware marks a brand-new signup with tempData.isNewUser = "1".
+  // MUST be read BEFORE resetSession() below clears tempData.
+  const isNewUser = ctx.session.tempData.isNewUser === "1";
+
   // ─── Session reset ────────────────────────────────
   // Reset temporary state, close active mode, keep userId and language
   resetSession(ctx.session, true);
   ctx.session.step = BotStep.IDLE;
+
+  // ─── Referral link handling (fresh signups only) ──
+  // /start ref_<code> — attribute the referral and award both sides a bonus.
+  const startText = ctx.message?.text ?? "";
+  const refMatch = startText.match(/^\/start(?:@\w+)?\s+ref_([A-Za-z0-9_-]+)/i);
+  if (refMatch?.[1] && isNewUser) {
+    try {
+      await referralService.applyReferral(ctx, refMatch[1]);
+    } catch (error) {
+      log.warn("Referral attribution failed", {
+        userId: ctx.session.userId,
+        error: String(error),
+      });
+    }
+  }
 
   // ─── Safety fallback: try to load language from DB if middleware missed it ──
   // This happens only if userMiddleware failed to set languageSelected

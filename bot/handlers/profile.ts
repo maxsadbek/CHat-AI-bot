@@ -33,6 +33,7 @@ import { LANGUAGE_NAMES } from "@/bot/localization";
 import { providerRegistry } from "@/services/ai/providers";
 import { isAdmin } from "@/services/admin/admin-guard";
 import { logger } from "@/bot/core/logger";
+import { referralService, REFERRAL_BONUS_INVITER } from "@/services/referral";
 
 const DIVIDER = "━━━━━━━━━━━━━━━━━━━━━";
 const log = logger.child("profile-handler");
@@ -94,9 +95,16 @@ export async function profileHandler(ctx: BotContext): Promise<void> {
 
     const joinedDate = formatDate(profile.createdAt);
 
-    // ─── Usage stats ──────────────────────────────────
+    // ─── Referral data (code + link + stats) ──────────
+    // ensureReferralCode backfills existing users created before the feature existed.
+    const referralCode = await referralService.ensureReferralCode(userId);
+    const referralLink = referralCode ? referralService.getReferralLink(referralCode) : null;
+    const referralCount = await referralService.countReferrals(userId);
+    const bonusRequests = profile.bonusRequests ?? 0;
+
+    // ─── Usage stats (daily allowance + referral bonus) ──
     const used = profile.requestsToday;
-    const limit = isAdminUser ? 999999 : profile.dailyLimit;
+    const limit = isAdminUser ? 999999 : (profile.dailyLimit + bonusRequests);
     const usagePercent = Math.min(Math.round((used / limit) * 100), 100);
     const filledBars = Math.min(Math.floor(usagePercent / 10), 10);
     const progressBar = "▓".repeat(filledBars) + "░".repeat(10 - filledBars);
@@ -148,6 +156,20 @@ export async function profileHandler(ctx: BotContext): Promise<void> {
       `${t(lang, "profile.conversations", { count: String(profile._count?.conversations ?? 0) })}`,
       `${t(lang, "profile.messages", { count: String(profile._count?.messages ?? 0) })}`,
       `${t(lang, "profile.last_active", { date: formatDate(profile.lastActiveAt) })}`,
+      "",
+      // Referral section — invite friends, earn free requests
+      DIVIDER,
+      t(lang, "profile.referral_title"),
+      DIVIDER,
+      "",
+      ...(bonusRequests > 0
+        ? [`${t(lang, "profile.referral_bonus", { bonus: String(bonusRequests) })}`, ""]
+        : []),
+      `${t(lang, "profile.referral_count", { count: String(referralCount) })}`,
+      ...(referralLink
+        ? ["", t(lang, "profile.referral_link", { link: referralLink }), ""]
+        : []),
+      `${t(lang, "profile.referral_hint", { bonus: `+${REFERRAL_BONUS_INVITER}` })}`,
       "",
       // Upgrade CTA only for non-premium non-admin users
       isEffectivePremium ? "💎 Premium Active ✓" : t(lang, "profile.upgrade"),

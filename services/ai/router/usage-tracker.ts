@@ -174,45 +174,50 @@ export class UsageTracker {
     return Math.max(0, limit - totalTokens);
   }
 
-  /** Get daily request limit for a specific feature and plan */
-  getDailyLimit(feature?: FeatureType | string, userPlan?: string): number {
+  /**
+   * Get daily request limit for a specific feature and plan.
+   * Optional referral bonus pool extends the allowance.
+   */
+  getDailyLimit(feature?: FeatureType | string, userPlan?: string, bonus = 0): number {
     const normalized = (userPlan || "FREE").toUpperCase();
 
     if (normalized === "FREE" || normalized === "") {
-      if (feature && this.FREE_FEATURE_LIMITS[feature]) {
-        return this.FREE_FEATURE_LIMITS[feature]!;
-      }
-      return Number(process.env.AI_DAILY_LIMIT_FREE) || 50;
+      const base =
+        feature && this.FREE_FEATURE_LIMITS[feature]
+          ? this.FREE_FEATURE_LIMITS[feature]!
+          : Number(process.env.AI_DAILY_LIMIT_FREE) || 50;
+      return base + (bonus || 0);
     }
 
     // Premium and above
-    if (feature && this.PREMIUM_FEATURE_LIMITS[feature]) {
-      return this.PREMIUM_FEATURE_LIMITS[feature]!;
-    }
-    return Number(process.env.AI_DAILY_LIMIT_PREMIUM) || 500;
+    const base =
+      feature && this.PREMIUM_FEATURE_LIMITS[feature]
+        ? this.PREMIUM_FEATURE_LIMITS[feature]!
+        : Number(process.env.AI_DAILY_LIMIT_PREMIUM) || 500;
+    return base + (bonus || 0);
   }
 
   /** Check if user has exceeded their daily request limit (per-feature) */
-  isLimitReached(userId: number, userPlan?: string, feature?: FeatureType | string): boolean {
+  isLimitReached(userId: number, userPlan?: string, feature?: FeatureType | string, bonus = 0): boolean {
     if (feature) {
       const todayCount = this.getTodayCount(userId, feature as FeatureType);
-      const limit = this.getDailyLimit(feature, userPlan);
+      const limit = this.getDailyLimit(feature, userPlan, bonus);
       return todayCount >= limit;
     }
     const totalToday = this.getTotalToday(userId);
-    const limit = this.getDailyLimit(undefined, userPlan);
+    const limit = this.getDailyLimit(undefined, userPlan, bonus);
     return totalToday >= limit;
   }
 
   /** Get remaining requests for today (per-feature) */
-  getRemaining(userId: number, userPlan?: string, feature?: FeatureType | string): number {
+  getRemaining(userId: number, userPlan?: string, feature?: FeatureType | string, bonus = 0): number {
     if (feature) {
       const todayCount = this.getTodayCount(userId, feature as FeatureType);
-      const limit = this.getDailyLimit(feature, userPlan);
+      const limit = this.getDailyLimit(feature, userPlan, bonus);
       return Math.max(0, limit - todayCount);
     }
     const totalToday = this.getTotalToday(userId);
-    const limit = this.getDailyLimit(undefined, userPlan);
+    const limit = this.getDailyLimit(undefined, userPlan, bonus);
     return Math.max(0, limit - totalToday);
   }
 

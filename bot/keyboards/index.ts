@@ -52,6 +52,33 @@ export const mainMenuKeyboard = new InlineKeyboard()
   .text("⭐ Premium", "feature:premium");
 
 // ═══════════════════════════════════════════════════════
+// ONBOARDING TOUR (first-use experience)
+// ═══════════════════════════════════════════════════════
+// Shown right after a new user picks their language:
+//   1. Tour invite — "Keling, birga sinab ko'ramiz!" button
+//   2. Tour — one button per main feature, each opens the feature directly
+// The feature buttons reuse the existing feature:* callbacks, so no new
+// callback handlers are needed for them.
+export const onboardingStartKeyboard = new InlineKeyboard().text(
+  "🚀 Keling, birga sinab ko'ramiz!",
+  "onboarding:start"
+);
+
+export const onboardingTourKeyboard = new InlineKeyboard()
+  .text("🤖 AI Chat", "feature:chat")
+  .text("🎨 Image AI", "feature:image")
+  .row()
+  .text("🎬 Video AI", "feature:video")
+  .text("💻 Coding", "feature:coding")
+  .row()
+  .text("📱 Social", "feature:social")
+  .text("💼 Business", "feature:business")
+  .row()
+  .text("🌍 Translate", "feature:translate")
+  .row()
+  .text("🏠 Main Menu", "nav:home");
+
+// ═══════════════════════════════════════════════════════
 // AI CHAT
 // ═══════════════════════════════════════════════════════
 export const chatKeyboard = addNavRow(

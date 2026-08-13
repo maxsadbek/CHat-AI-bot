@@ -68,10 +68,13 @@ export async function userMiddleware(
   // users who already completed /start never see "use /start first"
   // due to transient DB issues.
   try {
-    const user = await userService.findOrCreate(from);
+    const { user, created } = await userService.findOrCreate(from);
 
     // Store the Prisma user ID in session
     ctx.session.userId = user.id;
+
+    // Mark first signup — the /start handler consumes this to attribute referrals
+    ctx.session.tempData.isNewUser = created ? "1" : "0";
 
     // Store premium/plan info for token limit resolution downstream
     ctx.session.isPremium = user.isPremium ?? false;
@@ -92,6 +95,7 @@ export async function userMiddleware(
     log.debug("User tracked", {
       userId: user.id,
       telegramId: from.id,
+      created,
     });
   } catch (error) {
     log.error("Failed to upsert user on first attempt", {
@@ -101,13 +105,15 @@ export async function userMiddleware(
 
     // Retry once — transient DB issues should resolve
     try {
-      const user = await userService.findOrCreate(from);
+      const { user, created } = await userService.findOrCreate(from);
       ctx.session.userId = user.id;
+      ctx.session.tempData.isNewUser = created ? "1" : "0";
       ctx.session.isPremium = user.isPremium ?? false;
       ctx.session.planType = user.isPremium ? "PREMIUM" : "FREE";
       log.info("User resolved on retry", {
         userId: user.id,
         telegramId: from.id,
+        created,
       });
     } catch (retryError) {
       log.error("Failed to upsert user on retry — preserving existing userId", {

@@ -6,8 +6,23 @@
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/bot/core/logger";
 import { isAdmin } from "@/services/admin/admin-guard";
+import { Prisma } from "@prisma/client";
 
 const log = logger.child("user-repo");
+
+/**
+ * Generate a unique referral code (8 chars, unambiguous alphabet).
+ * Collisions are astronomically unlikely; the create path retries on the
+ * rare P2002 unique violation with a fresh code.
+ */
+export function generateReferralCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  let code = "";
+  for (let i = 0; i < 8; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)]!;
+  }
+  return code;
+}
 
 export interface UserCreateInput {
   telegramId: bigint;
@@ -16,6 +31,7 @@ export interface UserCreateInput {
   username?: string | null;
   languageCode?: string | null;
   dailyLimit?: number;
+  referralCode?: string;
 }
 
 export interface UserUpdateInput {
@@ -32,43 +48,67 @@ export interface UserUpdateInput {
 
 export class UserRepository {
   /**
-   * Find or create user by Telegram ID
+   * Find or create user by Telegram ID.
+   * Returns { user, created } so callers can attribute referrals on signup.
+   * A fresh random referral code is generated for every new user.
    */
   async upsertByTelegramId(
     telegramId: bigint,
     data: UserCreateInput,
     retries = 1
-  ) {
+  ): Promise<{ user: NonNullable<Awaited<ReturnType<typeof prisma.user.findUnique>>>; created: boolean }> {
     let lastError: Error | null = null;
     const userIsAdmin = isAdmin(telegramId);
 
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        return await prisma.user.upsert({
-          where: { telegramId },
-          update: {
-            firstName: data.firstName,
-            lastName: data.lastName ?? undefined,
-            username: data.username ?? undefined,
-            languageCode: data.languageCode ?? undefined,
-            lastActiveAt: new Date(),
-            ...(userIsAdmin ? { isPremium: true, dailyLimit: 999999 } : {}),
-          },
-          create: {
-            telegramId: data.telegramId,
-            firstName: data.firstName,
-            lastName: data.lastName ?? null,
-            username: data.username ?? null,
-            languageCode: data.languageCode ?? null,
-            requestsToday: 0,
-            totalRequests: 0,
-            dailyLimit: userIsAdmin ? 999999 : (data.dailyLimit ?? 50),
-            isPremium: userIsAdmin,
-          },
-          include: {
-            settings: true,
-          },
-        });
+        // ── Existing user → update activity, return as-is ──
+        const existing = await prisma.user.findUnique({ where: { telegramId } });
+        if (existing) {
+          const user = await prisma.user.update({
+            where: { id: existing.id },
+            data: {
+              firstName: data.firstName,
+              lastName: data.lastName ?? undefined,
+              username: data.username ?? undefined,
+              languageCode: data.languageCode ?? undefined,
+              lastActiveAt: new Date(),
+              ...(userIsAdmin ? { isPremium: true, dailyLimit: 999999 } : {}),
+            },
+            include: { settings: true },
+          });
+          return { user, created: false };
+        }
+
+        // ── New user → create with a fresh referral code ──
+        try {
+          const user = await prisma.user.create({
+            data: {
+              telegramId: data.telegramId,
+              firstName: data.firstName,
+              lastName: data.lastName ?? null,
+              username: data.username ?? null,
+              languageCode: data.languageCode ?? null,
+              requestsToday: 0,
+              totalRequests: 0,
+              dailyLimit: userIsAdmin ? 999999 : (data.dailyLimit ?? 50),
+              isPremium: userIsAdmin,
+              referralCode: generateReferralCode(),
+            },
+            include: { settings: true },
+          });
+          return { user, created: true };
+        } catch (createError) {
+          // Extremely rare: referralCode unique collision → retry with a fresh code
+          if (
+            createError instanceof Prisma.PrismaClientKnownRequestError &&
+            createError.code === "P2002"
+          ) {
+            await new Promise((r) => setTimeout(r, 50));
+            continue;
+          }
+          throw createError;
+        }
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
         log.warn(`Failed to upsert user (attempt ${attempt + 1}/${retries + 1})`, {
@@ -156,15 +196,29 @@ export class UserRepository {
   }
 
   /**
-   * Increment request counters
+   * Increment request counters.
+   * Once the user is past their dailyLimit, extra requests consume the
+   * referral bonus pool (bonusRequests) so the bonus is truly one-time.
    */
   async incrementRequests(id: number, amount = 1) {
     try {
+      const user = await prisma.user.findUnique({
+        where: { id },
+        select: { requestsToday: true, dailyLimit: true, bonusRequests: true },
+      });
+      if (!user) throw new Error(`User ${id} not found`);
+
+      const usingBonus =
+        user.requestsToday >= user.dailyLimit && user.bonusRequests > 0;
+
       return await prisma.user.update({
         where: { id },
         data: {
           requestsToday: { increment: amount },
           totalRequests: { increment: amount },
+          ...(usingBonus
+            ? { bonusRequests: { decrement: Math.min(amount, user.bonusRequests) } }
+            : {}),
         },
       });
     } catch (error) {
@@ -257,6 +311,54 @@ export class UserRepository {
     } catch (error) {
       log.error("Error updating user", { id, error: String(error) });
       throw error;
+    }
+  }
+
+  /**
+   * Find a user by their referral code
+   */
+  async findByReferralCode(code: string) {
+    try {
+      return await prisma.user.findUnique({
+        where: { referralCode: code },
+        select: {
+          id: true,
+          telegramId: true,
+          firstName: true,
+          settings: true,
+        },
+      });
+    } catch (error) {
+      log.error("Error finding user by referral code", { code, error: String(error) });
+      return null;
+    }
+  }
+
+  /**
+   * Count how many users joined through this user's referral link
+   */
+  async countReferrals(userId: number): Promise<number> {
+    try {
+      return await prisma.user.count({ where: { referredBy: userId } });
+    } catch (error) {
+      log.error("Error counting referrals", { userId, error: String(error) });
+      return 0;
+    }
+  }
+
+  /**
+   * Get the user's remaining referral bonus requests
+   */
+  async getBonusRequests(userId: number): Promise<number> {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { bonusRequests: true },
+      });
+      return user?.bonusRequests ?? 0;
+    } catch (error) {
+      log.error("Error fetching bonus requests", { userId, error: String(error) });
+      return 0;
     }
   }
 }

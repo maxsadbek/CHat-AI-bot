@@ -151,6 +151,7 @@ import {
   backToMainKeyboard,
   homeCancelKeyboard,
   premiumKeyboard,
+  onboardingTourKeyboard,
 } from "@/bot/keyboards";
 import { safeAnswerCallbackQuery, safeEditMessageText } from "@/bot/utils/telegram";
 import { t } from "@/bot/localization";
@@ -364,6 +365,18 @@ export function createBot(): Bot<BotContext> {
   callbackRouter.register(/^lang:(.+)/, async (ctx) => {
     await safeAnswerCallbackQuery(ctx);
     await handleLanguageSelection(ctx);
+  });
+
+  // ─── Onboarding Tour ──────────────────────────────
+  // Turns the tour invite message into the guided tour with
+  // one button per main feature (buttons reuse feature:* callbacks).
+  callbackRouter.register("onboarding:start", async (ctx) => {
+    await safeAnswerCallbackQuery(ctx);
+    const lang = ctx.session.language;
+    await safeEditMessageText(ctx, t(lang, "welcome.tour"), {
+      parse_mode: "Markdown",
+      reply_markup: onboardingTourKeyboard,
+    });
   });
 
   // ─── Global Navigation ────────────────────────────

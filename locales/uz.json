@@ -10,13 +10,18 @@
     "greeting": "Salom {name}! 👋",
     "description": "Barcha imkoniyatlar bir joyda:\n\n🤖 *AI Chat* — Aqlli suhbatlar\n🎬 *Video AI* — Kinematik treylerlar\n🎨 *Image AI* — Ajoyib tasvirlar\n📱 *Social Media* — Virus kontent\n💻 *Coding* — Kod yozish\n💼 *Business* — Rivojlanish strategiyalari\n🌍 *Translate* — Global tarjima",
     "cta": "🚀 *Ajoyib narsa yaratishga tayyormisiz?*\nQuyidagi funksiyalardan birini tanlang 👇",
-    "date": "📅 {date}"
+    "date": "📅 {date}",
+    "tour_invite": "🎯 *Keling, birga sinab ko'ramiz!*\n\nSizni 7 ta ajoyib funksiya kutmoqda. Har birini bir marta sinab ko'ring — hammasi bepul! 🚀",
+    "tour": "🚀 *Tezkor sayohat — sinab ko'ring!*\n\nQuyidagi tugmalardan birini bosib, har bir funksiyani sinab ko'ring:\n\n🤖 *AI Chat* — istalgan savolga javob\n🎨 *Image AI* — rasm g'oyalari\n🎬 *Video AI* — kinematik treylerlar\n💻 *Coding* — kod yozish\n📱 *Social* — ijtimoiy tarmoq kontenti\n💼 *Business* — biznes g'oyalar\n🌍 *Translate* — istalgan tilga tarjima\n\nIstalgan vaqtda 🏠 orqali asosiy menyuga qaytishingiz mumkin!"
   },
   "menu": {
     "main": "🏠 *Asosiy menyu*\n\nQuyidagi funksiyalardan birini tanlang:"
   },
   "cancel": {
     "done": "❌ *Bekor qilindi*\n\nJoriy operatsiya bekor qilindi.\n\nAsosiy menyuga qaytish uchun /menu yoki /start dan foydalaning."
+  },
+  "retention": {
+    "reminder": "🥺 *Sizni sog'indik!*\n\nOxirgi tashrifingizdan bir necha kun o'tdi. Yangi AI imkoniyatlarini sinab ko'ring — hammasi bepul! 🚀\n\n_Qaytish uchun /start tugmasini bosing._"
   },
   "mode": {
     "switched": {
@@ -130,7 +135,16 @@
     "messages": "*Xabarlar:* {count}",
     "last_active": "*Oxirgi faollik:* {date}",
     "upgrade": "━━━━━━━━━━━━━━━━━━━━━\n⭐ *Premium-ni oching*\n\nCheksiz so'rovlar, ustuvor yordam\nva eksklyuziv funksiyalar!\n━━━━━━━━━━━━━━━━━━━━━",
-    "error": "❌ *Profilni yuklashda xatolik*\n\nIltimos, keyinroq qayta urinib ko'ring."
+    "error": "❌ *Profilni yuklashda xatolik*\n\nIltimos, keyinroq qayta urinib ko'ring.",
+    "referral_title": "🤝 *Taklif qiling va daromad toping*",
+    "referral_bonus": "🎁 *Bonus so'rovlar:* {bonus}",
+    "referral_count": "👥 *Qo'shilgan do'stlar:* {count}",
+    "referral_link": "🔗 *Sizning referral havolangiz:*\n{link}\n\n_Ulashing — do'stingiz qo'shilganda ikkalangiz ham {bonus} ta bepul so'rov olasiz!_",
+    "referral_hint": "💡 Do'st taklif qiling va {bonus} ta bepul so'rov oling!"
+  },
+  "referral": {
+    "notify_referrer": "🎉 *Tabriklaymiz!* 🎉\n\nSizning shaxsiy havolangiz orqali yangi foydalanuvchi qo'shildi!\n\n🎁 Hisobingizga *+{bonus} ta bepul so'rov* qo'shildi.\n\nBonusingizni ko'rish uchun /profile bosing.",
+    "bonus_received": "🎁 *Sizga bonus!*\n\nDo'stingizning referral havolasi orqali qo'shilganingiz uchun *+{bonus} ta bepul so'rov* oldingiz!\n\nMaroqli foydalaning! 🚀"
   },
   "help": {
     "title": "━━━━━━━━━━━━━━━━━━━━━\n❓ *Yordam Markazi*\n━━━━━━━━━━━━━━━━━━━━━\n\nBatafsil ma'lumot olish uchun mavzuni tanlang 👇",

@@ -14,6 +14,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "webhook:set": "tsx scripts/set-webhook.ts",
+    "retention:run": "tsx scripts/retention-reminder.ts",
     "typecheck": "tsc --noEmit",
     "test:truncation": "tsx scripts/validate-truncation.ts"
   },

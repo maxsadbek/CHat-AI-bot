@@ -19,8 +19,6 @@ export interface HealthCheckResult {
     database: ComponentHealth;
     openai: ComponentHealth;
     gemini: ComponentHealth;
-    claude: ComponentHealth;
-    deepseek: ComponentHealth;
     telegram: ComponentHealth;
     paymentProviders: ComponentHealth;
     memory: ComponentHealth;
@@ -40,13 +38,11 @@ export class SystemHealthService {
    * Run all health checks and return comprehensive result
    */
   async getFullHealth(): Promise<HealthCheckResult> {
-    const [db, openai, gemini, claude, deepseek, telegram, payments, memory] =
+    const [db, openai, gemini, telegram, payments, memory] =
       await Promise.all([
         this.checkDatabase(),
         this.checkOpenAI(),
         this.checkGemini(),
-        this.checkClaude(),
-        this.checkDeepSeek(),
         this.checkTelegram(),
         this.checkPaymentProviders(),
         this.checkMemory(),
@@ -56,8 +52,6 @@ export class SystemHealthService {
       database: db,
       openai,
       gemini,
-      claude,
-      deepseek,
       telegram,
       paymentProviders: payments,
       memory,
@@ -152,32 +146,6 @@ export class SystemHealthService {
     return {
       status: "healthy",
       message: `Gemini configured (model: ${env.GEMINI_MODEL})`,
-    };
-  }
-
-  private async checkClaude(): Promise<ComponentHealth> {
-    if (!env.ANTHROPIC_API_KEY) {
-      return {
-        status: "degraded",
-        message: "Claude API key not configured",
-      };
-    }
-    return {
-      status: "healthy",
-      message: `Claude configured (model: ${env.ANTHROPIC_MODEL})`,
-    };
-  }
-
-  private async checkDeepSeek(): Promise<ComponentHealth> {
-    if (!env.DEEPSEEK_API_KEY) {
-      return {
-        status: "degraded",
-        message: "DeepSeek API key not configured",
-      };
-    }
-    return {
-      status: "healthy",
-      message: `DeepSeek configured (model: ${env.DEEPSEEK_MODEL})`,
     };
   }
 
